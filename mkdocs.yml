@@ -1,0 +1,42 @@
+site_name: Mika Bot API 文档
+site_description: NoneBot2 + Gemini API 驱动的 QQ 聊天机器人
+site_author: Bot Developer
+repo_url: https://github.com/yourusername/nonebot-gemini-bot
+
+theme:
+  name: material
+  language: zh
+  palette:
+    - scheme: default
+      primary: pink
+      accent: pink
+  features:
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: true
+            show_root_heading: true
+            members_order: source
+
+nav:
+  - 首页: index.md
+  - 部署:
+    - WSL2 + NapCat (systemd): deploy/wsl2.md
+  - API 参考:
+    - Gemini 客户端: api/gemini_api.md
+    - 消息处理器: api/handlers.md
+    - 搜索引擎: api/search_engine.md
+    - 上下文存储: api/context_store.md
+    - 配置: api/config.md
+
+markdown_extensions:
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - admonition

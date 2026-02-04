@@ -1,0 +1,389 @@
+# Gemini Chat 插件配置
+from pydantic import BaseModel, field_validator, model_validator
+from typing import List, Optional
+from pathlib import Path
+import os
+import re
+from nonebot import get_plugin_config
+
+
+# ==================== Gemini API Key 占位符检测（仅用于 gemini_api_key / gemini_api_key_list） ====================
+# 说明：
+# - 只做「等值匹配」或「整串(fullmatch)匹配」，避免把真实 key 的子串误判为占位符。
+# - 必须在 strip() + lower() 归一化后进行匹配。
+_GEMINI_API_KEY_PLACEHOLDER_LITERALS = frozenset(
+    {
+        # 常见占位符
+        "xxx",
+        "your-api-key",
+        "your_api_key",
+        "your api key",
+        "apikey",
+        "api-key",
+        "api_key",
+        "api key",
+        "api_key_here",
+        "api-key-here",
+        "placeholder",
+        "test_key",
+        "testkey",
+        "changeme",
+        "change-me",
+        "replace_me",
+        "replace-me",
+    }
+)
+
+_GEMINI_API_KEY_PLACEHOLDER_FULLMATCH_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"^x{3,}$", re.IGNORECASE),
+    re.compile(r"^<.*>$"),
+)
+
+
+def _is_gemini_api_key_placeholder(raw_value: str) -> bool:
+    normalized = raw_value.strip().lower()
+    if normalized in _GEMINI_API_KEY_PLACEHOLDER_LITERALS:
+        return True
+    return any(p.fullmatch(normalized) is not None for p in _GEMINI_API_KEY_PLACEHOLDER_FULLMATCH_PATTERNS)
+
+
+def _get_project_relative_path(subpath: str) -> str:
+    """获取项目相对路径"""
+    project_root = Path(__file__).parent.parent.parent.parent
+    return str(project_root / subpath)
+
+
+
+class ConfigValidationError(Exception):
+    """配置验证错误"""
+    pass
+
+
+class Config(BaseModel):
+    """Gemini 插件配置"""
+    
+    # API 配置
+    gemini_api_key: str = ""
+    gemini_api_key_list: List[str] = []
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
+    gemini_model: str = "gemini-3-pro-high" # 主模型 (对应列表中的 Gemini 3 Pro (High))
+    gemini_fast_model: str = "gemini-2.5-flash-lite" # 快速模型 (对应列表中的 Gemini 2.5 Flash Lite)
+
+    # HTTP / 网络参数
+    # 注意：这些参数只作为“默认值”，不改变现有行为（默认与原硬编码一致）。
+    gemini_http_client_timeout_seconds: float = 120.0
+    gemini_api_key_default_cooldown_seconds: float = 60.0
+    
+    # 模型参数
+    gemini_temperature: float = 1.0 # 主对话温度
+    gemini_proactive_temperature: float = 0.5 # 主动发言判决温度
+    
+    # 启动时是否验证 API 连接
+    gemini_validate_on_startup: bool = True
+    
+    @field_validator('gemini_temperature', 'gemini_proactive_temperature')
+    @classmethod
+    def validate_temperature(cls, v: float) -> float:
+        """验证温度参数范围（0.0-2.0）"""
+        if v < 0.0 or v > 2.0:
+            raise ValueError(f"温度参数必须在 0.0 到 2.0 之间，当前值: {v}")
+        return v
+    
+    @field_validator('gemini_api_key')
+    @classmethod
+    def validate_api_key(cls, v: str) -> str:
+        """验证 API Key 格式"""
+        if not v:
+            return v  # 允许为空，因为可能使用 api_key_list
+
+        # 先去除首尾空白（允许用户在 env 里不小心写了空格）
+        v = v.strip()
+        
+        # 检查是否为占位符值
+        if _is_gemini_api_key_placeholder(v):
+            raise ValueError("API Key 看起来是占位符，请配置真实的 API Key")
+        
+        # Gemini API Key 通常以 'AI' 开头，长度约 39 字符
+        # 测试/中转场景下 key 可能更短；这里保持最小长度校验但放宽至 25。
+        if len(v) < 25:
+            raise ValueError("API Key 长度不符合要求")
+        
+        # 检查是否包含空格（中间不允许有任何空白字符）
+        if re.search(r'\s', v):
+            raise ValueError("API Key 不应包含空格")
+
+        return v
+    
+    @field_validator('gemini_api_key_list')
+    @classmethod
+    def validate_api_key_list(cls, v: List[str]) -> List[str]:
+        """验证 API Key 列表"""
+        validated_keys = []
+        for i, key in enumerate(v):
+            key = key.strip()
+            if not key:
+                continue  # 跳过空字符串
+
+            if _is_gemini_api_key_placeholder(key):
+                raise ValueError(f"API Key #{i+1} 看起来是占位符，请配置真实的 API Key")
+
+            if len(key) < 25:
+                raise ValueError(f"API Key #{i+1} 长度过短（当前 {len(key)} 字符）")
+            if re.search(r'\s', key):
+                raise ValueError(f"API Key #{i+1} 不应包含空格")
+            validated_keys.append(key)
+        return validated_keys
+    
+    @field_validator('gemini_base_url')
+    @classmethod
+    def validate_base_url(cls, v: str) -> str:
+        """验证 Base URL 格式"""
+        if not v:
+            raise ValueError("Base URL 不能为空")
+        if not v.startswith(('http://', 'https://')):
+            raise ValueError("Base URL 必须以 http:// 或 https:// 开头")
+        return v.rstrip('/')  # 统一去除尾部斜杠
+    
+    @field_validator('gemini_master_id')
+    @classmethod
+    def validate_master_id(cls, v: int) -> int:
+        """验证 master_id 必须为正整数"""
+        if v <= 0:
+            raise ValueError("gemini_master_id 必须配置为有效的正整数 QQ 号，当前值无效")
+        return v
+    
+    @model_validator(mode='after')
+    def validate_and_set_defaults(self) -> 'Config':
+        """验证配置并设置默认值"""
+        # 确保至少配置了一个 API Key
+        if not self.gemini_api_key and not self.gemini_api_key_list:
+            raise ValueError(
+                "必须配置 gemini_api_key 或 gemini_api_key_list 中的至少一个"
+            )
+        
+        # 如果语义模型路径未配置，使用项目相对路径作为默认值
+        if not self.gemini_semantic_model:
+            object.__setattr__(self, 'gemini_semantic_model',
+                              _get_project_relative_path("models/semantic_model"))
+        
+        # 当内置搜索或外置搜索功能可能启用时，验证 serper_api_key
+        # 注意：gemini_enable_builtin_search 是内置搜索开关
+        # 外置搜索默认启用，需要 serper_api_key
+        if self.serper_api_key:
+            # 验证 serper_api_key 格式
+            key = self.serper_api_key.strip()
+            placeholder_patterns = ['your_api_key', 'xxx', 'placeholder', 'test_key', 'api_key_here']
+            if any(p in key.lower() for p in placeholder_patterns):
+                raise ValueError("Serper API Key 看起来是占位符，请配置真实的 API Key")
+            if len(key) < 10:
+                raise ValueError("Serper API Key 长度不符合要求")
+        
+        return self
+    
+    def get_effective_api_keys(self) -> List[str]:
+        """获取所有有效的 API Key 列表"""
+        keys = []
+        if self.gemini_api_key:
+            keys.append(self.gemini_api_key)
+        keys.extend(self.gemini_api_key_list)
+        return list(set(keys))  # 去重
+    
+    # ==================== 用户标识配置 ====================
+    gemini_master_id: int = 0              # Master 的 QQ 号
+    gemini_master_name: str = "Sensei"     # Master 的称呼
+    gemini_bot_display_name: str = "Mika"  # 机器人显示名称（用于转发消息等）
+    
+    # ==================== 提示词配置 ====================
+    gemini_prompt_file: str = "system.yaml"  # 外部提示词文件名（prompts/目录下）
+    gemini_system_prompt: str = ""           # 内置提示词（仅在文件为空时使用）
+    
+    # ==================== 上下文配置 ====================
+    gemini_max_context: int = 40       # 最大上下文轮数
+    gemini_history_count: int = 50     # 群历史消息查询数量
+    # SQLiteContextStore 的 LRU 缓存条目数上限（越小越省内存，越大越高命中率）
+    gemini_context_cache_max_size: int = 200
+    
+    # ==================== 触发配置 ====================
+    gemini_reply_private: bool = True  # 是否响应私聊
+    gemini_reply_at: bool = True       # 是否响应@消息
+    gemini_group_whitelist: List[int] = []  # 群白名单（空=全部允许）
+    
+    # ==================== 主动发言配置 ====================
+    gemini_proactive_keywords: List[str] = ["Mika", "未花",]  # 强触发关键词
+    gemini_proactive_topics: List[str] = [  # 语义话题库 (扩充为短语以增强语义匹配)
+        # 娱乐
+        "玩游戏或讨论游戏相关话题",
+        "抽卡或氪金相关的话题",
+        # 美食 (Mika最爱)
+        "关于甜点、蛋糕、零食的话题",
+        "想吃东西或讨论美食",
+        # 校园生活
+        "作业、学习或课程相关",
+        "考试成绩或挂科相关",
+        # BA世界观
+        "Blue Archive 蔚蓝档案游戏",
+        # 科技与音乐
+        "科技数码或电子产品",
+        "听歌或音乐相关话题",
+    ]
+    gemini_proactive_rate: float = 0.2       # 触发概率 (0.0 - 1.0)
+    gemini_proactive_cooldown: int = 30       # 冷却时间 (秒)
+    gemini_proactive_cooldown_messages: int = 5  # 消息条数冷却 (上次主动发言后需要至少 N 条新消息)
+    gemini_heat_threshold: int = 10           # 热度阈值 (消息数/分钟)
+    gemini_proactive_ignore_len: int = 4     # 忽略短于此长度的消息
+
+    # 主动发言判决（网络重试/超时）
+    gemini_proactive_judge_timeout_seconds: float = 20.0
+    gemini_proactive_judge_max_retries: int = 2
+    gemini_proactive_judge_retry_delay_seconds: float = 1.0
+    gemini_proactive_judge_max_images: int = 2
+    
+    # ==================== 语义匹配配置 ====================
+    # 是否启用语义匹配（sentence-transformers/torch）。关闭可显著降低内存占用。
+    gemini_semantic_enabled: bool = True
+    # 语义匹配后端：
+    # - auto: 自动选择（优先 fastembed；若模型路径是本地目录则优先 sentence-transformers）
+    # - fastembed: 使用 fastembed（更省内存，CPU 推理；首次会下载/缓存模型）
+    # - sentence-transformers: 使用 sentence-transformers + torch（兼容本地目录模型）
+    gemini_semantic_backend: str = "auto"
+    gemini_semantic_model: str = ""          # 模型路径 (env: GEMINI_SEMANTIC_MODEL)
+    # 可选：语义模型加载失败时的回退路径（通常用于本地目录模型）
+    gemini_semantic_model_fallback: str = ""  # env: GEMINI_SEMANTIC_MODEL_FALLBACK
+    # E5 系模型建议使用 query:/passage: 前缀；非 E5（如 multilingual MiniLM）通常不需要。
+    gemini_semantic_use_e5_prefixes: bool = True  # env: GEMINI_SEMANTIC_USE_E5_PREFIXES
+    # fastembed 的模型缓存目录（可选）。为空则使用 fastembed 默认缓存路径（通常在 ~/.cache）。
+    gemini_fastembed_cache_dir: str = ""  # env: GEMINI_FASTEMBED_CACHE_DIR
+    # fastembed 的本地模型目录（可选）。设置后将跳过在线下载，直接从该目录加载 ONNX 模型文件。
+    gemini_fastembed_model_dir: str = ""  # env: GEMINI_FASTEMBED_MODEL_DIR
+    gemini_semantic_threshold: float = 0.4   # 匹配阈值 (0.0 - 1.0)
+
+    @field_validator("gemini_semantic_backend")
+    @classmethod
+    def validate_semantic_backend(cls, v: str) -> str:
+        allowed = {"auto", "fastembed", "sentence-transformers", "sentence_transformers"}
+        normalized = (v or "").strip().lower()
+        if normalized not in allowed:
+            raise ValueError(
+                "gemini_semantic_backend 必须是 auto / fastembed / sentence-transformers"
+            )
+        # 兼容两种写法
+        if normalized == "sentence-transformers":
+            return "sentence_transformers"
+        return normalized
+
+    # ==================== 视觉与图片配置 ====================
+    gemini_max_images: int = 10              # 单条消息最大处理图片数
+    gemini_image_cache_max_gap: int = 10     # [已废弃] 由 lifecycle 强制覆盖为 max_context * 2
+    gemini_image_require_keyword: bool = True  # 是否需要关键词触发缓存读取
+    
+    # ==================== 消息处理配置 ====================
+    gemini_forward_threshold: int = 300      # 合并转发阈值 (字符数)
+
+    # ==================== 搜索缓存配置 ====================
+    gemini_search_cache_ttl_seconds: int = 60
+    gemini_search_cache_max_size: int = 100
+
+    # ==================== 外置搜索 P0 优化配置 ====================
+    # 外置搜索触发的最低有效 query 长度（清洗后过短将跳过搜索）
+    gemini_search_min_query_length: int = 4
+    # 注入到 System 的搜索结果条数上限（过滤低质条目后截断）
+    gemini_search_max_injection_results: int = 6
+
+    # ==================== 外置搜索 LLM Gate 配置 ====================
+    # 是否启用“全量 LLM 判定 gate”：低信号/本地时间过滤后，每条消息都先调用 LLM 判 needs_search
+    gemini_search_llm_gate_enabled: bool = False
+    # LLM 判定失败时回退策略：
+    # - none: 不回退外搜
+    # - strong_timeliness: 仅当命中强时效词时回退外搜
+    gemini_search_llm_gate_fallback_mode: str = "strong_timeliness"
+    # 分类请求参数（稳定性优先，默认 temperature=0）
+    gemini_search_classify_temperature: float = 0.0
+    gemini_search_classify_max_tokens: int = 256
+    # 分类判定缓存（避免短时间内重复调用 LLM）
+    gemini_search_classify_cache_ttl_seconds: int = 60
+    gemini_search_classify_cache_max_size: int = 200
+
+    # ==================== 内置搜索配置 ====================
+    gemini_enable_builtin_search: bool = False
+
+    # ==================== 图片处理性能 ====================
+    gemini_image_download_concurrency: int = 3
+    gemini_image_cache_max_entries: int = 200
+    gemini_image_keywords: List[str] = []
+
+    # ==================== 历史图片上下文增强配置 ====================
+    # 模式: off=关闭, inline=仅回注原图, two_stage=仅两阶段, hybrid=混合(推荐)
+    gemini_history_image_mode: str = "hybrid"
+    # 单次请求直接回注的历史原图数量上限
+    gemini_history_image_inline_max: int = 1
+    # 两阶段补图工具最多补几张
+    gemini_history_image_two_stage_max: int = 2
+    # 是否启用连续图片拼图
+    gemini_history_image_enable_collage: bool = True
+    # 拼图最多合成几张图片
+    gemini_history_image_collage_max: int = 4
+    # 拼图目标最大边长(px)，用于控制 token 成本
+    gemini_history_image_collage_target_px: int = 768
+    # 历史图片触发关键词（空则使用默认集合）
+    gemini_history_image_trigger_keywords: List[str] = []
+
+    # ==================== 工具调用安全控制 ====================
+    gemini_tool_allowlist: List[str] = ["web_search", "search_group_history"]
+    gemini_tool_result_max_chars: int = 4000
+
+    # ==================== 工具调用 Loop 配置 ====================
+    # 单次对话允许模型触发工具调用的最大轮数（每轮可包含多个 tool_calls）
+    gemini_tool_max_rounds: int = 5
+    # 单个工具 handler 的超时时间（秒）
+    gemini_tool_timeout_seconds: float = 20.0
+    # 达到上限后是否强制模型停止使用工具并给出最终答复
+    gemini_tool_force_final_on_max_rounds: bool = True
+
+    # ==================== 主动发言策略 ====================
+    gemini_proactive_keyword_cooldown: int = 5
+
+    # ==================== 主动发言 Chatroom 模式 ====================
+    # 借鉴 AstrBot：主动发言时将群聊记录拼成 transcript 注入，并清空上下文 contexts，减少“已读乱回”
+    gemini_proactive_chatroom_enabled: bool = True
+    gemini_proactive_chatroom_history_lines: int = 30
+    
+    # ==================== 外部服务配置 ====================
+    serper_api_key: str = ""                 # Serper.dev API Key（Google 搜索）
+
+    # ==================== 用户档案 LLM 抽取配置 ====================
+    # 基础开关
+    profile_extract_enabled: bool = True              # 是否启用 LLM 档案抽取（群聊）
+    profile_extract_enable_private: bool = True       # 私聊是否启用
+    
+    # 模型配置（默认使用快速模型）
+    profile_extract_model: str = ""                   # 空则使用 gemini_fast_model
+    profile_extract_temperature: float = 0.0          # 抽取温度（建议 0，稳定输出）
+    profile_extract_max_tokens: int = 1024            # 最大输出 token
+    
+    # 触发与限流
+    profile_extract_min_chars: int = 6                # 最小消息长度（过短跳过）
+    profile_extract_every_n_messages: int = 10        # 每 N 条消息触发一次兜底抽取
+    profile_extract_cooldown_seconds: int = 300       # 每用户抽取冷却（秒）
+    profile_extract_max_calls_per_minute: int = 5     # 全局每分钟最大调用次数
+    profile_extract_per_user_queue_max: int = 3       # 每用户队列最大待处理任务数
+    profile_extract_batch_window: int = 8             # 批量抽取输入窗口（最近 N 条该用户消息）
+
+    # 内存与状态管理（长期运行防止无界增长）
+    profile_extract_state_ttl_seconds: int = 7200     # per-user state 超过 TTL 未活跃则清理（秒）
+    profile_extract_state_max_users: int = 1000       # 最多保留多少个用户 state（超过则淘汰最旧）
+    
+    # 合并阈值
+    profile_extract_threshold_new_field: float = 0.6  # 新字段写入的最低置信度
+    profile_extract_threshold_override_field: float = 0.85  # 覆盖旧值的最低置信度
+    profile_extract_override_requires_repeat: bool = True   # 覆盖旧值需二次确认
+    
+    # 调试与审计
+    profile_extract_log_payload: bool = False         # 是否记录 prompt/输出（注意隐私）
+    profile_extract_store_audit_events: bool = True   # 是否写入审计表
+
+    # ==================== 用户档案缓存 ====================
+    gemini_user_profile_cache_max_size: int = 256
+
+
+# 获取插件配置
+plugin_config = get_plugin_config(Config)

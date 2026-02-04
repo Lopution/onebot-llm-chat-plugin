@@ -1,0 +1,75 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+.tox/
+.nox/
+
+# Runtime data (do NOT commit)
+data/
+
+# Data files (extra safety if stored elsewhere)
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+*.Zone.Identifier
+
+# Environment files (secrets)
+.env*
+!.env.example
+!.env.template
+!.env.sample
+
+# Model files (large binaries)
+models/
+*.bin
+*.onnx
+
+# Temporary files
+tmp/
+temp/
+*.tmp
