@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MIKA_BOT_DIR="${MIKA_BOT_DIR:-/root/bot}"
+MIKA_BOT_DIR="${MIKA_BOT_DIR:-/root/onebot-llm-chat-plugin}"
 
 cd "$MIKA_BOT_DIR"
 
@@ -11,4 +11,3 @@ if [[ -x "$MIKA_BOT_DIR/.venv/bin/python3" ]]; then
 fi
 
 exec "$PYTHON_BIN" bot.py
-

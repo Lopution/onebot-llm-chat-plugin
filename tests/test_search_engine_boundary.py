@@ -2,6 +2,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from gemini_chat.utils import search_engine as search_engine_module
+from gemini_chat.utils import search_classifier as search_classifier_module
 
 class TestSearchEngineBoundary:
     """搜索功能边界条件测试"""
@@ -133,3 +134,38 @@ class TestSearchEngineBoundary:
                 
                 # Assert
                 assert long_snippet in result
+
+    @pytest.mark.asyncio
+    async def test_search_injection_invalid_template_section_type(self):
+        """测试 result_injection 被写成非 dict 时应自动降级到默认模板"""
+        bad_config = {"result_injection": "oops"}
+
+        mock_client = AsyncMock()
+        mock_client.is_closed = False
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "organic": [{"title": "Fallback Title", "link": "http://a.com", "snippet": "Fallback Snippet"}]
+        }
+        mock_client.post = AsyncMock(return_value=mock_response)
+
+        with patch.object(self.search_engine_module, "load_search_prompt", return_value=bad_config):
+            with patch.object(self.search_engine_module, "_http_client", mock_client):
+                result = await self.search_engine_module.serper_search("query")
+                assert "Fallback Title" in result
+
+
+class TestSearchClassifierBoundary:
+    """搜索分类器提示词配置边界测试"""
+
+    def test_classify_topic_section_type_invalid(self):
+        """classify_topic 非 dict 时应降级为空配置"""
+        with patch.object(search_classifier_module, "load_search_prompt", return_value={"classify_topic": "bad"}):
+            assert search_classifier_module._get_classify_prompt() == ""
+            assert search_classifier_module._get_must_search_topics() == []
+
+    def test_search_prompt_root_type_invalid(self):
+        """search.yaml 根节点非 dict 时应降级为空配置"""
+        with patch.object(search_classifier_module, "load_search_prompt", return_value="bad"):
+            assert search_classifier_module._get_classify_prompt() == ""
+            assert search_classifier_module._get_must_search_topics() == []

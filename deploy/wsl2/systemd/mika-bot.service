@@ -9,11 +9,11 @@ Restart=always
 RestartSec=5
 
 # 按你的实际路径修改（默认适配本仓库在 /root 下的布局）
-Environment=MIKA_BOT_DIR=/root/bot
-Environment=GEMINI_DATA_DIR=/root/bot/data
-EnvironmentFile=-/root/bot/.env.prod
+Environment=MIKA_BOT_DIR=/root/onebot-llm-chat-plugin
+Environment=GEMINI_DATA_DIR=/root/onebot-llm-chat-plugin/data
+EnvironmentFile=-/root/onebot-llm-chat-plugin/.env.prod
 # Optional: proxy/mirror envs for downloading models (fastembed/HF) under systemd
-EnvironmentFile=-/root/bot/.env.proxy
+EnvironmentFile=-/root/onebot-llm-chat-plugin/.env.proxy
 Environment=PYTHONUNBUFFERED=1
 # 强制输出 ANSI 颜色到 journald，配合 `journalctl -o cat -f` 可在终端中看到彩色日志
 Environment=LOGURU_COLORIZE=1
@@ -21,8 +21,8 @@ Environment=LOGURU_COLORIZE=1
 # systemd 默认 PATH 很精简，显式补齐方便找到 python/docker 等命令
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-WorkingDirectory=/root/bot
-ExecStart=/root/bot/deploy/wsl2/bin/mika-bot.sh
+WorkingDirectory=/root/onebot-llm-chat-plugin
+ExecStart=/root/onebot-llm-chat-plugin/deploy/wsl2/bin/mika-bot.sh
 
 [Install]
 WantedBy=multi-user.target

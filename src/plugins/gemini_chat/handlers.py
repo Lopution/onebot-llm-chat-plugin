@@ -12,10 +12,12 @@
 - [`lifecycle`](lifecycle.py:1): 插件生命周期管理
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from nonebot import get_driver
-from nonebot.adapters import Bot
+
+if TYPE_CHECKING:
+    from nonebot.adapters import Bot
 
 from .config import Config
 from .utils.image_processor import extract_image_file_ids, extract_images
@@ -46,7 +48,7 @@ def _make_session_key(*, user_id: str, group_id: Optional[str]) -> str:
 
 
 async def _resolve_onebot_v12_image_urls(
-    bot: Bot,
+    bot: "Bot",
     event: Any,
     image_urls: list[str],
     *,
@@ -187,14 +189,14 @@ def _handle_task_exception(task: "asyncio.Task") -> None:
 
 
 @driver.on_bot_connect
-async def sync_offline_messages(bot: Bot):
+async def sync_offline_messages(bot: "Bot"):
     """Bot 启动时同步离线期间的群聊消息（后台异步执行）"""
     import asyncio
     task = asyncio.create_task(_sync_offline_messages_task(bot))
     task.add_done_callback(_handle_task_exception)
 
 
-async def _sync_offline_messages_task(bot: Bot):
+async def _sync_offline_messages_task(bot: "Bot"):
     """同步离线消息的具体逻辑"""
     # 使用依赖注入获取配置和客户端
     plugin_config = get_config()
@@ -307,7 +309,7 @@ async def _sync_offline_messages_task(bot: Bot):
 
 
 async def handle_reset(
-    bot: Bot,
+    bot: "Bot",
     event: Any,
     plugin_config: Config = None,
     gemini_client = None,
@@ -315,7 +317,7 @@ async def handle_reset(
     """处理清空记忆指令
     
     Args:
-        bot: Bot 实例
+        bot: "Bot" 实例
         event: 消息事件
         plugin_config: 插件配置（可选，默认通过依赖注入获取）
         gemini_client: API 客户端（可选，默认通过依赖注入获取）
@@ -343,7 +345,7 @@ async def handle_reset(
 
 
 async def handle_private(
-    bot: Bot,
+    bot: "Bot",
     event: Any,
     plugin_config: Config = None,
     gemini_client = None,
@@ -383,7 +385,7 @@ async def handle_private(
 
 async def _handle_private_locked(
     *,
-    bot: Bot,
+    bot: "Bot",
     event: Any,
     plugin_config: Config,
     gemini_client,
@@ -548,14 +550,14 @@ async def _handle_private_locked(
         await bot.send(event, reply)
 
 
-async def parse_message_with_mentions(bot: Bot, event: Any) -> tuple:
+async def parse_message_with_mentions(bot: "Bot", event: Any) -> tuple:
     """解析消息并保留 @ 提及和引用内容
     
     将消息中的 at 段转换为文本格式 "@昵称"，
     将 reply 段解析为被引用消息的内容，以便 LLM 能够感知上下文。
     
     Args:
-        bot: Bot 实例
+        bot: "Bot" 实例
         event: 群消息事件
         
     Returns:
@@ -722,7 +724,7 @@ async def parse_message_with_mentions(bot: Bot, event: Any) -> tuple:
 
 
 async def handle_group(
-    bot: Bot,
+    bot: "Bot",
     event: Any,
     plugin_config: Config = None,
     gemini_client = None,
@@ -791,7 +793,7 @@ async def handle_group(
 
 async def _handle_group_locked(
     *,
-    bot: Bot,
+    bot: "Bot",
     event: Any,
     plugin_config: Config,
     gemini_client,
@@ -1005,7 +1007,7 @@ async def _handle_group_locked(
 
 
 async def send_forward_msg(
-    bot: Bot,
+    bot: "Bot",
     event: Any,
     content: str,
     plugin_config: Config = None
@@ -1013,7 +1015,7 @@ async def send_forward_msg(
     """发送转发消息（用于长文本）
     
     Args:
-        bot: Bot 实例
+        bot: "Bot" 实例
         event: 消息事件
         content: 要发送的内容
         plugin_config: 插件配置（可选，默认通过依赖注入获取）

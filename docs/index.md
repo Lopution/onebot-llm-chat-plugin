@@ -45,6 +45,7 @@ python bot.py
 | [`search_engine`](api/search_engine.md) | Serper API 搜索引擎 (Google Search) |
 | [`context_store`](api/context_store.md) | 对话上下文存储 |
 | [`config`](api/config.md) | 配置管理 |
+| [`release-process`](release-process.md) | 版本发布流程 |
 
 ## 架构设计
 
@@ -69,3 +70,9 @@ src/plugins/gemini_chat/
 ## 许可证
 
 本项目采用 GNU AGPLv3 许可证，详见仓库根目录 `LICENSE`。
+
+## 开源治理
+
+- 贡献指南：`CONTRIBUTING.md`
+- 安全策略：`SECURITY.md`
+- 第三方说明：`THIRD_PARTY_NOTICES.md`

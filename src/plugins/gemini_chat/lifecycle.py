@@ -13,10 +13,12 @@
 - [`config`](config.py:1): 插件配置定义
 """
 
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 import httpx
 from nonebot import get_driver
-from nonebot.adapters import Bot
+
+if TYPE_CHECKING:
+    from nonebot.adapters import Bot
 
 from .config import Config
 from .gemini_api import GeminiClient
@@ -69,7 +71,7 @@ def get_gemini_client() -> GeminiClient:
 
 
 @driver.on_bot_connect
-async def on_bot_connect(bot: Bot):
+async def on_bot_connect(bot: "Bot"):
     """Bot 连接成功时触发"""
     log.success(f"Bot {bot.self_id} 已上线")
     

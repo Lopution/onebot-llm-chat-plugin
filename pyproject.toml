@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "nonebot-gemini-bot"
+name = "onebot-llm-chat-plugin"
 version = "0.1.0"
 description = "基于 OneBot 协议的 QQ 机器人项目，通过 OpenAI 兼容格式 API 调用 Gemini 模型"
 readme = "README.md"
@@ -79,9 +79,9 @@ semantic = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/nonebot-gemini-bot"
-Repository = "https://github.com/yourusername/nonebot-gemini-bot.git"
-Issues = "https://github.com/yourusername/nonebot-gemini-bot/issues"
+Homepage = "https://github.com/Lopution/onebot-llm-chat-plugin"
+Repository = "https://github.com/Lopution/onebot-llm-chat-plugin.git"
+Issues = "https://github.com/Lopution/onebot-llm-chat-plugin/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]

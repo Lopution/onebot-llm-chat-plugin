@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security issue
+    url: https://github.com/Lopution/onebot-llm-chat-plugin/security/advisories/new
+    about: 请在这里提交安全相关问题（不要在公开 issue 中披露漏洞细节）

@@ -76,12 +76,30 @@ RESPONSE_FORMAT_DOWNGRADE_ERROR_PREVIEW_CHARS = 200
 MIN_VALID_RESPONSE_LEN = 50
 
 
+def _get_classify_topic_config() -> Dict[str, object]:
+    """读取并校验 classify_topic 配置段。"""
+    config = load_search_prompt()
+    if not isinstance(config, dict):
+        log.warning(
+            f"[SearchClassifier] search.yaml root 应为 dict，实际为 {type(config).__name__}，已降级到默认配置"
+        )
+        return {}
+
+    classify_config = config.get("classify_topic", {})
+    if not isinstance(classify_config, dict):
+        log.warning(
+            f"[SearchClassifier] classify_topic 应为 dict，实际为 {type(classify_config).__name__}，已降级到默认配置"
+        )
+        return {}
+
+    return classify_config
+
+
 def _get_classify_prompt() -> str:
     """获取分类提示词模板（从 `search.yaml` 读取）。"""
-
-    config = load_search_prompt()
-    classify_config = config.get("classify_topic", {})
-    return classify_config.get("template", "")
+    classify_config = _get_classify_topic_config()
+    template = classify_config.get("template", "")
+    return template if isinstance(template, str) else ""
 
 
 CLASSIFY_PROMPT_DEFAULT = """
@@ -105,10 +123,11 @@ CLASSIFY_PROMPT_DEFAULT = """
 
 def _get_must_search_topics() -> list:
     """获取必须搜索的主题列表。"""
-
-    config = load_search_prompt()
-    classify_config = config.get("classify_topic", {})
-    return classify_config.get("must_search_topics", [])
+    classify_config = _get_classify_topic_config()
+    topics = classify_config.get("must_search_topics", [])
+    if isinstance(topics, list):
+        return [str(x) for x in topics if isinstance(x, (str, int, float))]
+    return []
 
 
 MUST_SEARCH_TOPICS = _get_must_search_topics()

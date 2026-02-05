@@ -386,7 +386,18 @@ async def serper_search(query: str, max_results: int = 8) -> str:
 
         # 加载注入模板（tests 会 patch 本模块的 `load_search_prompt`）
         search_config = load_search_prompt()
+        if not isinstance(search_config, dict):
+            log.warning(
+                f"[SearchEngine] search.yaml root 应为 dict，实际为 {type(search_config).__name__}，已使用默认注入模板"
+            )
+            search_config = {}
+
         injection_templates = search_config.get("result_injection", {})
+        if not isinstance(injection_templates, dict):
+            log.warning(
+                f"[SearchEngine] result_injection 应为 dict，实际为 {type(injection_templates).__name__}，已使用默认注入模板"
+            )
+            injection_templates = {}
 
         header_tmpl = injection_templates.get(
             "header",

@@ -15,8 +15,8 @@ Environment=NAPCAT_DIR=/root/napcat
 
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-ExecStart=/root/bot/deploy/wsl2/bin/napcat-up.sh
-ExecStop=/root/bot/deploy/wsl2/bin/napcat-down.sh
+ExecStart=/root/onebot-llm-chat-plugin/deploy/wsl2/bin/napcat-up.sh
+ExecStop=/root/onebot-llm-chat-plugin/deploy/wsl2/bin/napcat-down.sh
 
 [Install]
 WantedBy=multi-user.target

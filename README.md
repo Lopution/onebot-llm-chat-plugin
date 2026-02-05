@@ -9,7 +9,7 @@
 [![NoneBot2](https://img.shields.io/badge/NoneBot-2.0+-red.svg)](https://nonebot.dev/)
 [![OneBot](https://img.shields.io/badge/OneBot-v11%20%2F%20v12-black.svg)](https://onebot.dev/)
 
-[📖 文档](docs/index.md) · [🐛 报告问题](../../issues) · [💡 功能建议](../../issues)
+[📖 文档](docs/index.md) · [🐛 报告问题](https://github.com/Lopution/onebot-llm-chat-plugin/issues) · [💡 功能建议](https://github.com/Lopution/onebot-llm-chat-plugin/issues)
 
 </div>
 
@@ -60,8 +60,8 @@
 
 ```bash
 # 1. 克隆并安装
-git clone https://github.com/your-org/mika-bot.git
-cd mika-bot/bot
+git clone https://github.com/Lopution/onebot-llm-chat-plugin.git
+cd onebot-llm-chat-plugin
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
@@ -121,8 +121,8 @@ Bot 启动后，需要在你的 OneBot 实现/客户端侧配置“反向 WebSoc
 ### 1. 克隆项目
 
 ```bash
-git clone https://github.com/your-org/mika-bot.git
-cd mika-bot/bot
+git clone https://github.com/Lopution/onebot-llm-chat-plugin.git
+cd onebot-llm-chat-plugin
 ```
 
 ### 2. 创建虚拟环境（推荐）
@@ -153,14 +153,25 @@ cp .env.example .env
 |--------|------|:----:|--------|
 | `GEMINI_API_KEY` | Gemini API Key | ✅ | - |
 | `GEMINI_BASE_URL` | API 基础地址（使用中转时填写） | ❌ | - |
-| `GEMINI_MODEL` | 主模型名称 | ❌ | `gemini-pro` |
+| `GEMINI_MODEL` | 主模型名称 | ❌ | `gemini-3-pro-high` |
 | `GEMINI_MASTER_ID` | 主人 QQ 号 | ✅ | - |
 | `GEMINI_GROUP_WHITELIST` | 群组白名单 | ❌ | - |
 | `GEMINI_OFFLINE_SYNC_ENABLED` | 离线同步（非标准 API，默认关闭） | ❌ | `false` |
-| `GEMINI_LONG_MESSAGE_CHUNK_SIZE` | 合并转发不可用时的分片大小 | ❌ | `500` |
+| `GEMINI_LONG_MESSAGE_CHUNK_SIZE` | 合并转发不可用时的分片大小 | ❌ | `800` |
 | `SERPER_API_KEY` | Serper 搜索 API Key | ❌ | - |
 
 > 📖 完整配置说明请参阅 [`docs/api/config.md`](docs/api/config.md)
+
+### 自定义 Prompt 最小格式
+
+当你使用自定义 prompt 文件时，建议至少保留一个最小可用模板：
+
+```yaml
+system_prompt: |
+  你是一个可靠、简洁的聊天助手。
+```
+
+如果文件结构不完整或字段类型错误，插件会按内置降级逻辑回退，避免启动或运行时直接崩溃。
 
 ### 5. 启动 NapCat（QQ 客户端）
 
@@ -199,7 +210,7 @@ python3 bot.py
 ## 📁 项目结构
 
 ```
-bot/
+onebot-llm-chat-plugin/
 ├── bot.py                 # 机器人入口
 ├── start.sh               # 启动脚本
 ├── .env.example           # 环境变量配置示例
@@ -223,11 +234,8 @@ bot/
 │           ├── user_profile.py    # 用户档案
 │           └── ...
 │
-├── docs/                  # API 文档
-├── tests/                 # 测试用例
-├── data/                  # 运行时数据
-├── logs/                  # 日志文件
-└── models/                # 本地模型（语义匹配）
+├── docs/                  # 文档
+└── tests/                 # 测试用例
 ```
 
 ---
@@ -243,6 +251,7 @@ bot/
 | [上下文存储](docs/api/context_store.md) | 上下文管理 |
 | [配置说明](docs/api/config.md) | 完整配置参考 |
 | [OneBot 兼容性](docs/deploy/onebot.md) | v11/v12 兼容性说明 |
+| [发布流程](docs/release-process.md) | Tag/Release 发布与回滚 |
 
 ### 构建文档站点
 
@@ -270,42 +279,11 @@ pytest tests/ -v --cov=src/plugins/gemini_chat --cov-report=html
 
 ---
 
-## 🤝 贡献指南
+## 🤝 贡献与安全
 
-欢迎贡献代码、报告问题或提出新功能建议！
-
-### 如何贡献
-
-1. **Fork** 本仓库
-2. **创建** 特性分支 (`git checkout -b feature/AmazingFeature`)
-3. **提交** 更改 (`git commit -m 'feat: add some amazing feature'`)
-4. **推送** 到分支 (`git push origin feature/AmazingFeature`)
-5. **创建** Pull Request
-
-### 开发规范
-
-- 遵循项目代码风格规范
-- 使用中文编写注释和文档（技术术语可保留英文）
-- 提交信息遵循 [Conventional Commits](https://www.conventionalcommits.org/) 规范
-- 新功能需附带测试用例
-
-### 提交信息格式
-
-```
-<type>(<scope>): <description>
-
-[optional body]
-
-[optional footer]
-```
-
-常用 type：
-- `feat`: 新功能
-- `fix`: Bug 修复
-- `docs`: 文档更新
-- `refactor`: 代码重构
-- `test`: 测试相关
-- `chore`: 构建/工具相关
+- 贡献流程与规范：[`CONTRIBUTING.md`](CONTRIBUTING.md)
+- 安全问题反馈：[`SECURITY.md`](SECURITY.md)
+- 第三方参考说明：[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)
 
 ---
 

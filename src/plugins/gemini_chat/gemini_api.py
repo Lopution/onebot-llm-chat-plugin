@@ -1297,7 +1297,22 @@ class GeminiClient:
         try:
             # 1. 加载提示词
             prompt_config = load_judge_prompt()
-            template = prompt_config.get("judge_proactive", {}).get("template", "")
+            if not isinstance(prompt_config, dict):
+                log.warning(
+                    f"[主动发言判决] 提示词根节点应为 dict，实际为 {type(prompt_config).__name__}，已禁用本次主动发言"
+                )
+                return {"should_reply": False, "reason": "invalid_prompt_root"}
+
+            judge_config = prompt_config.get("judge_proactive", {})
+            if not isinstance(judge_config, dict):
+                log.warning(
+                    f"[主动发言判决] judge_proactive 应为 dict，实际为 {type(judge_config).__name__}，已禁用本次主动发言"
+                )
+                return {"should_reply": False, "reason": "invalid_judge_prompt"}
+
+            template = judge_config.get("template", "")
+            if not isinstance(template, str):
+                template = ""
             
             if not template:
                 log.warning("主动发言判决提示词加载失败")
