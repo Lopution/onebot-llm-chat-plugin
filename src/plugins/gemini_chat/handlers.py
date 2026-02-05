@@ -104,6 +104,8 @@ def _build_proactive_chatroom_injection(
     *,
     bot_name: str,
     max_lines: int,
+    trigger_message: str = "",
+    trigger_sender: str = "",
 ) -> str:
     if max_lines <= 0:
         return ""
@@ -126,7 +128,7 @@ def _build_proactive_chatroom_injection(
             lines.append(f"{bot_name}: {content}")
             continue
 
-        m = re.match(r"^\\[(.*?)\\]:\\s*(.*)$", content)
+        m = re.match(r"^\[(.*?)\]:\s*(.*)$", content)
         if m:
             speaker = (m.group(1) or "").strip()
             said = (m.group(2) or "").strip()
@@ -138,13 +140,22 @@ def _build_proactive_chatroom_injection(
 
     transcript = "\n".join(lines).strip()
     if not transcript:
-        return ""
+        transcript = "(无最近记录)"
+
+    # 构建触发消息标记（参考 AstrBot 的实现）
+    trigger_marker = ""
+    if trigger_message:
+        trigger_preview = trigger_message[:150] + "..." if len(trigger_message) > 150 else trigger_message
+        sender_label = trigger_sender if trigger_sender else "某位群友"
+        trigger_marker = f"\n---\nNow, a new message is coming from {sender_label}: `{trigger_preview}`"
 
     return (
         "[System Instruction - Chatroom Transcript]\n"
-        "下面是最近的群聊记录（仅用于理解聊天氛围与语言；不要逐条回应；你仍必须只回应触发消息）。\n"
-        f"{transcript}\n"
+        "下面是最近的群聊记录，用于理解聊天氛围与上下文。\n"
+        f"{transcript}"
+        f"{trigger_marker}\n"
         "[End Transcript]\n"
+        "请根据群聊上下文，自然地回应上面标记的新消息。可以适当结合正在讨论的话题。\n"
         "回复语言：优先使用触发消息的语言；若不确定，使用上述记录最后几条消息的主要语言。"
     )
 
@@ -957,6 +968,8 @@ async def _handle_group_locked(
                 history,
                 bot_name=getattr(plugin_config, "gemini_bot_display_name", "Mika") or "Mika",
                 max_lines=max(0, max_lines),
+                trigger_message=raw_text,
+                trigger_sender=tag,
             )
             if chatroom_injection:
                 injection_parts.append(chatroom_injection)
