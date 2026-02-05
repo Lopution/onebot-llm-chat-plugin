@@ -83,6 +83,23 @@ cp .env.example .env
 ./start.sh
 ```
 
+Windows 用户可直接运行（首次会自动创建虚拟环境并安装依赖）：
+
+```powershell
+.\start.ps1
+```
+
+### OneBot 连接（反向 WebSocket）
+
+Bot 启动后，需要在你的 OneBot 实现/客户端侧配置“反向 WebSocket（WS Client）”连接到 Bot：
+
+- **OneBot v11**：`ws://<HOST>:<PORT>/onebot/v11/ws`
+- **OneBot v12**：`ws://<HOST>:<PORT>/onebot/v12/ws`
+
+其中 `<HOST>/<PORT>` 对应你的 `.env` 配置（默认 `0.0.0.0:8080`）。
+
+> 📌 详细说明与不同实现的差异见：`docs/deploy/onebot.md`
+
 > 💡 完整安装指南见下方 [安装与运行](#-安装与运行) 章节
 
 ---
@@ -103,7 +120,7 @@ cp .env.example .env
 |------|------|------|
 | **OneBot 协议** | v11 / v12 | 核心通信协议 |
 | **NoneBot2** | 2.0+ | 协议实现框架 |
-| **QQ 客户端** | NapCat | Docker 部署 |
+| **OneBot 实现/客户端** | 任意 | 例如 NapCat / go-cqhttp / 其它实现 |
 
 ---
 

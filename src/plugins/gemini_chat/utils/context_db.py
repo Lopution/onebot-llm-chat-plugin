@@ -8,6 +8,7 @@
 环境变量：
 - GEMINI_CONTEXT_DB_PATH: 直接指定数据库文件路径
 - GEMINI_DATA_DIR: 指定数据根目录（数据库位于 <dir>/gemini_chat/contexts.db）
+（可选）nonebot-plugin-localstore：若未配置上述环境变量，则优先使用 localstore 的 data 目录（跨平台可写）
 
 相关模块：
 - [`context_store`](context_store.py:1): 上下文存储，使用本模块的数据库连接
@@ -24,6 +25,16 @@ import aiosqlite
 from nonebot import logger as log
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
+
+
+def _get_localstore_data_dir() -> Optional[Path]:
+    """获取 localstore 的 data 目录（best-effort）。"""
+    try:
+        from nonebot_plugin_localstore import get_data_dir  # type: ignore
+
+        return Path(get_data_dir("gemini_chat"))
+    except Exception:
+        return None
 
 
 def _get_db_path() -> Path:
@@ -48,8 +59,12 @@ def _get_db_path() -> Path:
     if env_data_dir:
         return Path(env_data_dir) / "gemini_chat" / "contexts.db"
 
-    # 默认保持原逻辑路径，但固定为“项目根目录”下的绝对路径，
-    # 避免在 systemd/cron 等场景因 WorkingDirectory 不一致导致 DB 落到意外目录。
+    # 未配置环境变量时：优先使用 localstore（跨平台可写、不会依赖 WorkingDirectory）
+    localstore_dir = _get_localstore_data_dir()
+    if localstore_dir is not None:
+        return localstore_dir / "contexts.db"
+
+    # 兜底：保持原逻辑路径（项目根目录下），避免极简环境 import 失败时无法启动。
     return _PROJECT_ROOT / "data" / "gemini_chat" / "contexts.db"
 
 

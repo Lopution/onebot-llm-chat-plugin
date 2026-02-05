@@ -3,6 +3,36 @@
 本项目希望尽可能兼容不同的 OneBot 实现（NapCat / go-cqhttp / 其它实现，以及 OneBot v12 适配器）。
 因此在一些**非标准/可选**能力上采用 **best-effort + 自动降级**：能用就用，不能用就回退为更通用的行为，保证 Bot 长期稳定运行。
 
+## 如何连接到 Bot（反向 WebSocket）
+
+Bot 启动后，需要在你的 OneBot 实现/客户端侧配置“反向 WebSocket（WS Client）”，连接到 Bot 的 WS 地址：
+
+- **OneBot v11**：`ws://<HOST>:<PORT>/onebot/v11/ws`
+- **OneBot v12**：`ws://<HOST>:<PORT>/onebot/v12/ws`
+
+其中 `<HOST>/<PORT>` 对应你的 `.env` / `.env.prod` 配置（默认 `0.0.0.0:8080`）。
+
+### NapCat（OneBot v11）最小配置示例
+
+NapCat 通常会把 OneBot v11 配置放在挂载目录里（例如 `napcat/data/onebot11_<你的QQ号>.json`）。
+只要确保存在 WebSocket Client，并指向上面的 v11 地址即可：
+
+```json
+{
+  "network": {
+    "websocketClients": [
+      {
+        "name": "mika-bot",
+        "enable": true,
+        "url": "ws://<HOST>:<PORT>/onebot/v11/ws"
+      }
+    ]
+  }
+}
+```
+
+> 提示：如果 NapCat 跑在 Docker 里，而 Bot 跑在宿主机/WSL2 中，`<HOST>` 可能需要写宿主机网关 IP（例如 `172.17.0.1`），而不是 `127.0.0.1`。
+
 ## 关键差异（v11 vs v12）
 
 ### 1) `@` 提及（mention）
@@ -80,4 +110,3 @@
 ### “合并转发失败”
 不同实现对 Forward 支持差异较大；失败后插件会自动降级为分片发送。
 如需更少刷屏，可适当调大 `GEMINI_LONG_MESSAGE_CHUNK_SIZE`。
-

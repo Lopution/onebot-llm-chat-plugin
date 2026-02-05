@@ -9,6 +9,7 @@
 环境变量：
 - GEMINI_IMAGE_CACHE_DIR: 图片缓存目录
 - GEMINI_DATA_DIR: 数据根目录（缓存位于 <dir>/gemini_chat/image_cache）
+（可选）nonebot-plugin-localstore：若未配置上述环境变量，则优先使用 localstore 的 cache 目录（跨平台可写）
 
 相关模块：
 - [`image_cache_core`](image_cache_core.py:1): 跨消息图片缓存
@@ -32,7 +33,7 @@ from nonebot import logger as log
 
 
 def _get_default_cache_dir() -> Path:
-    """获取图片缓存目录默认路径（优先环境变量，否则使用项目相对路径）"""
+    """获取图片缓存目录默认路径（优先环境变量，否则使用 localstore / 项目路径）。"""
     env_path = os.getenv("GEMINI_IMAGE_CACHE_DIR")
     if env_path:
         return Path(env_path)
@@ -41,6 +42,14 @@ def _get_default_cache_dir() -> Path:
     env_data_dir = os.getenv("GEMINI_DATA_DIR")
     if env_data_dir:
         return Path(env_data_dir) / "gemini_chat" / "image_cache"
+
+    # 未配置环境变量时：优先使用 localstore（跨平台可写、不会依赖 WorkingDirectory）
+    try:
+        from nonebot_plugin_localstore import get_cache_dir  # type: ignore
+
+        return Path(get_cache_dir("gemini_chat")) / "image_cache"
+    except Exception:
+        pass
     
     # 使用项目相对路径: bot/data/gemini_chat/image_cache
     project_root = Path(__file__).parent.parent.parent.parent.parent

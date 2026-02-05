@@ -158,7 +158,9 @@ class Config(BaseModel):
     def validate_master_id(cls, v: int) -> int:
         """验证 master_id 必须为正整数"""
         if v <= 0:
-            raise ValueError("gemini_master_id 必须配置为有效的正整数 QQ 号，当前值无效")
+            raise ValueError(
+                "GEMINI_MASTER_ID 未配置或无效，请在 .env / .env.prod 中设置，例如：GEMINI_MASTER_ID=123456789"
+            )
         return v
     
     @model_validator(mode='after')
@@ -167,7 +169,8 @@ class Config(BaseModel):
         # 确保至少配置了一个 API Key
         if not self.gemini_api_key and not self.gemini_api_key_list:
             raise ValueError(
-                "必须配置 gemini_api_key 或 gemini_api_key_list 中的至少一个"
+                "必须至少配置 GEMINI_API_KEY 或 GEMINI_API_KEY_LIST 其中的至少一个，例如："
+                "GEMINI_API_KEY=\"你的Key\" 或 GEMINI_API_KEY_LIST=[\"key1\", \"key2\"]"
             )
         
         # 如果语义模型路径未配置，使用项目相对路径作为默认值
