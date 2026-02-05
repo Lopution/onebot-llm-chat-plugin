@@ -31,6 +31,8 @@ nav:
     - WSL2 + NapCat (systemd): deploy/wsl2.md
     - OneBot v11/v12 兼容性: deploy/onebot.md
     - 发布流程: release-process.md
+  - 发布说明:
+    - v0.1.0: releases/v0.1.0.md
   - API 参考:
     - API 客户端: api/gemini_api.md
     - 消息处理器: api/handlers.md
