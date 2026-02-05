@@ -40,7 +40,7 @@ python bot.py
 
 | 模块 | 说明 |
 |------|------|
-| [`gemini_api`](api/gemini_api.md) | Gemini API 客户端封装 |
+| [`gemini_api`](api/gemini_api.md) | API 客户端封装 |
 | [`handlers`](api/handlers.md) | 消息处理器 |
 | [`search_engine`](api/search_engine.md) | Serper API 搜索引擎 (Google Search) |
 | [`context_store`](api/context_store.md) | 对话上下文存储 |
@@ -52,7 +52,7 @@ python bot.py
 src/plugins/gemini_chat/
 ├── __init__.py          # 插件入口
 ├── config.py            # 配置管理
-├── gemini_api.py        # Gemini API 客户端
+├── gemini_api.py        # API 客户端
 ├── handlers.py          # 消息处理器
 ├── lifecycle.py         # 生命周期管理
 ├── matchers.py          # 消息匹配器

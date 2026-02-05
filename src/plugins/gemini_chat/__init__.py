@@ -2,7 +2,7 @@
 """
 NoneBot2 Gemini Chat 插件
 
-一个基于 Google Gemini API 的智能聊天插件，支持：
+一个基于 OpenAI 兼容格式 API 调用 Gemini 模型的智能聊天插件，支持：
 - 私聊和群聊对话
 - 多轮上下文记忆
 - 图片识别

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "nonebot-gemini-bot"
 version = "0.1.0"
-description = "NoneBot2 QQ 机器人项目，集成 Gemini API 和 Serper API 搜索"
+description = "基于 OneBot 协议的 QQ 机器人项目，通过 OpenAI 兼容格式 API 调用 Gemini 模型"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
@@ -39,7 +39,7 @@ dependencies = [
     # HTTP 客户端
     "httpx>=0.28.1",
     
-    # Google Gemini API
+    # Gemini 模型（OpenAI 兼容格式）
     "google-genai>=1.58.0",
     
     # 数据库

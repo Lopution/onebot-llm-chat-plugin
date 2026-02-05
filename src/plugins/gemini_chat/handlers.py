@@ -318,7 +318,7 @@ async def handle_reset(
         bot: Bot 实例
         event: 消息事件
         plugin_config: 插件配置（可选，默认通过依赖注入获取）
-        gemini_client: Gemini 客户端（可选，默认通过依赖注入获取）
+        gemini_client: API 客户端（可选，默认通过依赖注入获取）
     """
     # 使用依赖注入获取资源（如果未提供）
     if plugin_config is None:
@@ -357,7 +357,7 @@ async def handle_private(
         bot: NoneBot Bot 实例，用于发送回复消息。
         event: 私聊消息事件，包含用户 ID、消息内容等信息。
         plugin_config: 插件配置对象（可选，默认通过依赖注入获取）。
-        gemini_client: Gemini 客户端（可选，默认通过依赖注入获取）。
+        gemini_client: API 客户端（可选，默认通过依赖注入获取）。
 
     Note:
         - 如果 gemini_reply_private 配置为 False，则直接返回不处理
@@ -740,7 +740,7 @@ async def handle_group(
         bot: NoneBot Bot 实例，用于发送回复消息。
         event: 群消息事件，包含群 ID、用户 ID、发送者信息等。
         plugin_config: 插件配置对象（可选，默认通过依赖注入获取）。
-        gemini_client: Gemini 客户端（可选，默认通过依赖注入获取）。
+        gemini_client: API 客户端（可选，默认通过依赖注入获取）。
 
     Note:
         - 如果 gemini_reply_at 配置为 False，则直接返回不处理

@@ -1,7 +1,7 @@
 """插件生命周期管理模块。
 
 管理插件启动和关闭时的初始化与清理逻辑，包括：
-- Gemini 客户端初始化
+- API 客户端初始化
 - 上下文存储初始化（SQLite）
 - 搜索引擎配置
 - 用户档案存储初始化
@@ -9,7 +9,7 @@
 - API 连接验证
 
 相关模块：
-- [`gemini_api`](gemini_api.py:1): Gemini API 客户端
+- [`gemini_api`](gemini_api.py:1): API 客户端
 - [`config`](config.py:1): 插件配置定义
 """
 
@@ -50,7 +50,7 @@ API_VALIDATE_FORBIDDEN_STATUS = 403
 # 获取驱动器
 driver = get_driver()
 
-# 全局 Gemini 客户端实例
+# 全局 API 客户端实例
 gemini_client: Optional[GeminiClient] = None
 
 # 插件配置（将在初始化时设置）
@@ -64,7 +64,7 @@ def set_plugin_config(config: Config):
 
 
 def get_gemini_client() -> GeminiClient:
-    """获取 Gemini 客户端实例"""
+    """获取 API 客户端实例"""
     return gemini_client
 
 
@@ -86,7 +86,7 @@ async def on_bot_connect(bot: Bot):
 
 
 async def init_gemini():
-    """启动时初始化 Gemini 客户端"""
+    """启动时初始化 API 客户端"""
     global gemini_client
     
     # 初始化日志系统
@@ -134,7 +134,7 @@ async def init_gemini():
         error_messages=error_messages if error_messages else None,
         enable_smart_search=True  # 启用智能搜索（LLM 意图识别 + 查询优化）
     )
-    log.debug(f"GeminiClient 实例已创建 | model={plugin_config.gemini_model}")
+    log.debug(f"API 客户端实例已创建 | model={plugin_config.gemini_model}")
     
     # 使用 TOOL_HANDLERS 批量注册工具处理器
     from .tools import TOOL_HANDLERS
@@ -206,7 +206,7 @@ async def init_gemini():
             except Exception:
                 db_status = "disconnected"
             
-            # 检查 Gemini 客户端
+            # 检查 API 客户端
             client_status = "ready" if gemini_client else "not_initialized"
             
             return JSONResponse({
@@ -323,7 +323,7 @@ async def close_gemini():
     
     if gemini_client:
         await gemini_client.close()
-        log.debug("GeminiClient 已关闭")
+        log.debug("API 客户端已关闭")
 
     # 关闭图片处理器（释放 httpx client）
     try:

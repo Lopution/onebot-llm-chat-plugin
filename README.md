@@ -237,7 +237,7 @@ bot/
 | 文档 | 说明 |
 |------|------|
 | [API 文档首页](docs/index.md) | 文档入口 |
-| [Gemini 客户端](docs/api/gemini_api.md) | API 客户端使用说明 |
+| [API 客户端](docs/api/gemini_api.md) | API 客户端使用说明 |
 | [消息处理器](docs/api/handlers.md) | 消息处理逻辑 |
 | [搜索引擎](docs/api/search_engine.md) | 联网搜索功能 |
 | [上下文存储](docs/api/context_store.md) | 上下文管理 |

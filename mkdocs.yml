@@ -1,5 +1,5 @@
 site_name: Mika Bot API 文档
-site_description: NoneBot2 + Gemini API 驱动的 QQ 聊天机器人
+site_description: 基于 OneBot 协议、使用 OpenAI 兼容格式 API 的智能 QQ 聊天机器人
 site_author: Bot Developer
 repo_url: https://github.com/yourusername/nonebot-gemini-bot
 
@@ -31,7 +31,7 @@ nav:
     - WSL2 + NapCat (systemd): deploy/wsl2.md
     - OneBot v11/v12 兼容性: deploy/onebot.md
   - API 参考:
-    - Gemini 客户端: api/gemini_api.md
+    - API 客户端: api/gemini_api.md
     - 消息处理器: api/handlers.md
     - 搜索引擎: api/search_engine.md
     - 上下文存储: api/context_store.md

@@ -4,7 +4,7 @@
 - 聊天历史记录
 - 用户档案数据
 - 处理后的图片
-- Gemini 客户端实例
+- API 客户端实例
 - 插件配置
 
 这些依赖项可通过 NoneBot2 的 Depends 机制注入。
@@ -61,7 +61,7 @@ async def get_processed_images(bot: Any, event: Any) -> List[Dict[str, Any]]:
 
 
 def get_gemini_client_dep():
-    """依赖项：获取 Gemini 客户端"""
+    """依赖项：获取 API 客户端"""
     from .lifecycle import get_gemini_client
     return get_gemini_client()
 

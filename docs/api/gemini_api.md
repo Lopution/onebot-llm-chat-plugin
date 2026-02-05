@@ -1,4 +1,4 @@
-# Openai API 客户端
+# API 客户端
 
 本模块通过 OpenAI 兼容格式 API 调用 Gemini 模型。
 
