@@ -1,6 +1,19 @@
+"""Gemini API 客户端模块。
+
+提供与 Google Gemini API 交互的异步客户端，支持：
+- 多轮对话（上下文管理）
+- 流式响应与普通响应
+- 多 API Key 智能轮询（限流自动恢复）
+- Tool Calling（函数调用）
+- 图片理解（多模态输入）
+
+注意：
+- 本模块依赖 httpx 进行异步 HTTP 请求
+- 上下文存储可选择内存或 SQLite 后端
+- 支持用户档案和图片处理等可选功能
+"""
 from __future__ import annotations
 
-# Gemini API 客户端
 import asyncio
 import httpx
 import uuid
@@ -83,7 +96,21 @@ PROACTIVE_JUDGE_SERVER_RESPONSE_PREVIEW_CHARS = 500
 
 
 class GeminiClient:
-    """异步 Gemini API 客户端（兼容 OpenAI 格式）"""
+    """异步 Gemini API 客户端（兼容 OpenAI 格式）。
+
+    功能特性：
+    - 多 API Key 智能轮询（限流自动恢复）
+    - 上下文持久化存储（内存/SQLite）
+    - Tool Calling 支持（web_search、群历史搜索等）
+    - 多模态输入（文本+图片）
+    - 自动重试和上下文降级
+
+    Attributes:
+        api_key: 主 API Key
+        model: 默认模型名称
+        system_prompt: 系统提示词
+        name: 角色名称（用于错误消息模板）
+    """
     
     # 默认错误消息模板 - 使用 {name} 占位符支持多角色
     # 可通过构造函数传入 error_messages 参数覆盖

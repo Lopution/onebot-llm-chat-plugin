@@ -1,4 +1,14 @@
-"""搜索结果解析与格式化（无网络、无全局状态）。"""
+"""搜索结果解析与格式化模块。
+
+提供搜索结果的过滤、排序和格式化功能（无网络调用、无全局状态）：
+- 可信来源优先排序
+- 结果去重与过滤
+- 注入文本构建（供 LLM 上下文使用）
+
+相关模块：
+- [`search_engine`](search_engine.py:1): 搜索主入口
+- [`search_cache`](search_cache.py:1): 结果缓存
+"""
 
 from __future__ import annotations
 

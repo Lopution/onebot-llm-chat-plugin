@@ -1,10 +1,22 @@
-# Gemini Chat 插件 - 生命周期管理
-"""插件启动和关闭时的初始化与清理逻辑"""
+"""插件生命周期管理模块。
+
+管理插件启动和关闭时的初始化与清理逻辑，包括：
+- Gemini 客户端初始化
+- 上下文存储初始化（SQLite）
+- 搜索引擎配置
+- 用户档案存储初始化
+- 图片缓存初始化
+- API 连接验证
+
+相关模块：
+- [`gemini_api`](gemini_api.py:1): Gemini API 客户端
+- [`config`](config.py:1): 插件配置定义
+"""
 
 from typing import Optional
 import httpx
 from nonebot import get_driver
-from nonebot.adapters.onebot.v11 import Bot
+from nonebot.adapters import Bot
 
 from .config import Config
 from .gemini_api import GeminiClient
@@ -63,13 +75,14 @@ async def on_bot_connect(bot: Bot):
     
     # 可选：发送启动通知给管理员
     if plugin_config and plugin_config.gemini_master_id:
-        try:
-            await bot.send_private_msg(
-                user_id=plugin_config.gemini_master_id,
-                message=STARTUP_NOTIFY_MESSAGE
-            )
-        except Exception:
-            pass
+        from .utils.safe_api import safe_call_api
+
+        await safe_call_api(
+            bot,
+            "send_private_msg",
+            user_id=plugin_config.gemini_master_id,
+            message=STARTUP_NOTIFY_MESSAGE,
+        )
 
 
 async def init_gemini():

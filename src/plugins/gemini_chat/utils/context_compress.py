@@ -1,3 +1,17 @@
+"""上下文压缩模块。
+
+提供消息内容压缩和安全过滤功能，用于：
+- 减少历史上下文的 Token 消耗
+- 过滤/替换敏感词汇，降低 API 安全风控触发概率
+
+压缩策略：
+- Level 1: 长文本截断（保留头尾）
+- Level 2: 更激进的压缩（用于历史消息）
+- 多模态内容特殊处理
+
+相关模块：
+- [`context_store`](context_store.py:1): 上下文存储，调用本模块进行压缩
+"""
 from __future__ import annotations
 
 import re

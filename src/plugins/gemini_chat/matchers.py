@@ -1,27 +1,35 @@
-# Gemini Chat 插件 - 事件匹配器
-"""NoneBot2 事件匹配器定义"""
+"""NoneBot2 事件匹配器模块。
 
-from typing import Union
+定义插件的事件匹配规则和处理入口，包括：
+- 指令匹配器（清空记忆等）
+- 私聊消息匹配器
+- 群聊 @ 消息匹配器
+- 主动发言触发器
+- 群聊热度监控
+
+相关模块：
+- [`handlers`](handlers.py:1): 消息处理逻辑实现
+- [`group_state`](group_state.py:1): 群状态管理
+"""
+
+from typing import Any
 
 from nonebot import on_message, on_command, get_plugin_config
 from nonebot import logger as log
 import random
 import time
-from nonebot.adapters.onebot.v11 import (
-    Bot,
-    PrivateMessageEvent,
-    GroupMessageEvent,
-)
+from nonebot.adapters import Bot, Event
 
 from .config import Config
 from .handlers import handle_reset, handle_private, handle_group, parse_message_with_mentions
-from .utils.image_processor import extract_images
+from .utils.image_processor import extract_images, resolve_image_urls
 from .utils.recent_images import get_image_cache
 from .group_state import heat_monitor, get_proactive_cooldowns, get_proactive_message_counts
 from .metrics import metrics
+from .utils.event_context import build_event_context
 
 
-async def check_at_me_anywhere(event: GroupMessageEvent) -> bool:
+async def check_at_me_anywhere(bot: Bot, event: Event) -> bool:
     """检查消息是否 @ 了机器人
     
     OneBot V11 Adapter 的 _check_at_me() 会在消息到达 matcher 之前
@@ -32,22 +40,34 @@ async def check_at_me_anywhere(event: GroupMessageEvent) -> bool:
     1. 首先检查 event.to_me（adapter 已处理的首尾 @）
     2. 再检查 event.original_message 中是否有 @ 在非首尾位置
     """
-    from nonebot import logger as log
-    log.debug(f"[AT检测] 开始 | group={event.group_id} | self_id={event.self_id} | to_me={event.to_me}")
-    log.debug(f"[AT检测] message: {[(s.type, dict(s.data)) for s in event.message]}")
-    log.debug(f"[AT检测] original_message: {[(s.type, dict(s.data)) for s in event.original_message]}")
+    ctx = build_event_context(bot, event)
+    if not ctx.is_group:
+        return False
+
+    log.debug(f"[AT检测] 开始 | group={ctx.group_id} | self_id={bot.self_id} | to_me={ctx.is_tome}")
+    try:
+        log.debug(f"[AT检测] message: {[(s.type, dict(s.data)) for s in getattr(event, 'message', [])]}")
+        log.debug(f"[AT检测] original_message: {[(s.type, dict(s.data)) for s in getattr(event, 'original_message', [])]}")
+    except Exception:
+        pass
     
     # 1. 首先检查 NoneBot 已经处理好的 to_me 标志
-    if event.to_me:
+    if ctx.is_tome:
         log.info("[AT检测] ✅ event.to_me=True，匹配成功!")
         return True
     
     # 2. 如果 to_me 为 False，再检查 original_message 中是否有 @ 在非首尾位置
-    self_id = str(event.self_id)
-    for seg in event.original_message:  # 使用 original_message！
-        if seg.type == "at" and str(seg.data.get("qq", "")) == self_id:
-            log.info("[AT检测] ✅ 在 original_message 中找到 @，匹配成功!")
-            return True
+    self_id = str(getattr(bot, "self_id", ""))
+    for seg in getattr(event, "original_message", []) or []:  # 使用 original_message！
+        try:
+            if seg.type == "at" and str(seg.data.get("qq", "")) == self_id:
+                log.info("[AT检测] ✅ 在 original_message 中找到 @，匹配成功!")
+                return True
+            if seg.type == "mention" and str(seg.data.get("user_id", "")) == self_id:
+                log.info("[AT检测] ✅ 在 original_message 中找到 mention，匹配成功!")
+                return True
+        except Exception:
+            continue
     
     log.debug("[AT检测] ❌ 未匹配")
     return False
@@ -63,19 +83,24 @@ reset_cmd = on_command("清空记忆", aliases={"reset", "重置记忆"}, priori
 
 
 @reset_cmd.handle()
-async def _handle_reset(bot: Bot, event: Union[PrivateMessageEvent, GroupMessageEvent]):
+async def _handle_reset(bot: Bot, event: Event):
     """清空记忆指令处理"""
     await handle_reset(bot, event, plugin_config)
 
 
 # ==================== 消息匹配器 ====================
 
-# 私聊消息
-private_chat = on_message(priority=10, block=False)
+async def _is_private_message(bot: Bot, event: Event) -> bool:
+    ctx = build_event_context(bot, event)
+    return bool(ctx.user_id) and not ctx.is_group
+
+
+# 私聊消息（显式 rule，避免依赖 adapter-specific event class）
+private_chat = on_message(rule=_is_private_message, priority=10, block=False)
 
 
 @private_chat.handle()
-async def _handle_private(bot: Bot, event: PrivateMessageEvent):
+async def _handle_private(bot: Bot, event: Event):
     """私聊消息处理"""
     await handle_private(bot, event, plugin_config)
 
@@ -85,7 +110,7 @@ group_chat = on_message(rule=check_at_me_anywhere, priority=10, block=False)
 
 
 @group_chat.handle()
-async def _handle_group(bot: Bot, event: GroupMessageEvent):
+async def _handle_group(bot: Bot, event: Event):
     """群聊消息处理（@机器人时触发）"""
     await handle_group(bot, event, plugin_config)
 
@@ -95,22 +120,41 @@ async def _handle_group(bot: Bot, event: GroupMessageEvent):
 _proactive_cooldowns = get_proactive_cooldowns()
 _proactive_message_counts = get_proactive_message_counts()
 
-async def check_proactive(event: GroupMessageEvent) -> bool:
+async def check_proactive(event: Event) -> bool:
     """检查是否触发主动发言 (二级触发：感知层)"""
-    # ===== Debug：关键决策因子采样（仅在真正触发/被过滤时输出） =====
+    # NOTE: rule 只能拿到 event；这里基于 duck typing 做 best-effort。
     group_id_str = str(getattr(event, "group_id", ""))
     user_id_str = str(getattr(event, "user_id", ""))
 
+    if not group_id_str:
+        return False
+
+    # ===== Debug：关键决策因子采样（仅在真正触发/被过滤时输出） =====
+
     # 1. 如果已经 @了机器人，不触发主动发言
-    if event.to_me:
+    to_me = getattr(event, "to_me", None)
+    if to_me is True:
         return False
-        
+    if to_me is None:
+        getter = getattr(event, "is_tome", None)
+        if callable(getter):
+            try:
+                if bool(getter()):
+                    return False
+            except Exception:
+                pass
+
     # 2. 检查群白名单
-    if plugin_config.gemini_group_whitelist and event.group_id not in plugin_config.gemini_group_whitelist:
-        return False
+    if plugin_config.gemini_group_whitelist:
+        allowed = {str(x) for x in plugin_config.gemini_group_whitelist}
+        if group_id_str not in allowed:
+            return False
         
     # 3. 感知层判断
-    text = event.get_plaintext() or ""
+    try:
+        text = event.get_plaintext() or ""
+    except Exception:
+        text = ""
 
     # 图片消息：允许绕过短消息过滤（用户要求不改图片逻辑）
     try:
@@ -223,7 +267,7 @@ async def check_proactive(event: GroupMessageEvent) -> bool:
 proactive_chat = on_message(rule=check_proactive, priority=98, block=False)
 
 @proactive_chat.handle()
-async def _handle_proactive(bot: Bot, event: GroupMessageEvent):
+async def _handle_proactive(bot: Bot, event: Event):
     """主动发言处理 (二级触发：认知层)"""
     from .deps import get_gemini_client_dep
 
@@ -335,42 +379,42 @@ image_cache_matcher = on_message(priority=99, block=False)
 
 
 @image_cache_matcher.handle()
-async def _cache_images(bot: Bot, event: GroupMessageEvent):
+async def _cache_images(bot: Bot, event: Event):
     """缓存群聊中的图片消息 & 记录热度
     
     这个 matcher 优先级很低（99），能看到几乎所有群消息。
     """
     from nonebot import logger as log
     
-    # 1. 记录热度和消息计数
-    if hasattr(event, 'group_id'):
-        group_id = str(event.group_id)
-        heat_monitor.record_message(group_id)
-        # 增加主动发言消息计数器
-        _proactive_message_counts[group_id] = _proactive_message_counts.get(group_id, 0) + 1
+    ctx = build_event_context(bot, event)
+    if not ctx.is_group or not ctx.group_id:
+        return
+
+    group_id = str(ctx.group_id)
+    heat_monitor.record_message(group_id)
+    _proactive_message_counts[group_id] = _proactive_message_counts.get(group_id, 0) + 1
     
     # 2. 图片缓存逻辑...
-    log.debug(f"[消息监听] group={getattr(event, 'group_id', 'N/A')} | user={event.user_id}")
-    
-    # 仅处理群聊消息
-    if not isinstance(event, GroupMessageEvent):
-        log.debug("[图片缓存] 跳过 - 非群聊消息")
-        return
+    log.debug(f"[消息监听] group={ctx.group_id} | user={ctx.user_id}")
     
     # 检查群组白名单
-    if plugin_config.gemini_group_whitelist and event.group_id not in plugin_config.gemini_group_whitelist:
-        return
+    if plugin_config.gemini_group_whitelist:
+        allowed = {str(x) for x in plugin_config.gemini_group_whitelist}
+        if str(ctx.group_id) not in allowed:
+            return
     
     # 提取图片
-    image_urls = extract_images(event.original_message, plugin_config.gemini_max_images)
+    image_urls = await resolve_image_urls(
+        bot, getattr(event, "original_message", None), int(plugin_config.gemini_max_images)
+    )
     
     if not image_urls:
         # 如果没有图片，记录这条消息用于计数
         image_cache = get_image_cache()
         image_cache.record_message(
-            group_id=str(event.group_id),
-            user_id=str(event.user_id),
-            message_id=str(event.message_id)
+            group_id=str(ctx.group_id),
+            user_id=str(ctx.user_id),
+            message_id=str(ctx.message_id or "")
         )
         
         # [Context Recorder] 记录纯文本消息到上下文
@@ -380,26 +424,42 @@ async def _cache_images(bot: Bot, event: GroupMessageEvent):
             client = get_gemini_client_dep()
             # [改进] 增强去重：使用 Set 检查最近 20 条消息
             # 使用 Set 替代列表遍历，提高查找效率
-            ctx = await client.get_context(str(event.user_id), str(event.group_id))
-            recent_ids = {m.get("message_id") for m in ctx[-20:] if m.get("message_id")}
+            history = await client.get_context(str(ctx.user_id), str(ctx.group_id))
+            recent_ids = {m.get("message_id") for m in history[-20:] if m.get("message_id")}
             
-            if str(event.message_id) not in recent_ids:
-                nickname = event.sender.card or event.sender.nickname or "User"
-                tag = f"{nickname}({event.user_id})"
-                text = event.get_plaintext()
+            if str(ctx.message_id or "") and str(ctx.message_id) not in recent_ids:
+                nickname = getattr(event, "sender", None)
+                nickname = ctx.sender_name or "User"
+                tag = f"{nickname}({ctx.user_id})"
+                try:
+                    text = event.get_plaintext()
+                except Exception:
+                    text = ctx.plaintext
                 
                 if not text:
                     # 如果是纯图片消息，保存占位符
-                    if extract_images(event.message, 1):
+                    has_image_seg = False
+                    for seg in getattr(event, "message", []) or []:
+                        try:
+                            if isinstance(seg, dict):
+                                seg_type = seg.get("type")
+                            else:
+                                seg_type = getattr(seg, "type", None)
+                            if str(seg_type or "") == "image":
+                                has_image_seg = True
+                                break
+                        except Exception:
+                            continue
+                    if has_image_seg:
                         text = "[图片]"
                 
                 if text:
                     await client.add_message(
-                        user_id=str(event.user_id),
+                        user_id=str(ctx.user_id),
                         role="user",
                         content=f"[{tag}]: {text}",
-                        group_id=str(event.group_id),
-                        message_id=str(event.message_id)
+                        group_id=str(ctx.group_id),
+                        message_id=str(ctx.message_id or "")
                     )
         except Exception as e:
             log.warning(f"上下文记录失败: {e}")
@@ -407,14 +467,14 @@ async def _cache_images(bot: Bot, event: GroupMessageEvent):
         return
     
     # 缓存图片
-    nickname = event.sender.card or event.sender.nickname or str(event.user_id)
+    nickname = ctx.sender_name or str(ctx.user_id)
     image_cache = get_image_cache()
     cached_count = image_cache.cache_images(
-        group_id=str(event.group_id),
-        user_id=str(event.user_id),
+        group_id=str(ctx.group_id),
+        user_id=str(ctx.user_id),
         image_urls=image_urls,
         sender_name=nickname,
-        message_id=str(event.message_id)
+        message_id=str(ctx.message_id or "")
     )
     
     # 日志记录（可选，生产环境可以移除或降级为 debug）

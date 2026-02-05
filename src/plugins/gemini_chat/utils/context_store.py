@@ -1,4 +1,16 @@
-# 上下文持久化存储（SQLite）
+"""上下文持久化存储（SQLite）。
+
+提供基于 SQLite 的聊天上下文存储与管理功能：
+- SQLite 持久化存储
+- LRU 内存缓存（限制最大条目防止内存溢出）
+- 智能上下文压缩（保留关键信息，降低 Token 消耗）
+- 用户身份信息提取（姓名、职业、偏好等）
+
+相关模块：
+- [`context_cache`](context_cache.py:1): LRU 缓存实现
+- [`context_compress`](context_compress.py:1): 上下文压缩算法
+- [`context_db`](context_db.py:1): 数据库连接管理
+"""
 import asyncio
 import json
 import re

@@ -1,3 +1,15 @@
+"""插件指标统计模块。
+
+提供插件运行时的统计指标收集，用于监控和调试：
+- API 请求计数
+- 工具调用统计
+- 搜索缓存命中率
+- 图片缓存命中率
+- 主动发言触发统计
+- 历史图片上下文增强统计
+
+通过全局 metrics 实例访问所有指标。
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -6,6 +18,20 @@ from typing import Dict
 
 @dataclass
 class Metrics:
+    """插件运行时指标数据类。
+
+    Attributes:
+        requests_total: API 请求总数
+        tool_calls_total: 工具调用总数
+        tool_blocked_total: 工具调用被阻止次数
+        search_requests_total: 搜索请求总数
+        search_cache_hit_total: 搜索缓存命中次数
+        search_cache_miss_total: 搜索缓存未命中次数
+        image_cache_hit_total: 图片缓存命中次数
+        image_cache_miss_total: 图片缓存未命中次数
+        proactive_trigger_total: 主动发言触发次数
+        proactive_reject_total: 主动发言拒绝次数
+    """
     requests_total: int = 0
     tool_calls_total: int = 0
     tool_blocked_total: int = 0

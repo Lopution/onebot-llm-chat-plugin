@@ -1,19 +1,24 @@
-# Gemini Chat 插件 - 消息处理器
-"""消息处理逻辑"""
+"""消息处理器模块。
+
+处理私聊和群聊消息的核心逻辑，包括：
+- 私聊消息处理（自动回复）
+- 群聊 @ 消息处理
+- 主动发言判断与触发
+- 图片提取与历史图片上下文增强
+- 会话锁管理（防止并发冲突）
+
+相关模块：
+- [`matchers`](matchers.py:1): 事件匹配器定义
+- [`lifecycle`](lifecycle.py:1): 插件生命周期管理
+"""
 
 from typing import Any, Dict, List, Optional, Union
 
 from nonebot import get_driver
-from nonebot.adapters.onebot.v11 import (
-    Bot,
-    PrivateMessageEvent,
-    GroupMessageEvent,
-    Message,
-    MessageSegment,
-)
+from nonebot.adapters import Bot
 
 from .config import Config
-from .utils.image_processor import extract_images
+from .utils.image_processor import extract_image_file_ids, extract_images
 from .deps import get_gemini_client_dep, get_config
 from nonebot import logger as log
 from .utils.recent_images import get_image_cache
@@ -26,6 +31,8 @@ from .utils.history_image_policy import (
 from .utils.image_collage import create_collage_from_urls, is_collage_available
 from .metrics import metrics
 from .utils.session_lock import get_session_lock_manager
+from .utils.safe_api import safe_call_api, safe_send
+from .utils.event_context import build_event_context
 
 # 获取 driver 实例
 driver = get_driver()
@@ -36,6 +43,41 @@ def _make_session_key(*, user_id: str, group_id: Optional[str]) -> str:
     if group_id:
         return f"group:{group_id}"
     return f"private:{user_id}"
+
+
+async def _resolve_onebot_v12_image_urls(
+    bot: Bot,
+    event: Any,
+    image_urls: list[str],
+    *,
+    max_images: int,
+) -> list[str]:
+    """best-effort 把 OneBot v12 的 image.file_id 解析为 http(s) URL。
+
+    说明：为了保持既有测试的可 patch 性，这里仍以 :func:`extract_images` 作为主提取器，
+    再补充通过 ``get_file`` 解析 file_id 的逻辑。
+    """
+    if max_images <= 0 or len(image_urls) >= max_images:
+        return image_urls
+
+    remaining = max_images - len(image_urls)
+    file_ids = extract_image_file_ids(getattr(event, "original_message", None), max_images=remaining)
+    if not file_ids:
+        return image_urls
+
+    for file_id in file_ids:
+        res = await safe_call_api(bot, "get_file", file_id=file_id)
+        if not isinstance(res, dict):
+            continue
+        url = str(res.get("url") or res.get("download_url") or "").strip()
+        if not (url.startswith("http://") or url.startswith("https://")):
+            continue
+        if url not in image_urls:
+            image_urls.append(url)
+            if len(image_urls) >= max_images:
+                break
+
+    return image_urls
 
 
 def _render_transcript_content(content: Any) -> str:
@@ -145,6 +187,10 @@ async def _sync_offline_messages_task(bot: Bot):
     """同步离线消息的具体逻辑"""
     # 使用依赖注入获取配置和客户端
     plugin_config = get_config()
+
+    if not bool(getattr(plugin_config, "gemini_offline_sync_enabled", False)):
+        log.info("离线消息同步已关闭，跳过")
+        return
         
     if not plugin_config.gemini_group_whitelist:
         log.info("未配置白名单群组，跳过离线消息同步")
@@ -175,9 +221,21 @@ async def _sync_offline_messages_task(bot: Bot):
                     existing_ids.add(str(msg["message_id"]))
             
             # 2. 获取 OneBot 历史消息
-            # NapCat/Go-CQHttp get_group_msg_history
-            res = await bot.call_api("get_group_msg_history", group_id=group_id, message_count=plugin_config.gemini_history_count)
-            messages = res.get("messages", [])
+            # 注意：get_group_msg_history 并非所有实现都支持；这里做 best-effort 并在失败时跳过
+            res = await safe_call_api(
+                bot,
+                "get_group_msg_history",
+                group_id=group_id,
+                message_count=plugin_config.gemini_history_count,
+            )
+            if res is None:
+                res = await safe_call_api(
+                    bot,
+                    "get_group_msg_history",
+                    group_id=group_id,
+                    count=plugin_config.gemini_history_count,
+                )
+            messages = (res.get("messages", []) if isinstance(res, dict) else res) or []
             
             if not messages:
                 continue
@@ -239,7 +297,7 @@ async def _sync_offline_messages_task(bot: Bot):
 
 async def handle_reset(
     bot: Bot,
-    event: Union[PrivateMessageEvent, GroupMessageEvent],
+    event: Any,
     plugin_config: Config = None,
     gemini_client = None,
 ):
@@ -256,10 +314,11 @@ async def handle_reset(
         plugin_config = get_config()
     if gemini_client is None:
         gemini_client = get_gemini_client()
-    
-    user_id = str(event.user_id)
-    group_id = str(event.group_id) if isinstance(event, GroupMessageEvent) else None
-    session_key = _make_session_key(user_id=user_id, group_id=group_id)
+
+    ctx = build_event_context(bot, event)
+    user_id = ctx.user_id
+    group_id = ctx.group_id
+    session_key = ctx.session_key
     
     log.info(f"收到清空记忆指令 | user={user_id} | group={group_id or 'private'}")
     
@@ -274,7 +333,7 @@ async def handle_reset(
 
 async def handle_private(
     bot: Bot,
-    event: PrivateMessageEvent,
+    event: Any,
     plugin_config: Config = None,
     gemini_client = None,
 ):
@@ -304,7 +363,8 @@ async def handle_private(
     if not plugin_config.gemini_reply_private:
         return
 
-    session_key = _make_session_key(user_id=str(event.user_id), group_id=None)
+    ctx = build_event_context(bot, event)
+    session_key = ctx.session_key
     lock = get_session_lock_manager().get_lock(session_key)
     async with lock:
         await _handle_private_locked(bot=bot, event=event, plugin_config=plugin_config, gemini_client=gemini_client)
@@ -313,12 +373,19 @@ async def handle_private(
 async def _handle_private_locked(
     *,
     bot: Bot,
-    event: PrivateMessageEvent,
+    event: Any,
     plugin_config: Config,
     gemini_client,
 ) -> None:
-    message_text = event.get_plaintext().strip()
-    image_urls = extract_images(event.original_message, plugin_config.gemini_max_images)
+    ctx = build_event_context(bot, event)
+    message_text = (ctx.plaintext or "").strip()
+    image_urls = extract_images(getattr(event, "original_message", None), plugin_config.gemini_max_images)
+    image_urls = await _resolve_onebot_v12_image_urls(
+        bot, event, image_urls, max_images=int(plugin_config.gemini_max_images)
+    )
+    image_urls = await _resolve_onebot_v12_image_urls(
+        bot, event, image_urls, max_images=int(plugin_config.gemini_max_images)
+    )
     
     if not message_text and not image_urls:
         return
@@ -337,13 +404,13 @@ async def _handle_private_locked(
         plugin_config, "gemini_history_image_trigger_keywords", []
     )
     
-    user_id = str(event.user_id)
+    user_id = ctx.user_id
     # 兼容旧行为（tests 依赖）：
     # - 普通私聊用户使用 [私聊用户]:
     # - 主人私聊使用 [⭐Sensei]:（master_name 不可用时回退为 Sensei）
     is_master = False
     try:
-        is_master = int(event.user_id) == int(plugin_config.gemini_master_id)
+        is_master = int(ctx.user_id) == int(plugin_config.gemini_master_id)
     except Exception:
         is_master = False
 
@@ -363,7 +430,7 @@ async def _handle_private_locked(
             qq_id=user_id,
             nickname=tag,  # 私聊没有 card/nickname，沿用 tag
             content=message_text,
-            message_id=str(event.message_id),
+            message_id=str(ctx.message_id or ""),
             group_id=None,
         )
     except Exception as e:
@@ -381,7 +448,7 @@ async def _handle_private_locked(
             user_id=user_id,
             image_urls=image_urls,
             sender_name=nickname,
-            message_id=str(event.message_id)
+            message_id=str(ctx.message_id or "")
         )
     else:
         # 使用 hybrid 策略处理历史图片
@@ -458,7 +525,7 @@ async def _handle_private_locked(
         group_id=None,
         image_urls=image_urls,
         enable_tools=True,  # 启用工具调用
-        message_id=str(event.message_id),  # [新增] 传递消息 ID
+        message_id=str(ctx.message_id or ""),  # [新增] 传递消息 ID
         system_injection=system_injection_content  # 使用专用参数注入 System 提示
     )
     
@@ -470,7 +537,7 @@ async def _handle_private_locked(
         await bot.send(event, reply)
 
 
-async def parse_message_with_mentions(bot: Bot, event: GroupMessageEvent) -> tuple:
+async def parse_message_with_mentions(bot: Bot, event: Any) -> tuple:
     """解析消息并保留 @ 提及和引用内容
     
     将消息中的 at 段转换为文本格式 "@昵称"，
@@ -484,6 +551,12 @@ async def parse_message_with_mentions(bot: Bot, event: GroupMessageEvent) -> tup
         tuple: (解析后的文本消息, 额外的图片URL列表)
     """
     from .utils.recent_images import get_image_cache
+
+    ctx = build_event_context(bot, event)
+    group_id_arg: Any = None
+    group_id_str = str(ctx.group_id or "").strip()
+    if group_id_str:
+        group_id_arg = int(group_id_str) if group_id_str.isdigit() else group_id_str
     
     text_parts = []
     extra_images = []  # 用于存放引用消息中的图片
@@ -492,8 +565,11 @@ async def parse_message_with_mentions(bot: Bot, event: GroupMessageEvent) -> tup
     for seg in event.original_message:
         if seg.type == "text":
             text_parts.append(seg.data.get("text", ""))
-        elif seg.type == "at":
-            qq = str(seg.data.get("qq", ""))
+        elif seg.type in {"at", "mention"}:
+            qq = str(seg.data.get("qq" if seg.type == "at" else "user_id", ""))
+            if qq == "all":
+                text_parts.append(" @全体成员 ")
+                continue
             
             # 如果是 @ 机器人自己，可以保留或忽略（因为已经有 tag 了）
             # 但为了保持一致性，还是转换一下，或者如果是机器人自己可以使用 "Mika"
@@ -506,17 +582,18 @@ async def parse_message_with_mentions(bot: Bot, event: GroupMessageEvent) -> tup
                 
             # 获取被 @ 人的昵称
             try:
-                # 缓存？OneBot 的 get_group_member_info 可能有缓存
-                # 但为了性能，可以考虑简单的内存缓存？
-                # 暂时直接调用，OneBot 实现通常本地有缓存
-                member_info = await bot.get_group_member_info(
-                    group_id=event.group_id,
-                    user_id=int(qq),
-                    no_cache=False
-                )
-                
-                nickname = member_info.get("card") or member_info.get("nickname") or str(qq)
-                text_parts.append(f" @{nickname} ")
+                nickname = ""
+                if group_id_arg is not None and qq.isdigit():
+                    member_info = await safe_call_api(
+                        bot,
+                        "get_group_member_info",
+                        group_id=group_id_arg,
+                        user_id=int(qq),
+                        no_cache=False,
+                    )
+                    nickname = (member_info or {}).get("card") or (member_info or {}).get("nickname") or ""
+
+                text_parts.append(f" @{nickname or qq} ")
                 
             except Exception as e:
                 log.warning(f"获取群成员信息失败: {e}")
@@ -524,15 +601,15 @@ async def parse_message_with_mentions(bot: Bot, event: GroupMessageEvent) -> tup
                 
         elif seg.type == "reply":
             # 处理回复/引用消息
-            reply_msg_id = seg.data.get("id")
+            reply_msg_id = seg.data.get("id") or seg.data.get("message_id")
             if reply_msg_id:
                 reply_msg_id_str = str(reply_msg_id)
                 image_cache = get_image_cache()
                 
                 # 1. 先查图片缓存
                 cached_images, cache_hit = image_cache.get_images_by_message_id(
-                    group_id=str(event.group_id),
-                    user_id=str(event.user_id),
+                    group_id=group_id_str,
+                    user_id=str(ctx.user_id),
                     message_id=reply_msg_id_str
                 )
                 
@@ -545,7 +622,14 @@ async def parse_message_with_mentions(bot: Bot, event: GroupMessageEvent) -> tup
                 else:
                     # 2. 缓存未命中，调用 API 获取被引用的消息
                     try:
-                        msg_data = await bot.get_msg(message_id=int(reply_msg_id))
+                        reply_id_arg: Any
+                        reply_id_arg = int(reply_msg_id_str) if reply_msg_id_str.isdigit() else reply_msg_id_str
+                        msg_data = await safe_call_api(bot, "get_msg", message_id=reply_id_arg)
+                        if msg_data is None:
+                            msg_data = await safe_call_api(bot, "get_message", message_id=reply_id_arg)
+                        if not isinstance(msg_data, dict):
+                            raise ValueError("get_msg/get_message returned empty or non-dict")
+
                         sender = msg_data.get("sender", {})
                         sender_name = sender.get("card") or sender.get("nickname") or "某人"
                         sender_id = str(sender.get("user_id", ""))
@@ -573,7 +657,7 @@ async def parse_message_with_mentions(bot: Bot, event: GroupMessageEvent) -> tup
                                         quoted_parts.append("[图片]")
                                         # 缓存这张图片以供后续使用
                                         image_cache.cache_images(
-                                            group_id=str(event.group_id),
+                                            group_id=group_id_str,
                                             user_id=sender_id,
                                             image_urls=[img_url],
                                             sender_name=sender_name,
@@ -597,6 +681,9 @@ async def parse_message_with_mentions(bot: Bot, event: GroupMessageEvent) -> tup
                                 elif seg_type == "at":
                                     at_qq = seg_data.get("qq", "")
                                     quoted_parts.append(f"@{at_qq}")
+                                elif seg_type == "mention":
+                                    at_uid = seg_data.get("user_id", "")
+                                    quoted_parts.append(f"@{at_uid}")
                                 elif seg_type == "forward":
                                     quoted_parts.append("[转发消息]")
                                 # 其他类型忽略
@@ -625,7 +712,7 @@ async def parse_message_with_mentions(bot: Bot, event: GroupMessageEvent) -> tup
 
 async def handle_group(
     bot: Bot,
-    event: GroupMessageEvent,
+    event: Any,
     plugin_config: Config = None,
     gemini_client = None,
     is_proactive: bool = False,
@@ -653,25 +740,31 @@ async def handle_group(
         - 支持多模态消息（文本 + 图片）
         - 长文本回复会自动转为转发消息发送
     """
-    log.info(f"[群聊Handler] ========== 开始处理 ==========")
-    log.info(f"[群聊Handler] group={event.group_id} | user={event.user_id}")
-    log.info(f"[群聊Handler] 消息内容: {event.get_plaintext()[:50]}")
+    ctx = build_event_context(bot, event)
+    log.info("[群聊Handler] ========== 开始处理 ==========")
+    log.info(f"[群聊Handler] group={ctx.group_id} | user={ctx.user_id}")
+    log.info(f"[群聊Handler] 消息内容: {(ctx.plaintext or '')[:50]}")
     
     # 使用依赖注入获取资源（如果未提供）
     if plugin_config is None:
         plugin_config = get_config()
     if gemini_client is None:
         gemini_client = get_gemini_client()
+
+    if not ctx.is_group or not ctx.group_id:
+        return
     
     if not plugin_config.gemini_reply_at and not is_proactive:
         log.debug("[群聊Handler] gemini_reply_at=False, 跳过处理")
         return
     
-    if plugin_config.gemini_group_whitelist and event.group_id not in plugin_config.gemini_group_whitelist:
-        log.debug(f"群 {event.group_id} 不在白名单中，跳过处理")
-        return
- 
-    session_key = _make_session_key(user_id=str(event.user_id), group_id=str(event.group_id))
+    if plugin_config.gemini_group_whitelist:
+        allowed = {str(x) for x in plugin_config.gemini_group_whitelist}
+        if ctx.group_id not in allowed:
+            log.debug(f"群 {ctx.group_id} 不在白名单中，跳过处理")
+            return
+
+    session_key = ctx.session_key
     lock = get_session_lock_manager().get_lock(session_key)
     async with lock:
         await _handle_group_locked(
@@ -688,21 +781,22 @@ async def handle_group(
 async def _handle_group_locked(
     *,
     bot: Bot,
-    event: GroupMessageEvent,
+    event: Any,
     plugin_config: Config,
     gemini_client,
     is_proactive: bool,
     proactive_reason: Optional[str],
 ) -> None:
+    ctx = build_event_context(bot, event)
+    if not ctx.is_group or not ctx.group_id:
+        return
+
     # 解析消息，获取文本和引用消息中的额外图片
     raw_text, reply_images = await parse_message_with_mentions(bot, event)
     # 兼容测试/异常输入：如果 original_message 为空，回退到 get_plaintext()
     if not raw_text:
-        try:
-            raw_text = (event.get_plaintext() or "").strip()
-        except Exception:
-            raw_text = ""
-    image_urls = extract_images(event.original_message, plugin_config.gemini_max_images)
+        raw_text = (ctx.plaintext or "").strip()
+    image_urls = extract_images(getattr(event, "original_message", None), plugin_config.gemini_max_images)
     
     # 合并引用消息中的图片
     if reply_images:
@@ -726,8 +820,8 @@ async def _handle_group_locked(
     )
     
     # 获取身份标签
-    user_id_int = event.user_id
-    nickname = event.sender.card or event.sender.nickname or "Sensei"
+    user_id_int = ctx.user_id
+    nickname = ctx.sender_name or "Sensei"
     # is_master = user_id_int == plugin_config.gemini_master_id
     # 统一使用 [昵称(QQ)] 格式，让 Prompt 中的 "Universal Sensei" 逻辑去处理身份
     tag = f"{nickname}({user_id_int})"
@@ -739,16 +833,16 @@ async def _handle_group_locked(
     if image_urls:
         # 当前消息包含图片，缓存它们
         image_cache.cache_images(
-            group_id=str(event.group_id),
+            group_id=str(ctx.group_id),
             user_id=str(user_id_int),
             image_urls=image_urls,
             sender_name=nickname,
-            message_id=str(event.message_id)
+            message_id=str(ctx.message_id or "")
         )
     else:
         # 使用 hybrid 策略处理历史图片
         candidate_images = image_cache.peek_recent_images(
-            group_id=str(event.group_id),
+            group_id=str(ctx.group_id),
             user_id=str(user_id_int),
             limit=plugin_config.gemini_history_image_collage_max
         )
@@ -756,7 +850,7 @@ async def _handle_group_locked(
         # 获取上下文用于策略判定
         context_messages = None
         try:
-            context_messages = await gemini_client.get_context(str(user_id_int), str(event.group_id))
+            context_messages = await gemini_client.get_context(str(user_id_int), str(ctx.group_id))
         except Exception as e:
             log.debug(f"[历史图片] 获取上下文失败，继续策略判定: {e}")
         
@@ -778,7 +872,7 @@ async def _handle_group_locked(
             cached_hint = build_image_mapping_hint(decision.images_to_inject)
             metrics.history_image_inline_used_total += 1
             metrics.history_image_images_injected_total += len(image_urls)
-            log.info(f"[历史图片] INLINE | group={event.group_id} | user={user_id_int} | images={len(image_urls)} | reason={decision.reason}")
+            log.info(f"[历史图片] INLINE | group={ctx.group_id} | user={user_id_int} | images={len(image_urls)} | reason={decision.reason}")
             
         elif decision.action == HistoryImageAction.COLLAGE and is_collage_available():
             # 拼图后注入
@@ -794,22 +888,22 @@ async def _handle_group_locked(
                 cached_hint = build_image_mapping_hint(decision.images_to_inject)
                 metrics.history_image_collage_used_total += 1
                 metrics.history_image_images_injected_total += len(decision.images_to_inject)
-                log.info(f"[历史图片] COLLAGE | group={event.group_id} | user={user_id_int} | images={len(collage_urls)} | reason={decision.reason}")
+                log.info(f"[历史图片] COLLAGE | group={ctx.group_id} | user={user_id_int} | images={len(collage_urls)} | reason={decision.reason}")
             else:
                 # 拼图失败，回退到 inline
                 image_urls = [img.url for img in decision.images_to_inject[:plugin_config.gemini_history_image_inline_max]]
                 cached_hint = build_image_mapping_hint(decision.images_to_inject[:plugin_config.gemini_history_image_inline_max])
                 metrics.history_image_inline_used_total += 1
                 metrics.history_image_images_injected_total += len(image_urls)
-                log.warning(f"[历史图片] COLLAGE失败回退INLINE | group={event.group_id} | user={user_id_int} | images={len(image_urls)}")
+                log.warning(f"[历史图片] COLLAGE失败回退INLINE | group={ctx.group_id} | user={user_id_int} | images={len(image_urls)}")
                 
         elif decision.action == HistoryImageAction.TWO_STAGE:
             # 两阶段模式：只提供候选 msg_id 列表提示
             cached_hint = build_candidate_hint(decision.candidate_msg_ids)
             metrics.history_image_two_stage_triggered_total += 1
-            log.info(f"[历史图片] TWO_STAGE | group={event.group_id} | user={user_id_int} | candidates={len(decision.candidate_msg_ids)} | reason={decision.reason}")
+            log.info(f"[历史图片] TWO_STAGE | group={ctx.group_id} | user={user_id_int} | candidates={len(decision.candidate_msg_ids)} | reason={decision.reason}")
     
-    log.info(f"收到群聊消息 | group={event.group_id} | user={user_id_int} | nickname={nickname} | images={len(image_urls)}")
+    log.info(f"收到群聊消息 | group={ctx.group_id} | user={user_id_int} | nickname={nickname} | images={len(image_urls)}")
     log.debug(f"消息内容(解析后): {raw_text[:100]}..." if len(raw_text) > 100 else f"消息内容: {raw_text}")
 
     # ==================== 兼容旧 tests：用户档案更新（同步/可 await） ====================
@@ -835,8 +929,8 @@ async def _handle_group_locked(
             qq_id=str(user_id_int),
             nickname=nickname,
             content=raw_text,
-            message_id=str(event.message_id),
-            group_id=str(event.group_id),
+            message_id=str(ctx.message_id or ""),
+            group_id=str(ctx.group_id),
         )
     except Exception as e:
         log.warning(f"群聊档案抽取 ingest 失败: {e}")
@@ -858,7 +952,7 @@ async def _handle_group_locked(
             max_lines = int(
                 getattr(plugin_config, "gemini_proactive_chatroom_history_lines", 30) or 30
             )
-            history = await gemini_client.get_context(str(user_id_int), str(event.group_id))
+            history = await gemini_client.get_context(str(user_id_int), str(ctx.group_id))
             chatroom_injection = _build_proactive_chatroom_injection(
                 history,
                 bot_name=getattr(plugin_config, "gemini_bot_display_name", "Mika") or "Mika",
@@ -876,32 +970,30 @@ async def _handle_group_locked(
     reply = await gemini_client.chat(
         final_message,
         str(user_id_int),
-        group_id=str(event.group_id),
+        group_id=str(ctx.group_id),
         image_urls=image_urls,
         enable_tools=True,  # 启用工具调用
-        message_id=str(event.message_id),
+        message_id=str(ctx.message_id or ""),
         system_injection=system_injection_content,  # 使用专用参数注入 System 提示
         history_override=history_override,
     )
     
-    log.success(f"群聊回复完成 | group={event.group_id} | user={user_id_int} | reply_len={len(reply)}")
+    log.success(f"群聊回复完成 | group={ctx.group_id} | user={user_id_int} | reply_len={len(reply)}")
     
     # 发送回复
     # 发送回复
     if len(reply) >= plugin_config.gemini_forward_threshold:
         await send_forward_msg(bot, event, reply)
     else:
-        # 统一回复逻辑：使用引用回复 (Quote) 但不 @ 用户
-        # 用户要求：自主回复保留【自主回复】标签，且显示引用框
+        # 统一回复逻辑：优先使用引用回复 (Quote) 但不 @ 用户；不支持则降级普通发送
+        # 用户要求：自主回复保留【自主回复】标签
         final_text = f"【自主回复】\n{reply}" if is_proactive else reply
-        reply_msg = MessageSegment.reply(event.message_id) + final_text
-        
-        await bot.send(event, reply_msg)
+        await safe_send(bot, event, final_text, reply_message=True, at_sender=False)
 
 
 async def send_forward_msg(
     bot: Bot,
-    event: Union[PrivateMessageEvent, GroupMessageEvent],
+    event: Any,
     content: str,
     plugin_config: Config = None
 ):
@@ -924,13 +1016,45 @@ async def send_forward_msg(
             "content": content
         }
     }]
-    try:
-        if isinstance(event, GroupMessageEvent):
-            await bot.call_api("send_group_forward_msg", group_id=event.group_id, messages=nodes)
-            log.debug(f"转发消息发送成功 | group={event.group_id}")
-        else:
-            await bot.call_api("send_private_forward_msg", user_id=event.user_id, messages=nodes)
-            log.debug(f"转发消息发送成功 | user={event.user_id}")
-    except Exception as e:
-        log.warning(f"转发消息发送失败，回退到普通消息 | error={str(e)}")
-        await bot.send(event, content)
+
+    ctx = build_event_context(bot, event)
+    is_group = bool(ctx.is_group and ctx.group_id)
+    group_id_arg: Any = None
+    user_id_arg: Any = None
+    if ctx.group_id:
+        group_id_arg = int(ctx.group_id) if ctx.group_id.isdigit() else ctx.group_id
+    if ctx.user_id:
+        user_id_arg = int(ctx.user_id) if ctx.user_id.isdigit() else ctx.user_id
+
+    ok = False
+    if is_group:
+        ok = (
+            await safe_call_api(
+                bot, "send_group_forward_msg", group_id=group_id_arg, messages=nodes
+            )
+        ) is not None
+        if ok:
+            log.debug(f"转发消息发送成功 | group={ctx.group_id}")
+    else:
+        ok = (
+            await safe_call_api(
+                bot, "send_private_forward_msg", user_id=user_id_arg, messages=nodes
+            )
+        ) is not None
+        if ok:
+            log.debug(f"转发消息发送成功 | user={ctx.user_id}")
+
+    if ok:
+        return
+
+    log.warning("转发消息发送失败，回退到普通消息分片发送")
+    chunk_size = int(getattr(plugin_config, "gemini_long_message_chunk_size", 800) or 800)
+    chunk_size = max(1, min(chunk_size, 5000))
+    chunks = [content[i : i + chunk_size] for i in range(0, len(content), chunk_size)] if content else []
+    if not chunks:
+        await safe_send(bot, event, content)
+        return
+    for chunk in chunks:
+        if not chunk:
+            continue
+        await safe_send(bot, event, chunk)

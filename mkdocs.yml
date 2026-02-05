@@ -29,6 +29,7 @@ nav:
   - 首页: index.md
   - 部署:
     - WSL2 + NapCat (systemd): deploy/wsl2.md
+    - OneBot v11/v12 兼容性: deploy/onebot.md
   - API 参考:
     - Gemini 客户端: api/gemini_api.md
     - 消息处理器: api/handlers.md

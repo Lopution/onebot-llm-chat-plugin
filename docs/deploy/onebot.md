@@ -1,0 +1,83 @@
+# OneBot v11 / v12 兼容性说明
+
+本项目希望尽可能兼容不同的 OneBot 实现（NapCat / go-cqhttp / 其它实现，以及 OneBot v12 适配器）。
+因此在一些**非标准/可选**能力上采用 **best-effort + 自动降级**：能用就用，不能用就回退为更通用的行为，保证 Bot 长期稳定运行。
+
+## 关键差异（v11 vs v12）
+
+### 1) `@` 提及（mention）
+- **v11**：消息段 `type="at"`，目标 ID 在 `data["qq"]`
+- **v12**：消息段 `type="mention"`，目标 ID 在 `data["user_id"]`
+
+插件会在以下位置兼容两种段类型：
+- `@` 检测（触发群聊回复）
+- 群聊消息解析（把 `@xxx` 还原成文本，避免模型误解“谁被提到”）
+
+### 2) 引用/回复（reply）
+- **v11**：`reply` 段通常使用 `data["id"]`
+- **v12**：`reply` 段通常使用 `data["message_id"]`
+
+插件会在解析时 **优先取 `id`，否则取 `message_id`**，并尝试 best-effort 拉取被引用消息内容（如果适配器不支持相关 API，会自动跳过，不影响主流程）。
+
+### 3) 图片（image）
+- **v11**：`image` 段通常直接提供 `data["url"]`（http/https）
+- **v12**：`image` 段可能只提供 `data["file_id"]`，不一定有 `url`
+
+插件策略：
+1. 优先使用消息段中已提供的 `url`/`file`（仅接受 http/https）。
+2. 若仅有 `file_id`：会尝试调用 OneBot v12 的 `get_file`（best-effort）获取可下载 `url`。
+3. 若无法解析：不会报错，只会把图片当作 `[图片]` 占位处理，确保 Bot 正常运行。
+
+### 4) ID 类型
+- **v11**：`group_id/user_id` 常为 `int`
+- **v12**：`group_id/user_id` 常为 `str`
+
+插件内部统一转成字符串处理，并保持上下文存储 key 不变：
+- 群聊：`group:{group_id}`
+- 私聊：`private:{user_id}`
+
+这意味着你不需要迁移历史数据库；v11/v12 只要群号一致即可复用同一份上下文。
+
+## 兼容策略（best-effort + 降级）
+
+### 1) 长消息发送：Forward → Chunk
+优先尝试合并转发（Forward）：
+- `send_group_forward_msg`
+- `send_private_forward_msg`
+
+如果 API 不存在或调用失败，会自动降级为**分片发送**（避免 handler 直接报错导致消息链路中断）：
+- 分片大小由 `GEMINI_LONG_MESSAGE_CHUNK_SIZE` 控制（默认 `800`）
+
+### 2) 引用回复（Quote）优先，但不强依赖
+优先使用：
+- `bot.send(event, text, reply_message=True, at_sender=False)`
+
+若适配器不支持该参数/失败，则降级为普通发送：
+- `bot.send(event, text)`
+
+### 3) 工具：群历史查询改为读本地 SQLite 上下文
+`search_group_history` 工具不再依赖远端历史 API（不同实现差异很大），而是读取本地 SQLite 上下文：
+- 优点：跨实现一致、离线可用
+- 注意：只能检索“Bot 记住的上下文范围内”的历史
+
+### 4) 离线同步（可选，默认关闭）
+离线消息同步通常依赖 `get_group_msg_history`，属于**并非所有实现都支持**的 API。
+
+因此插件默认关闭离线同步：
+- `GEMINI_OFFLINE_SYNC_ENABLED=false`
+
+如果你的实现支持该 API，并且确实需要离线同步，可以手动开启：
+- `GEMINI_OFFLINE_SYNC_ENABLED=true`
+
+开启后仍是 best-effort：某个群同步失败会跳过，不影响 Bot 上线与其它群的处理。
+
+## 常见排错
+
+### “图片解析不到 / 只显示 `[图片]`”
+说明当前适配器/实现没有给出可下载的图片 URL，且 `get_file` 无法获取到 `url`（或被网络/权限拦截）。
+这不会影响 Bot 正常回复，只是多模态能力降级。
+
+### “合并转发失败”
+不同实现对 Forward 支持差异较大；失败后插件会自动降级为分片发送。
+如需更少刷屏，可适当调大 `GEMINI_LONG_MESSAGE_CHUNK_SIZE`。
+

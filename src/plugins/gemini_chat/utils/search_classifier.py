@@ -1,12 +1,21 @@
-"""搜索意图分类、query 规范化与判定逻辑。
+"""搜索意图分类与 query 规范化模块。
 
 该模块不负责执行外部搜索（网络调用 Serper 等），只负责：
 - 文本规范化与低信号过滤
 - 关键词快速判定是否应搜索
 - 调用 LLM 做主题分类与 query 生成（带缓存）
 
-对外接口会通过 [`utils.search_engine`](bot/src/plugins/gemini_chat/utils/search_engine.py:1)
-重新导出，以保持向后兼容。
+功能特性：
+- 多级判定（关键词 -> 规则 -> LLM）
+- 分类结果缓存（降低 LLM 调用成本）
+- 可配置的缓存 TTL 和大小限制
+
+注意：
+对外接口会通过 [`search_engine`](search_engine.py:1) 重新导出，以保持向后兼容。
+
+相关模块：
+- [`search_engine`](search_engine.py:1): 搜索主入口
+- [`prompt_loader`](prompt_loader.py:1): 提示词加载
 """
 
 from __future__ import annotations

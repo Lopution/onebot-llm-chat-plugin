@@ -1,5 +1,5 @@
-# 用户档案合并逻辑
-"""
+"""用户档案合并逻辑。
+
 实现 LLM 抽取结果与现有档案的合并策略。
 
 核心原则：
@@ -7,6 +7,10 @@
 2. 稳定性原则：易变字段需要更高门槛
 3. 可追溯原则：记录 evidence、confidence、来源
 4. 二次确认：覆盖旧值需要同一新值重复出现
+
+相关模块：
+- [`user_profile`](user_profile.py:1): 档案存储
+- [`user_profile_extract_service`](user_profile_extract_service.py:1): 抽取服务
 """
 
 import json

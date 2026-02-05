@@ -68,4 +68,4 @@ src/plugins/gemini_chat/
 
 ## 许可证
 
-本项目采用 MIT 许可证。
+本项目采用 GNU AGPLv3 许可证，详见仓库根目录 `LICENSE`。

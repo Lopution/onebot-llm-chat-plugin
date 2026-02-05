@@ -1,5 +1,5 @@
-# 用户档案 LLM 抽取服务（异步、非阻塞）
-""" 
+"""用户档案 LLM 抽取服务（异步、非阻塞）。
+
 将用户消息增量汇聚后，按门控策略触发 LLM 抽取，并把 delta 合并写入 user_profiles。
 
 设计要点：
@@ -7,6 +7,11 @@
 - 后台任务串行处理每个用户，避免并发写档案
 - 全局限流 + per-user 冷却，避免成本失控
 - 覆盖旧值采用二次确认（pending_overrides 存在 extra_info）
+
+相关模块：
+- [`user_profile`](user_profile.py:1): 档案存储
+- [`user_profile_llm_extractor`](user_profile_llm_extractor.py:1): LLM 调用
+- [`user_profile_merge`](user_profile_merge.py:1): 合并策略
 """
 
 from __future__ import annotations

@@ -1,12 +1,15 @@
-# 用户档案持久化存储
-"""
-用户档案管理模块
+"""用户档案管理模块。
 
-功能：
+提供用户档案的持久化存储与查询功能：
 - 持久化存储用户信息（姓名、身份、偏好等）
 - 支持按 QQ 号查询用户档案
 - 自动从对话中提取并更新用户信息
 - 生成用户档案摘要用于注入系统提示词
+
+相关模块：
+- [`user_profile_extract_service`](user_profile_extract_service.py:1): 异步抽取服务
+- [`user_profile_llm_extractor`](user_profile_llm_extractor.py:1): LLM 抽取器
+- [`user_profile_merge`](user_profile_merge.py:1): 档案合并逻辑
 """
 
 import asyncio

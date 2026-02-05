@@ -1,4 +1,15 @@
-# 图片缓存核心实现
+"""图片缓存核心实现模块。
+
+提供跨消息图片缓存功能，允许用户在发送图片后通过后续消息引用识别：
+- 群级缓存（群聊场景）和用户级缓存（私聊场景）
+- 可配置的消息间隔限制（max_gap）
+- 关键词检测判断用户是否在询问图片
+- LRU 淘汰策略防止内存无限增长
+
+相关模块：
+- [`image_cache_api`](image_cache_api.py:1): 全局单例访问接口
+- [`history_image_policy`](history_image_policy.py:1): 历史图片注入策略
+"""
 from __future__ import annotations
 
 import time

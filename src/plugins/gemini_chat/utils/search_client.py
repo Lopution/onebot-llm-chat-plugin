@@ -1,7 +1,14 @@
 """搜索相关的 HTTP 客户端封装。
 
 该模块只负责创建 `httpx.AsyncClient`（默认超时、连接池、UA 等）。
-全局客户端的复用与生命周期仍由 [`utils.search_engine`](bot/src/plugins/gemini_chat/utils/search_engine.py:1)
+
+功能：
+- 统一的超时配置（连接/请求）
+- 连接池大小限制
+- 默认 User-Agent 设置
+
+注意：
+全局客户端的复用与生命周期仍由 [`search_engine`](search_engine.py:1)
 管理，以保持对外接口与测试 patch 行为兼容。
 """
 

@@ -1,19 +1,16 @@
 """Gemini Chat 搜索引擎（主入口模块）。
 
-本文件是对外的稳定入口：外部代码依然通过
-[`gemini_chat.utils.search_engine`](bot/src/plugins/gemini_chat/utils/search_engine.py:1)
-导入相关函数/常量。
+本文件是对外的稳定入口，外部代码通过本模块导入相关函数/常量。
 
 为降低维护成本，本模块已将职责拆分到多个子模块：
-
-- [`search_client`](bot/src/plugins/gemini_chat/utils/search_client.py:1): HTTP 客户端默认配置（创建 `httpx.AsyncClient`）
-- [`search_cache`](bot/src/plugins/gemini_chat/utils/search_cache.py:1): 搜索结果缓存（字典仍由本模块持有，以兼容 tests patch）
-- [`search_parser`](bot/src/plugins/gemini_chat/utils/search_parser.py:1): 结果过滤/可信排序/注入文本构建
-- [`search_classifier`](bot/src/plugins/gemini_chat/utils/search_classifier.py:1): query 清洗/低信号过滤/should_search/LLM 分类（含分类缓存）
+- [`search_client`](search_client.py:1): HTTP 客户端默认配置
+- [`search_cache`](search_cache.py:1): 搜索结果缓存
+- [`search_parser`](search_parser.py:1): 结果过滤/可信排序/注入文本构建
+- [`search_classifier`](search_classifier.py:1): query 清洗/低信号过滤/LLM 分类
 
 注意：
-1) 为保持向后兼容，本模块仍然保留原有公开 API 名称与全局变量（如 `_http_client`、`_search_cache`）。
-2) 本模块不会拆分/修改其他不相关文件。
+- 为保持向后兼容，本模块保留原有公开 API 名称与全局变量
+- 缓存字典由本模块持有，以兼容测试 patch
 """
 
 from __future__ import annotations

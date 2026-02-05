@@ -1,3 +1,14 @@
+"""LRU 缓存实现模块。
+
+提供基于 OrderedDict 的 LRU（最近最少使用）缓存，用于：
+- 上下文数据的内存缓存
+- 限制最大条目数，防止长期运行内存溢出
+
+特点：
+- O(1) 的 get/set 操作
+- 自动淘汰最久未使用的条目
+- 线程不安全（需外部加锁）
+"""
 from __future__ import annotations
 
 from collections import OrderedDict
@@ -7,7 +18,12 @@ from nonebot import logger as log
 
 
 class LRUCache:
-    """LRU (最近最少使用) 缓存实现"""
+    """LRU (最近最少使用) 缓存实现。
+
+    Attributes:
+        _cache: 内部有序字典存储
+        _max_size: 最大缓存条目数
+    """
 
     def __init__(self, max_size: int):
         self._cache: OrderedDict = OrderedDict()

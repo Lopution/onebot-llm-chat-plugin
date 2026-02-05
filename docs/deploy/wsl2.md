@@ -54,7 +54,7 @@ GEMINI_SEMANTIC_USE_E5_PREFIXES=false
 如果你遇到下载失败（例如 systemd 下无法访问 HuggingFace）：
 
 - 你也可以手动下载并离线放置 fastembed 模型文件，然后配置 `GEMINI_FASTEMBED_MODEL_DIR` 直接从本地加载（不走任何下载逻辑）
-- 复制 `bot/.env.proxy.example` 为 `bot/.env.proxy`，在里面填写 `HTTP_PROXY/HTTPS_PROXY`（或 `HF_ENDPOINT` 镜像地址）
+- 在 `.env` / `.env.prod` 里配置 `HTTP_PROXY/HTTPS_PROXY`（或 `HF_ENDPOINT` 镜像地址），再重启服务
 - 重新安装 systemd unit 并重启：
 
 ```bash

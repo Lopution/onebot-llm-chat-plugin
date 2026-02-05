@@ -1,3 +1,17 @@
+"""会话锁管理模块（LRU + TTL 淘汰）。
+
+解决"按会话/按用户建锁"的常见问题——锁字典无界增长导致内存溢出。
+
+策略：
+- 按 key 发放 asyncio.Lock（同一个 key 始终拿到同一把锁）
+- LRU 顺序维护 + TTL 淘汰
+- 只淘汰"未被占用"的锁，避免影响正在处理的会话
+
+使用场景：
+- 用户会话并发控制
+- 用户档案抽取任务串行化
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -13,12 +27,7 @@ class _LockEntry:
 
 
 class SessionLockManager:
-    """A small lock pool with LRU + TTL eviction.
-
-    Purpose:
-    - Prevent unbounded growth of per-session/per-user asyncio.Lock dictionaries.
-    - Provide stable ordering (same key always returns the same lock while present).
-    """
+    """会话锁池（LRU + TTL 淘汰）。"""
 
     def __init__(self, *, max_locks: int = 512, ttl_seconds: float = 3600.0) -> None:
         self._max_locks = max(1, int(max_locks))
@@ -50,7 +59,7 @@ class SessionLockManager:
             return
 
         expire_before = now - self._ttl_seconds
-        # OrderedDict is in LRU order (oldest first). Stop early once not expired.
+        # OrderedDict 按 LRU 顺序（最旧在前）。一旦遇到未过期条目即可提前停止。
         for k, entry in list(self._locks.items()):
             if entry.last_used >= expire_before:
                 break
@@ -59,11 +68,11 @@ class SessionLockManager:
             self._locks.pop(k, None)
 
     def _enforce_limit(self, now: float) -> None:
-        # Prefer evicting old, unlocked entries.
+        # 优先淘汰最旧且未被占用的锁。
         while len(self._locks) > self._max_locks:
             k, entry = next(iter(self._locks.items()))
             if entry.lock.locked():
-                # All remaining oldest locks are in use; avoid spinning.
+                # 最旧的锁正在使用：剩下的很可能也在用，避免在这里空转。
                 break
             self._locks.popitem(last=False)
 
@@ -76,4 +85,3 @@ def get_session_lock_manager() -> SessionLockManager:
     if _default_manager is None:
         _default_manager = SessionLockManager()
     return _default_manager
-

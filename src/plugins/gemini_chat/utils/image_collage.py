@@ -1,14 +1,16 @@
-# 图片拼图模块
-"""
-将多张图片合成为一张拼图，用于减少图片数量限制。
+"""图片拼图模块。
 
-功能:
+将多张图片合成为一张拼图，用于减少发送给 API 的图片数量：
 - 支持 2-4 张图片横向/网格拼接
 - 可配置目标尺寸上限
 - 失败时返回 None，调用方可回退到普通逻辑
 
-依赖:
+依赖：
 - Pillow (PIL) - 可选依赖，未安装时功能降级
+
+相关模块：
+- [`image_processor`](image_processor.py:1): 图片下载与处理
+- [`history_image_policy`](history_image_policy.py:1): 历史图片注入策略
 """
 
 from __future__ import annotations

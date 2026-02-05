@@ -1,4 +1,13 @@
-# 系统提示词加载器
+"""系统提示词加载器。
+
+提供 YAML 格式提示词配置的加载与解析功能：
+- 安全的文件路径校验（防止路径穿越）
+- 多级 fallback（优先角色配置 -> 默认模板）
+- 动态变量替换（日期、时间等）
+
+相关模块：
+- [`search_classifier`](search_classifier.py:1): 使用搜索提示词
+"""
 import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional

@@ -1,15 +1,19 @@
-# 历史图片上下文增强策略模块
-"""
-实现 hybrid 策略：
+"""历史图片上下文增强策略模块。
+
+实现 hybrid 策略，智能决定是否需要历史图片辅助理解：
 - 规则判定是否需要历史图片
 - 决定使用 inline 回注还是 two-stage 补图
 - 支持连续图片拼图
 
-策略流程:
+策略流程：
 1. 检查 mode 配置 (off/inline/two_stage/hybrid)
 2. 从 ImageCache 获取候选图片 (peek_recent_images)
 3. 根据消息内容判定需求强度
 4. 输出决策结果供 handlers/build_messages 使用
+
+相关模块：
+- [`image_cache_core`](image_cache_core.py:1): 图片缓存
+- [`image_collage`](image_collage.py:1): 多图拼接
 """
 
 from __future__ import annotations

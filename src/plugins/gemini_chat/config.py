@@ -1,4 +1,13 @@
-# Gemini Chat 插件配置
+"""Gemini Chat 插件配置模块。
+
+提供插件配置的定义和验证，支持：
+- API Key 配置与占位符检测
+- 模型参数验证（温度范围等）
+- HTTP/网络参数配置
+- 多种触发规则配置
+
+配置通过 NoneBot2 的 get_plugin_config 加载。
+"""
 from pydantic import BaseModel, field_validator, model_validator
 from typing import List, Optional
 from pathlib import Path
@@ -202,6 +211,10 @@ class Config(BaseModel):
     gemini_history_count: int = 50     # 群历史消息查询数量
     # SQLiteContextStore 的 LRU 缓存条目数上限（越小越省内存，越大越高命中率）
     gemini_context_cache_max_size: int = 200
+
+    # ==================== OneBot 兼容性配置 ====================
+    # 离线消息同步依赖非标准 API（如 get_group_msg_history），默认关闭以提升兼容性
+    gemini_offline_sync_enabled: bool = False
     
     # ==================== 触发配置 ====================
     gemini_reply_private: bool = True  # 是否响应私聊
@@ -278,6 +291,8 @@ class Config(BaseModel):
     
     # ==================== 消息处理配置 ====================
     gemini_forward_threshold: int = 300      # 合并转发阈值 (字符数)
+    # forward 不可用时，长消息按该长度分片发送（跨实现稳定）
+    gemini_long_message_chunk_size: int = 800
 
     # ==================== 搜索缓存配置 ====================
     gemini_search_cache_ttl_seconds: int = 60

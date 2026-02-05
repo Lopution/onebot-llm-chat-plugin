@@ -1,10 +1,20 @@
-# Gemini Chat 插件 - 工具函数
-"""工具处理器和辅助函数"""
+"""工具处理器模块。
 
-from typing import Dict, Callable, Any
+定义和注册 Gemini API Tool Calling 的工具处理器，包括：
+- 工具注册装饰器
+- web_search 网络搜索工具
+- search_group_history 群聊历史搜索工具
+- fetch_history_images 历史图片获取工具
+
+使用示例：
+    @tool("my_tool")
+    async def handle_my_tool(args: dict, group_id: str = "") -> str:
+        return "工具执行结果"
+"""
+
+from typing import Any, Callable, Dict
 
 from nonebot import logger
-from nonebot.adapters.onebot.v11 import Message
 
 
 # 工具注册表
@@ -42,85 +52,54 @@ async def handle_search_group_history(args: dict, group_id: str) -> str:
     Returns:
         格式化的历史消息字符串
     """
-    from nonebot import get_bot, get_plugin_config
-    from .config import Config
-    
-    plugin_config = get_plugin_config(Config)
-    
+    from .utils.context_store import get_context_store
+
+    group_id_str = str(group_id or "").strip()
+    if not group_id_str:
+        return "该工具仅在群聊可用（需要 group_id）。"
+
     try:
-        count = args.get("count", 20) if isinstance(args, dict) else 20
-        count = min(count, 50)
-        bot = get_bot()
-        res = await bot.get_group_msg_history(group_id=int(group_id), count=count)
-        history_list = res.get("messages", []) if isinstance(res, dict) else res
-        
-        if not history_list:
+        count = int(args.get("count", 20) if isinstance(args, dict) else 20)
+        count = max(1, min(count, 50))
+
+        store = get_context_store()
+        history = await store.get_context(user_id="_tool_", group_id=group_id_str)
+
+        if not history:
             return "没有找到历史消息。"
-        
-        def _segment_to_text(seg: Any) -> str:
-            """将 OneBot 消息段转换为可读文本，占位保留非 text 段信息。"""
-            seg_type = None
-            seg_data: Dict[str, Any] = {}
-            if isinstance(seg, dict):
-                seg_type = seg.get("type")
-                seg_data = seg.get("data") or {}
+
+        def _content_to_text(content: Any) -> str:
+            if isinstance(content, str):
+                return content
+            if isinstance(content, list):
+                parts: list[str] = []
+                for item in content:
+                    if not isinstance(item, dict):
+                        continue
+                    item_type = item.get("type")
+                    if item_type == "text":
+                        parts.append(str(item.get("text") or ""))
+                    elif item_type == "image_url":
+                        parts.append("[图片]")
+                return " ".join(p for p in parts if p)
+            return str(content or "")
+
+        lines: list[str] = []
+        for msg in history[-count:]:
+            role = str(msg.get("role") or "")
+            content_text = _content_to_text(msg.get("content"))
+            content_text = content_text.replace("\n", " ").strip()
+            if not content_text:
+                continue
+            if role == "assistant" and not content_text.startswith("["):
+                lines.append(f"[assistant]: {content_text}")
             else:
-                seg_type = getattr(seg, "type", None)
-                seg_data = getattr(seg, "data", {}) or {}
+                lines.append(content_text)
 
-            seg_type = str(seg_type or "")
+        if not lines:
+            return "没有找到可用的历史消息。"
 
-            if seg_type == "text":
-                return str(seg_data.get("text", ""))
-            if seg_type == "image":
-                return "[图片]"
-            if seg_type == "at":
-                qq = str(seg_data.get("qq", ""))
-                return f"@{qq}" if qq else "[@]"
-            if seg_type in {"face", "mface"}:
-                summary = str(seg_data.get("summary", "表情"))
-                return f"[{summary}]" if summary else "[表情]"
-            if seg_type == "reply":
-                return "[回复]"
-            if seg_type == "record":
-                return "[语音]"
-            if seg_type == "video":
-                return "[视频]"
-            if seg_type == "file":
-                return "[文件]"
-            if seg_type == "forward":
-                return "[转发]"
-            if seg_type:
-                return f"[{seg_type}]"
-            return "[未知内容]"
-
-        formatted_messages = []
-        for msg in history_list:
-            sender_id = str(msg.get('user_id') or msg.get('sender', {}).get('user_id', ''))
-            if sender_id == str(bot.self_id): continue
-            
-            nickname = (msg.get('sender', {}).get('card') or msg.get('sender', {}).get('nickname') or sender_id)
-            tag = f"⭐{plugin_config.gemini_master_name}" if sender_id == str(plugin_config.gemini_master_id) else nickname
-            
-            raw_msg = msg.get('message', [])
-            msg_text = ""
-            if isinstance(raw_msg, str):
-                msg_text = raw_msg
-            elif isinstance(raw_msg, list):
-                for seg in raw_msg:
-                    msg_text += _segment_to_text(seg)
-            else:
-                # 兜底：可能是 Message / 其他结构
-                try:
-                    for seg in raw_msg:
-                        msg_text += _segment_to_text(seg)
-                except Exception:
-                    msg_text = str(raw_msg)
-            
-            if msg_text:
-                formatted_messages.append(f"[{tag}]: {msg_text}")
-        
-        return "以下是查找到的历史消息：\n" + "\n".join(formatted_messages[-count:])
+        return "以下是查找到的历史消息：\n" + "\n".join(lines)
     except Exception as e:
         logger.error(f"Failed to search group history: {e}")
         return f"翻记录时出错了：{str(e)}"
@@ -326,7 +305,7 @@ def needs_search(message: str) -> bool:
     return should_search(message)
 
 
-def extract_images(message: Message, max_images: int = 10):
+def extract_images(message: Any, max_images: int = 10):
     """兼容旧 tests：从消息中提取图片 URL。
 
     实现委派到 [`utils.image_processor.extract_images()`](bot/src/plugins/gemini_chat/utils/image_processor.py:1)。

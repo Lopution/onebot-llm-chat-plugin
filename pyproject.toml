@@ -7,7 +7,7 @@ name = "nonebot-gemini-bot"
 version = "0.1.0"
 description = "NoneBot2 QQ 机器人项目，集成 Gemini API 和 Serper API 搜索"
 readme = "README.md"
-license = { text = "MIT" }
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
 authors = [
     { name = "Bot Developer" }
@@ -17,7 +17,7 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Framework :: AsyncIO",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",

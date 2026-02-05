@@ -1,5 +1,19 @@
-# 图片处理模块
-"""提供图片下载、转换、缓存功能"""
+"""图片处理模块。
+
+提供图片的下载、格式转换、缓存等功能，支持：
+- 异步并发下载（支持 QQ 图片服务器等多种来源）
+- 自动格式转换（WebP/GIF -> JPEG/PNG）
+- 本地磁盘缓存（LRU 淘汰策略）
+- SSRF 防护（内网 IP 校验）
+
+环境变量：
+- GEMINI_IMAGE_CACHE_DIR: 图片缓存目录
+- GEMINI_DATA_DIR: 数据根目录（缓存位于 <dir>/gemini_chat/image_cache）
+
+相关模块：
+- [`image_cache_core`](image_cache_core.py:1): 跨消息图片缓存
+- [`image_collage`](image_collage.py:1): 多图拼接
+"""
 
 import asyncio
 import base64
@@ -15,7 +29,6 @@ from urllib.parse import quote, urlparse
 import httpx
 
 from nonebot import logger as log
-from nonebot.adapters.onebot.v11 import Message
 
 
 def _get_default_cache_dir() -> Path:
@@ -480,7 +493,7 @@ async def close_image_processor() -> None:
         _image_processor = None
 
 
-def extract_images(message: "Message", max_images: int) -> list[str]:
+def extract_images(message: Any, max_images: int) -> list[str]:
     """从消息中提取图片 URL
     
     Args:
@@ -490,10 +503,106 @@ def extract_images(message: "Message", max_images: int) -> list[str]:
     Returns:
         图片 URL 列表
     """
-    urls = []
-    for seg in message:
-        if seg.type == "image":
-            url = seg.data.get("url")
-            if url:
+    if max_images <= 0:
+        return []
+
+    urls: list[str] = []
+    try:
+        segments = message or []
+        for seg in segments:
+            if len(urls) >= max_images:
+                break
+
+            if isinstance(seg, dict):
+                seg_type = seg.get("type")
+                seg_data = seg.get("data") or {}
+            else:
+                seg_type = getattr(seg, "type", None)
+                seg_data = getattr(seg, "data", {}) or {}
+
+            if str(seg_type or "") != "image":
+                continue
+
+            url = str(seg_data.get("url") or "").strip()
+            if not url:
+                url = str(seg_data.get("file") or "").strip()
+
+            # 这里只接受 http(s) URL；其它标识（例如 v12 的 file_id）
+            # 会在上层链路里 best-effort 解析。
+            if url.startswith("http://") or url.startswith("https://"):
                 urls.append(url)
-    return urls[:max_images]
+    except Exception:
+        return []
+
+    return urls
+
+
+def extract_image_file_ids(message: Any, max_images: int) -> list[str]:
+    """从消息段中提取 OneBot v12 的图片 file_id（best-effort）。
+
+    - 最多返回 ``max_images`` 个
+    - 去重但保持顺序
+    """
+    if max_images <= 0:
+        return []
+
+    file_ids: list[str] = []
+    try:
+        segments = message or []
+        for seg in segments:
+            if len(file_ids) >= max_images:
+                break
+
+            if isinstance(seg, dict):
+                seg_type = seg.get("type")
+                seg_data = seg.get("data") or {}
+            else:
+                seg_type = getattr(seg, "type", None)
+                seg_data = getattr(seg, "data", {}) or {}
+
+            if str(seg_type or "") != "image":
+                continue
+
+            file_id = seg_data.get("file_id")
+            if not file_id:
+                continue
+
+            file_id_str = str(file_id).strip()
+            if file_id_str and file_id_str not in file_ids:
+                file_ids.append(file_id_str)
+    except Exception:
+        return []
+
+    return file_ids
+
+
+async def resolve_image_urls(bot: Any, message: Any, max_images: int) -> list[str]:
+    """跨 OneBot 实现解析图片 URL（best-effort）。
+
+    解析策略：
+    1) 先通过 :func:`extract_images` 提取消息段里直接给出的 http(s) URL
+    2) 若数量不足，再尝试 OneBot v12 的 ``get_file``，把仅提供 ``file_id`` 的图片解析成 URL
+    """
+    from .safe_api import safe_call_api
+
+    urls = extract_images(message, max_images=max_images)
+    if not bot or max_images <= 0 or len(urls) >= max_images:
+        return urls
+
+    remaining = max_images - len(urls)
+    file_ids = extract_image_file_ids(message, max_images=remaining)
+    if not file_ids:
+        return urls
+
+    for file_id in file_ids:
+        res = await safe_call_api(bot, "get_file", file_id=file_id)
+        if not isinstance(res, dict):
+            continue
+        url = str(res.get("url") or res.get("download_url") or "").strip()
+        if url.startswith("http://") or url.startswith("https://"):
+            if url not in urls:
+                urls.append(url)
+                if len(urls) >= max_images:
+                    break
+
+    return urls

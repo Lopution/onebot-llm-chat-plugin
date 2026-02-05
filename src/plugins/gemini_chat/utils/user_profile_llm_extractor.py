@@ -1,12 +1,16 @@
-# 用户档案 LLM 抽取器
-"""
-调用 LLM 从用户消息中抽取档案信息。
+"""用户档案 LLM 抽取器。
+
+调用 LLM 从用户消息中抽取档案信息（姓名、身份、偏好等）。
 
 设计原则：
 - 不污染主对话上下文（直接调用 API，不经过 GeminiClient.chat）
 - 使用快速模型降低成本
 - 强制 JSON 输出格式
-- 健壮的 JSON 解析
+- 健壮的 JSON 解析（支持多种格式容错）
+
+相关模块：
+- [`user_profile_extract_service`](user_profile_extract_service.py:1): 异步抽取服务
+- [`user_profile_merge`](user_profile_merge.py:1): 档案合并逻辑
 """
 
 import json

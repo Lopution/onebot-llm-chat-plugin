@@ -1,4 +1,18 @@
-# 数据库连接与初始化逻辑
+"""数据库连接与初始化模块。
+
+管理 SQLite 数据库的连接生命周期和表结构初始化：
+- 全局单例连接（异步锁保护）
+- 自动创建数据目录和表结构
+- 支持环境变量覆盖数据库路径
+
+环境变量：
+- GEMINI_CONTEXT_DB_PATH: 直接指定数据库文件路径
+- GEMINI_DATA_DIR: 指定数据根目录（数据库位于 <dir>/gemini_chat/contexts.db）
+
+相关模块：
+- [`context_store`](context_store.py:1): 上下文存储，使用本模块的数据库连接
+- [`user_profile`](user_profile.py:1): 用户档案，共用同一数据库
+"""
 from __future__ import annotations
 
 import asyncio

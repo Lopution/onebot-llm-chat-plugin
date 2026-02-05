@@ -1,12 +1,22 @@
-# Gemini API 异常类
-"""
-定义 Gemini API 相关的异常类型。
+"""Gemini API 异常类定义模块。
+
+定义 Gemini API 相关的异常类型，用于区分不同的错误场景。
 
 异常层次：
-- GeminiAPIError (基类)
-  - RateLimitError (429 限流)
-  - AuthenticationError (401/403 认证失败)
-  - ServerError (5xx 服务端错误)
+- GeminiAPIError（基类）
+  - RateLimitError（429 限流）
+  - AuthenticationError（401/403 认证失败）
+  - ServerError（5xx 服务端错误）
+
+使用示例：
+    try:
+        response = await client.chat(...)
+    except RateLimitError as e:
+        # 处理限流，等待 e.retry_after 秒后重试
+        pass
+    except AuthenticationError:
+        # API Key 无效，需要检查配置
+        pass
 """
 
 

@@ -1,9 +1,14 @@
-"""语义匹配（可选依赖）。
+"""语义匹配模块（可选依赖）。
 
-目标：
-- `fastembed` / `torch` / `sentence_transformers` 缺失时，不在 import 阶段崩溃；
-- `init_semantic_matcher()` 在缺依赖时降级为 no-op 并提示日志；
-- 任意调用 [`SemanticMatcher.check_similarity()`](bot/src/plugins/gemini_chat/utils/semantic_matcher.py:1) 安全返回 `(False, "", 0.0)`。
+提供基于 embedding 的语义相似度匹配功能：
+- 支持 fastembed（轻量级，推荐）或 sentence-transformers（本地模型）
+- 依赖缺失时安全降级（不影响主流程）
+- 用于检测相似问题、重复内容等场景
+
+注意：
+- fastembed / torch / sentence_transformers 缺失时不会在 import 阶段崩溃
+- `init_semantic_matcher()` 在缺依赖时降级为 no-op
+- 调用 `check_similarity()` 安全返回 `(False, "", 0.0)`
 """
 
 from __future__ import annotations
