@@ -15,9 +15,9 @@
 
 | 配置项 | 类型 | 说明 | 默认值 |
 |--------|------|------|--------|
-| `GEMINI_API_KEY` | str | Google Gemini API 密钥 | 必填 |
+| `GEMINI_API_KEY` | str | OpenAI 兼容格式 API 密钥 | 必填 |
 | `SERPER_API_KEY` | str | Serper 搜索 API 密钥 | 可选 |
-| `GEMINI_MODEL` | str | Gemini 模型名称 | `gemini-2.0-flash-exp` |
+| `GEMINI_MODEL` | str | Gemini 模型名称 | 必填 |
 
 ## 使用示例
 

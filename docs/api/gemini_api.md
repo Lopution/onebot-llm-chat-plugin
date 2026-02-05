@@ -1,10 +1,10 @@
-# Gemini API 客户端
+# Openai API 客户端
 
-本模块封装了 Google Gemini API 的调用逻辑。
+本模块通过 OpenAI 兼容格式 API 调用 Gemini 模型。
 
 ## 模块概述
 
-`GeminiClient` 类负责与 Google Gemini API 进行交互，支持：
+`GeminiClient` 类负责通过 OpenAI 兼容格式与 Gemini API 进行交互，支持：
 
 - 文本对话生成
 - 多模态输入（图片 + 文本）

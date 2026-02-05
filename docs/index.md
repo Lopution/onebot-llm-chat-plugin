@@ -4,11 +4,11 @@
 
 ## 项目简介
 
-Mika Bot 是一个基于 NoneBot2 框架开发的 QQ 聊天机器人，集成了 Google Gemini API 进行智能对话。
+Mika Bot 是一个基于 OneBot 协议的 QQ 聊天机器人，通过 OpenAI 兼容格式 API 调用 Gemini 模型进行智能对话。
 
 ### 主要特性
 
-- 🤖 **智能对话**: 基于 Google Gemini 2.0 Flash 模型的自然语言对话
+- 🤖 **智能对话**: 通过 OpenAI 兼容格式 API 调用 Gemini 模型
 - 🔍 **联网搜索**: 集成 Serper API 搜索引擎，可获取实时信息
 - 💾 **上下文记忆**: 基于 SQLite 的对话上下文持久化存储
 - 📝 **多轮对话**: 支持连续多轮对话，保持上下文连贯
