@@ -58,6 +58,26 @@ class TestLoadPromptYaml:
             data = load_prompt_yaml("empty.yaml")
             
             assert data == {}
+
+    def test_load_plain_text_yaml_root(self, temp_prompts_dir: Path):
+        """测试 YAML 根节点为纯文本时的兼容处理（视为 system_prompt）"""
+        from gemini_chat.utils.prompt_loader import load_prompt_yaml
+
+        plain_yaml = temp_prompts_dir / "plain.yaml"
+        plain_yaml.write_text(
+            """|-
+  你是一个测试助手
+  请使用简洁的方式回答
+""",
+            encoding="utf-8",
+        )
+
+        with patch("gemini_chat.utils.prompt_loader.PROMPTS_DIR", temp_prompts_dir):
+            data = load_prompt_yaml("plain.yaml")
+
+            assert isinstance(data, dict)
+            assert "system_prompt" in data
+            assert "你是一个测试助手" in data["system_prompt"]
     
     def test_default_filename(self, temp_prompts_dir: Path):
         """测试默认文件名 mika.yaml"""
@@ -258,8 +278,9 @@ class TestGetSystemPrompt:
         with patch("gemini_chat.utils.prompt_loader.PROMPTS_DIR", temp_prompts_dir):
             prompt = get_system_prompt("nonexistent.yaml")
             
-            # 应该返回默认提示词
-            assert prompt == "你是一个友好的AI助手"
+            # 应该包含默认提示词（并带有功能兜底的核心约束）
+            assert "你是一个友好的AI助手" in prompt
+            assert "插件运行约束" in prompt
     
     def test_get_system_prompt_with_custom_master_name(self, sample_prompt_yaml: Path, temp_prompts_dir: Path):
         """测试使用自定义主人名称"""
@@ -417,3 +438,46 @@ role:
             data = load_prompt_yaml("comments.yaml")
             
             assert data == {}
+
+    def test_generate_prompt_with_instructions_as_string(self):
+        """测试 instructions 被写成字符串时不崩溃（兼容简写）"""
+        from gemini_chat.utils.prompt_loader import generate_system_prompt
+
+        config = {
+            "role": "Mika",
+            "instructions": "请用简洁的方式回答",
+        }
+        prompt = generate_system_prompt(config)
+
+        assert "Mika" in prompt
+        assert "请用简洁的方式回答" in prompt
+
+    def test_get_character_name_with_role_as_string(self, temp_prompts_dir: Path):
+        """测试 role 被写成字符串时，get_character_name 仍可取到名称"""
+        from gemini_chat.utils.prompt_loader import get_character_name
+
+        p = temp_prompts_dir / "role_str.yaml"
+        p.write_text(
+            """
+role: "Mika"
+""",
+            encoding="utf-8",
+        )
+
+        with patch("gemini_chat.utils.prompt_loader.PROMPTS_DIR", temp_prompts_dir):
+            assert get_character_name("role_str.yaml") == "Mika"
+
+    def test_load_error_messages_with_invalid_type(self, temp_prompts_dir: Path):
+        """测试 error_messages 类型不正确时安全降级"""
+        from gemini_chat.utils.prompt_loader import load_error_messages
+
+        p = temp_prompts_dir / "bad_error_messages.yaml"
+        p.write_text(
+            """
+error_messages: "not a dict"
+""",
+            encoding="utf-8",
+        )
+
+        with patch("gemini_chat.utils.prompt_loader.PROMPTS_DIR", temp_prompts_dir):
+            assert load_error_messages("bad_error_messages.yaml") == {}

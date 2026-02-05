@@ -2,7 +2,7 @@
 
 # Mika Bot 🌸
 
-**基于 OneBot 协议、使用 OpenAI 兼容格式 API 调用 Gemini 模型的智能 QQ 聊天机器人**
+**基于 OneBot 协议、使用 OpenAI 兼容格式 API 调用 Gemini 模型的多模态智能 QQ 聊天机器人插件**
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10+-green.svg)](https://www.python.org/)
