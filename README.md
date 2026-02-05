@@ -10,7 +10,7 @@
 
 # Mika Bot 🌸
 
-**基于 NoneBot2 框架与 Google Gemini API 的智能 QQ 聊天机器人**
+**基于 OneBot 协议、使用 OpenAI 兼容格式 API 调用 Gemini 模型的智能 QQ 聊天机器人**
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10+-green.svg)](https://www.python.org/)
@@ -30,7 +30,7 @@
 <td width="50%">
 
 ### 🤖 智能对话
-基于 Google Gemini 模型的自然语言对话，支持多轮上下文
+通过 OpenAI 兼容格式 API 调用 Gemini 模型，支持多轮上下文
 
 ### 🔍 联网搜索
 集成 Serper API 搜索引擎，可获取实时信息
@@ -53,8 +53,8 @@
 ### 👤 用户档案
 自动抽取并记忆用户画像信息
 
-### 🔌 OneBot 兼容
-兼容 OneBot v11/v12（best-effort + 自动降级）
+### 🔌 OneBot 协议
+基于 OneBot v11/v12 协议（best-effort + 自动降级）
 
 </td>
 </tr>
@@ -101,8 +101,8 @@ cp .env.example .env
 
 | 组件 | 版本 | 说明 |
 |------|------|------|
-| **NoneBot2** | 2.0+ | 机器人框架 |
-| **OneBot 适配器** | v11 / v12 | `nonebot-adapter-onebot` |
+| **OneBot 协议** | v11 / v12 | 核心通信协议 |
+| **NoneBot2** | 2.0+ | 协议实现框架 |
 | **QQ 客户端** | NapCat | Docker 部署 |
 
 ---
@@ -201,7 +201,7 @@ bot/
 │   └── gemini_chat/       # 核心插件
 │       ├── __init__.py    # 插件入口
 │       ├── config.py      # 配置管理
-│       ├── gemini_api.py  # Gemini API 客户端
+│       ├── gemini_api.py  # OpenAI 兼容格式 API 客户端
 │       ├── handlers.py    # 消息处理器
 │       ├── matchers.py    # 消息匹配器
 │       ├── lifecycle.py   # 生命周期管理
@@ -304,8 +304,9 @@ pytest tests/ -v --cov=src/plugins/gemini_chat --cov-report=html
 
 感谢以下项目和团队的贡献：
 
+- [OneBot](https://onebot.dev/) - 统一的聊天机器人通信协议
 - [NoneBot2](https://nonebot.dev/) - 优秀的 Python 异步机器人框架
-- [Google Gemini](https://ai.google.dev/) - 强大的多模态 AI 模型
+- [Google Gemini](https://ai.google.dev/) - 强大的多模态 AI 模型（通过 OpenAI 兼容格式调用）
 - [NapCat](https://github.com/NapNeko/NapCat) - 稳定的 QQ 客户端实现
 - [AstrBot](https://github.com/Soulter/AstrBot) - 部分思路和实现细节参考（AGPLv3）
 - [Serper](https://serper.dev/) - 搜索 API 服务

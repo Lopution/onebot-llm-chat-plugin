@@ -1,6 +1,6 @@
-"""Gemini API 客户端模块。
+"""Gemini API 客户端模块（OpenAI 兼容格式）。
 
-提供与 Google Gemini API 交互的异步客户端，支持：
+通过 OpenAI 兼容格式 API 调用 Gemini 模型的异步客户端，支持：
 - 多轮对话（上下文管理）
 - 流式响应与普通响应
 - 多 API Key 智能轮询（限流自动恢复）
@@ -8,7 +8,8 @@
 - 图片理解（多模态输入）
 
 注意：
-- 本模块依赖 httpx 进行异步 HTTP 请求
+- 本模块使用 OpenAI 兼容格式的 API 端点，而非 Gemini 原生 SDK
+- 依赖 httpx 进行异步 HTTP 请求
 - 上下文存储可选择内存或 SQLite 后端
 - 支持用户档案和图片处理等可选功能
 """
