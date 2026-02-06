@@ -20,9 +20,30 @@ NoneBot2 Gemini Chat 插件
 - lifecycle/matchers 等可选模块若因依赖缺失导入失败，则跳过副作用初始化
 """
 
+import os
+
 from nonebot import get_plugin_config
+from nonebot import logger as log
 
 from .config import Config
+
+STRICT_STARTUP = os.getenv("MIKA_STRICT_STARTUP", "0").strip().lower() in {"1", "true", "yes", "on"}
+
+try:
+    from nonebot.plugin import PluginMetadata
+except Exception:
+    PluginMetadata = None  # type: ignore[assignment]
+
+if PluginMetadata is not None:
+    __plugin_meta__ = PluginMetadata(
+        name="gemini_chat",
+        description="基于 OneBot 协议的 Gemini 聊天插件（v11/v12 best-effort 兼容）",
+        usage="配置 GEMINI_API_KEY 和 GEMINI_MASTER_ID 后启动；群聊通过 @ 触发回复。",
+        type="application",
+        homepage="https://github.com/Lopution/onebot-llm-chat-plugin",
+        config=Config,
+        supported_adapters={"~onebot.v11", "~onebot.v12"},
+    )
 
 
 # 获取并设置插件配置（tests 也会依赖这个符号存在）
@@ -44,9 +65,15 @@ try:
     # 导入匹配器以注册事件处理（测试环境可能不存在完整 adapter）
     try:
         from . import matchers  # noqa: F401, E402
-    except Exception:
-        pass
-except Exception:
+    except Exception as exc:
+        if STRICT_STARTUP:
+            raise
+        log.warning(f"gemini_chat: matcher 注册失败，已跳过（可设置 MIKA_STRICT_STARTUP=1 强制失败）| error={exc}")
+except Exception as exc:
+    if STRICT_STARTUP:
+        raise
+    log.warning(f"gemini_chat: 生命周期注册失败，已降级到最小模式（可设置 MIKA_STRICT_STARTUP=1 强制失败）| error={exc}")
+
     # 测试环境降级：提供最小占位符，避免 import 失败
     async def init_gemini():  # type: ignore[no-redef]
         return None
@@ -59,6 +86,5 @@ except Exception:
 
     def get_gemini_client():  # type: ignore[no-redef]
         raise RuntimeError("gemini_chat: get_gemini_client unavailable in minimal test environment")
-
 
 __all__ = ["plugin_config", "get_gemini_client"]

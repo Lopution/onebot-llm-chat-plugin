@@ -4,6 +4,8 @@
 
 **基于 OneBot 协议、使用 OpenAI 兼容格式 API 调用 Gemini 模型的多模态智能 QQ 聊天机器人插件**
 
+[中文](README.md) | [English](README_EN.md)
+
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10+-green.svg)](https://www.python.org/)
 [![NoneBot2](https://img.shields.io/badge/NoneBot-2.0+-red.svg)](https://nonebot.dev/)
@@ -159,6 +161,7 @@ cp .env.example .env
 | `GEMINI_OFFLINE_SYNC_ENABLED` | 离线同步（非标准 API，默认关闭） | ❌ | `false` |
 | `GEMINI_LONG_MESSAGE_CHUNK_SIZE` | 合并转发不可用时的分片大小 | ❌ | `800` |
 | `SERPER_API_KEY` | Serper 搜索 API Key | ❌ | - |
+| `MIKA_STRICT_STARTUP` | 严格启动模式（加载失败直接退出） | ❌ | `false` |
 
 > 📖 完整配置说明请参阅 [`docs/api/config.md`](docs/api/config.md)
 
