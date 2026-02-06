@@ -198,7 +198,10 @@ echo
 # 从 .env/.env.prod 读取 PORT（不 source，避免 JSON 数组等语法导致报错）
 BOT_PORT="8080"
 PORT_FILE=""
-if [ -f ".env" ]; then
+if [ "${ENVIRONMENT:-}" = "prod" ] && [ -f ".env.prod" ]; then
+    # 生产模式优先读取 .env.prod，避免 .env 并存时端口判断偏差
+    PORT_FILE=".env.prod"
+elif [ -f ".env" ]; then
     PORT_FILE=".env"
 elif [ -f ".env.prod" ]; then
     PORT_FILE=".env.prod"
