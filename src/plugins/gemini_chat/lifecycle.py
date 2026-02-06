@@ -13,12 +13,10 @@
 - [`config`](config.py:1): 插件配置定义
 """
 
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 import httpx
 from nonebot import get_driver
-
-if TYPE_CHECKING:
-    from nonebot.adapters import Bot
+from nonebot.adapters import Bot
 
 from .config import Config
 from .gemini_api import GeminiClient

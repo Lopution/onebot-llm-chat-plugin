@@ -13,12 +13,10 @@
 """
 
 import base64
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from nonebot import get_driver
-
-if TYPE_CHECKING:
-    from nonebot.adapters import Bot
+from nonebot.adapters import Bot
 
 from .config import Config
 from .utils.image_processor import extract_image_file_ids, extract_images

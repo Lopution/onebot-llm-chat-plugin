@@ -12,14 +12,13 @@
 - [`group_state`](group_state.py:1): 群状态管理
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from nonebot import on_message, on_command, get_plugin_config
+from nonebot.adapters import Bot, Event
 from nonebot import logger as log
 import random
 import time
-if TYPE_CHECKING:
-    from nonebot.adapters import Bot, Event
 
 from .config import Config
 from .handlers import handle_reset, handle_private, handle_group, parse_message_with_mentions
