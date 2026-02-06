@@ -159,7 +159,11 @@ cp .env.example .env
 | `GEMINI_MASTER_ID` | 主人 QQ 号 | ✅ | - |
 | `GEMINI_GROUP_WHITELIST` | 群组白名单 | ❌ | - |
 | `GEMINI_OFFLINE_SYNC_ENABLED` | 离线同步（非标准 API，默认关闭） | ❌ | `false` |
-| `GEMINI_LONG_MESSAGE_CHUNK_SIZE` | 合并转发不可用时的分片大小 | ❌ | `800` |
+| `GEMINI_LONG_REPLY_IMAGE_FALLBACK_ENABLED` | 发送失败后启用图片渲染兜底 | ❌ | `true` |
+| `GEMINI_LONG_REPLY_IMAGE_MAX_CHARS` | 长回复渲染图片的最大字符数 | ❌ | `12000` |
+| `GEMINI_LONG_REPLY_IMAGE_MAX_WIDTH` | 长回复渲染图片宽度（像素） | ❌ | `960` |
+| `GEMINI_LONG_REPLY_IMAGE_FONT_SIZE` | 长回复渲染图片字号 | ❌ | `24` |
+| `GEMINI_LONG_MESSAGE_CHUNK_SIZE` | 兼容保留（当前主链路不再使用） | ❌ | `800` |
 | `SERPER_API_KEY` | Serper 搜索 API Key | ❌ | - |
 | `MIKA_STRICT_STARTUP` | 严格启动模式（加载失败直接退出） | ❌ | `false` |
 

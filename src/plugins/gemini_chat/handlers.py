@@ -12,6 +12,7 @@
 - [`lifecycle`](lifecycle.py:1): 插件生命周期管理
 """
 
+import base64
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from nonebot import get_driver
@@ -35,6 +36,7 @@ from .metrics import metrics
 from .utils.session_lock import get_session_lock_manager
 from .utils.safe_api import safe_call_api, safe_send
 from .utils.event_context import build_event_context
+from .utils.text_image_renderer import render_text_to_png_bytes
 
 # 获取 driver 实例
 driver = get_driver()
@@ -543,11 +545,13 @@ async def _handle_private_locked(
     )
     
     log.success(f"私聊回复完成 | user={user_id} | reply_len={len(reply)}")
-    
-    if len(reply) >= plugin_config.gemini_forward_threshold:
-        await send_forward_msg(bot, event, reply)
-    else:
-        await bot.send(event, reply)
+    await send_reply_with_policy(
+        bot,
+        event,
+        reply,
+        is_proactive=False,
+        plugin_config=plugin_config,
+    )
 
 
 async def parse_message_with_mentions(bot: "Bot", event: Any) -> tuple:
@@ -995,15 +999,150 @@ async def _handle_group_locked(
     
     log.success(f"群聊回复完成 | group={ctx.group_id} | user={user_id_int} | reply_len={len(reply)}")
     
-    # 发送回复
-    # 发送回复
-    if len(reply) >= plugin_config.gemini_forward_threshold:
-        await send_forward_msg(bot, event, reply)
+    await send_reply_with_policy(
+        bot,
+        event,
+        reply,
+        is_proactive=is_proactive,
+        plugin_config=plugin_config,
+    )
+
+
+def _build_final_reply_text(reply_text: str, is_proactive: bool) -> str:
+    if is_proactive:
+        return f"【自主回复】\n{reply_text}"
+    return reply_text
+
+
+def _build_quote_image_segments(message_id: Optional[str], platform: str, image_base64: str) -> list[dict]:
+    segments: list[dict] = []
+    if message_id:
+        if "v12" in platform:
+            segments.append({"type": "reply", "data": {"message_id": message_id}})
+        else:
+            segments.append({"type": "reply", "data": {"id": message_id}})
+    segments.append({"type": "image", "data": {"file": f"base64://{image_base64}"}})
+    return segments
+
+
+async def send_rendered_image_with_quote(
+    bot: "Bot",
+    event: Any,
+    content: str,
+    plugin_config: Config = None,
+) -> bool:
+    """将文本渲染为图片并发送（优先引用）。"""
+    if plugin_config is None:
+        plugin_config = get_config()
+
+    try:
+        image_bytes = render_text_to_png_bytes(
+            content,
+            max_width=int(getattr(plugin_config, "gemini_long_reply_image_max_width", 960) or 960),
+            font_size=int(getattr(plugin_config, "gemini_long_reply_image_font_size", 24) or 24),
+            max_chars=int(getattr(plugin_config, "gemini_long_reply_image_max_chars", 12000) or 12000),
+        )
+    except Exception as e:
+        log.warning(f"文本渲染图片失败，跳过图片兜底: {e}")
+        return False
+
+    image_base64 = base64.b64encode(image_bytes).decode("ascii")
+    ctx = build_event_context(bot, event)
+    segments = _build_quote_image_segments(ctx.message_id, ctx.platform, image_base64)
+
+    if await safe_send(bot, event, segments, reply_message=True, at_sender=False):
+        return True
+
+    group_id_arg: Any = None
+    user_id_arg: Any = None
+    if ctx.group_id:
+        group_id_arg = int(ctx.group_id) if ctx.group_id.isdigit() else ctx.group_id
+    if ctx.user_id:
+        user_id_arg = int(ctx.user_id) if ctx.user_id.isdigit() else ctx.user_id
+
+    ok = False
+    if ctx.is_group and group_id_arg is not None:
+        ok = (
+            await safe_call_api(
+                bot,
+                "send_group_msg",
+                group_id=group_id_arg,
+                message=segments,
+                auto_escape=False,
+            )
+        ) is not None
+        if not ok:
+            ok = (
+                await safe_call_api(
+                    bot,
+                    "send_message",
+                    detail_type="group",
+                    group_id=group_id_arg,
+                    message=segments,
+                )
+            ) is not None
+    elif user_id_arg is not None:
+        ok = (
+            await safe_call_api(
+                bot,
+                "send_private_msg",
+                user_id=user_id_arg,
+                message=segments,
+                auto_escape=False,
+            )
+        ) is not None
+        if not ok:
+            ok = (
+                await safe_call_api(
+                    bot,
+                    "send_message",
+                    detail_type="private",
+                    user_id=user_id_arg,
+                    message=segments,
+                )
+            ) is not None
+
+    if not ok:
+        log.warning("图片引用发送失败")
+    return ok
+
+
+async def send_reply_with_policy(
+    bot: "Bot",
+    event: Any,
+    reply_text: str,
+    *,
+    is_proactive: bool,
+    plugin_config: Config = None,
+) -> None:
+    """统一回复发送策略。
+
+    策略顺序：
+    - 短消息：引用文本
+    - 长消息：优先 forward
+    - 失败：渲染图片并引用
+    - 再失败：单条纯文本并引用
+    """
+    if plugin_config is None:
+        plugin_config = get_config()
+
+    final_text = _build_final_reply_text(reply_text, is_proactive=is_proactive)
+    threshold = int(getattr(plugin_config, "gemini_forward_threshold", 300) or 300)
+    is_long = len(final_text) >= max(1, threshold)
+
+    if is_long:
+        if await send_forward_msg(bot, event, final_text, plugin_config=plugin_config):
+            return
     else:
-        # 统一回复逻辑：优先使用引用回复 (Quote) 但不 @ 用户；不支持则降级普通发送
-        # 用户要求：自主回复保留【自主回复】标签
-        final_text = f"【自主回复】\n{reply}" if is_proactive else reply
-        await safe_send(bot, event, final_text, reply_message=True, at_sender=False)
+        if await safe_send(bot, event, final_text, reply_message=True, at_sender=False):
+            return
+
+    if bool(getattr(plugin_config, "gemini_long_reply_image_fallback_enabled", True)):
+        if await send_rendered_image_with_quote(bot, event, final_text, plugin_config=plugin_config):
+            return
+
+    if not await safe_send(bot, event, final_text, reply_message=True, at_sender=False):
+        log.error("文本最终兜底发送失败")
 
 
 async def send_forward_msg(
@@ -1011,7 +1150,7 @@ async def send_forward_msg(
     event: Any,
     content: str,
     plugin_config: Config = None
-):
+) -> bool:
     """发送转发消息（用于长文本）
     
     Args:
@@ -1060,16 +1199,7 @@ async def send_forward_msg(
             log.debug(f"转发消息发送成功 | user={ctx.user_id}")
 
     if ok:
-        return
+        return True
 
-    log.warning("转发消息发送失败，回退到普通消息分片发送")
-    chunk_size = int(getattr(plugin_config, "gemini_long_message_chunk_size", 800) or 800)
-    chunk_size = max(1, min(chunk_size, 5000))
-    chunks = [content[i : i + chunk_size] for i in range(0, len(content), chunk_size)] if content else []
-    if not chunks:
-        await safe_send(bot, event, content)
-        return
-    for chunk in chunks:
-        if not chunk:
-            continue
-        await safe_send(bot, event, chunk)
+    log.warning("转发消息发送失败")
+    return False

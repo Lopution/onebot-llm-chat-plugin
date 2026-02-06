@@ -221,6 +221,17 @@ class TestConfigDefaults:
         config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
         
         assert config.gemini_forward_threshold == 300
+
+    def test_default_long_reply_image_fallback(self, valid_api_key: str):
+        """测试长回复图片兜底默认配置"""
+        from gemini_chat.config import Config
+
+        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+
+        assert config.gemini_long_reply_image_fallback_enabled is True
+        assert config.gemini_long_reply_image_max_chars == 12000
+        assert config.gemini_long_reply_image_max_width == 960
+        assert config.gemini_long_reply_image_font_size == 24
     
     def test_default_group_whitelist_empty(self, valid_api_key: str):
         """测试默认群白名单为空"""

@@ -454,7 +454,7 @@ class TestReplyMergeForward:
     
     @pytest.mark.asyncio
     async def test_reply_forward_fallback_on_error(self):
-        """测试转发失败时回退到普通消息"""
+        """测试转发失败时返回 False（不在本函数内降级）"""
         from gemini_chat.handlers import send_forward_msg
         from nonebot.adapters.onebot.v11 import GroupMessageEvent
         
@@ -470,10 +470,147 @@ class TestReplyMergeForward:
         content = "测试内容"
         
         # Act
-        await send_forward_msg(mock_bot, mock_event, content)
+        ok = await send_forward_msg(mock_bot, mock_event, content)
         
-        # Assert - 应该回退到普通发送
-        mock_bot.send.assert_called_once_with(mock_event, content)
+        # Assert
+        assert ok is False
+        mock_bot.send.assert_not_called()
+
+
+class TestSendReplyWithPolicy:
+    """发送策略测试"""
+
+    @pytest.mark.asyncio
+    async def test_short_reply_quote_success(self):
+        """短消息优先引用发送"""
+        from gemini_chat.handlers import send_reply_with_policy
+
+        mock_bot = AsyncMock()
+        mock_event = MagicMock()
+
+        mock_config = MagicMock()
+        mock_config.gemini_forward_threshold = 300
+        mock_config.gemini_long_reply_image_fallback_enabled = True
+
+        with patch("gemini_chat.handlers.safe_send", new=AsyncMock(return_value=True)) as mock_safe_send, \
+             patch("gemini_chat.handlers.send_forward_msg", new=AsyncMock(return_value=True)) as mock_forward, \
+             patch("gemini_chat.handlers.send_rendered_image_with_quote", new=AsyncMock(return_value=True)) as mock_image:
+            await send_reply_with_policy(
+                mock_bot,
+                mock_event,
+                "短消息",
+                is_proactive=False,
+                plugin_config=mock_config,
+            )
+
+        assert mock_safe_send.await_count == 1
+        mock_forward.assert_not_awaited()
+        mock_image.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_long_reply_forward_success(self):
+        """长消息优先转发"""
+        from gemini_chat.handlers import send_reply_with_policy
+
+        mock_bot = AsyncMock()
+        mock_event = MagicMock()
+
+        mock_config = MagicMock()
+        mock_config.gemini_forward_threshold = 10
+        mock_config.gemini_long_reply_image_fallback_enabled = True
+
+        with patch("gemini_chat.handlers.safe_send", new=AsyncMock(return_value=True)) as mock_safe_send, \
+             patch("gemini_chat.handlers.send_forward_msg", new=AsyncMock(return_value=True)) as mock_forward, \
+             patch("gemini_chat.handlers.send_rendered_image_with_quote", new=AsyncMock(return_value=True)) as mock_image:
+            await send_reply_with_policy(
+                mock_bot,
+                mock_event,
+                "这是一条很长很长很长的消息",
+                is_proactive=False,
+                plugin_config=mock_config,
+            )
+
+        mock_forward.assert_awaited_once()
+        mock_image.assert_not_awaited()
+        mock_safe_send.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_long_reply_forward_fail_then_image_success(self):
+        """长消息转发失败后，回退图片发送"""
+        from gemini_chat.handlers import send_reply_with_policy
+
+        mock_bot = AsyncMock()
+        mock_event = MagicMock()
+
+        mock_config = MagicMock()
+        mock_config.gemini_forward_threshold = 10
+        mock_config.gemini_long_reply_image_fallback_enabled = True
+
+        with patch("gemini_chat.handlers.safe_send", new=AsyncMock(return_value=True)) as mock_safe_send, \
+             patch("gemini_chat.handlers.send_forward_msg", new=AsyncMock(return_value=False)) as mock_forward, \
+             patch("gemini_chat.handlers.send_rendered_image_with_quote", new=AsyncMock(return_value=True)) as mock_image:
+            await send_reply_with_policy(
+                mock_bot,
+                mock_event,
+                "这是一条很长很长很长的消息",
+                is_proactive=False,
+                plugin_config=mock_config,
+            )
+
+        mock_forward.assert_awaited_once()
+        mock_image.assert_awaited_once()
+        mock_safe_send.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_long_reply_image_fail_then_text_quote(self):
+        """图片失败后回退单条文本引用"""
+        from gemini_chat.handlers import send_reply_with_policy
+
+        mock_bot = AsyncMock()
+        mock_event = MagicMock()
+
+        mock_config = MagicMock()
+        mock_config.gemini_forward_threshold = 10
+        mock_config.gemini_long_reply_image_fallback_enabled = True
+
+        with patch("gemini_chat.handlers.safe_send", new=AsyncMock(return_value=True)) as mock_safe_send, \
+             patch("gemini_chat.handlers.send_forward_msg", new=AsyncMock(return_value=False)) as mock_forward, \
+             patch("gemini_chat.handlers.send_rendered_image_with_quote", new=AsyncMock(return_value=False)) as mock_image:
+            await send_reply_with_policy(
+                mock_bot,
+                mock_event,
+                "这是一条很长很长很长的消息",
+                is_proactive=False,
+                plugin_config=mock_config,
+            )
+
+        mock_forward.assert_awaited_once()
+        mock_image.assert_awaited_once()
+        mock_safe_send.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_proactive_reply_keeps_prefix(self):
+        """主动回复保留前缀后再走发送策略"""
+        from gemini_chat.handlers import send_reply_with_policy
+
+        mock_bot = AsyncMock()
+        mock_event = MagicMock()
+
+        mock_config = MagicMock()
+        mock_config.gemini_forward_threshold = 300
+        mock_config.gemini_long_reply_image_fallback_enabled = True
+
+        with patch("gemini_chat.handlers.safe_send", new=AsyncMock(return_value=True)) as mock_safe_send:
+            await send_reply_with_policy(
+                mock_bot,
+                mock_event,
+                "你好",
+                is_proactive=True,
+                plugin_config=mock_config,
+            )
+
+        args, _kwargs = mock_safe_send.await_args
+        assert "【自主回复】" in args[2]
 
 
 class TestErrorHandling:

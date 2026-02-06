@@ -70,13 +70,17 @@ NapCat 通常会把 OneBot v11 配置放在挂载目录里（例如 `napcat/data
 
 ## 兼容策略（best-effort + 降级）
 
-### 1) 长消息发送：Forward → Chunk
-优先尝试合并转发（Forward）：
+### 1) 发送策略：短消息引用，长消息 Forward
+- 短消息：优先走引用回复（Quote）
+- 长消息：优先尝试合并转发（Forward）
+
+Forward 调用的典型 API：
 - `send_group_forward_msg`
 - `send_private_forward_msg`
 
-如果 API 不存在或调用失败，会自动降级为**分片发送**（避免 handler 直接报错导致消息链路中断）：
-- 分片大小由 `GEMINI_LONG_MESSAGE_CHUNK_SIZE` 控制（默认 `800`）
+若 Forward 或引用发送失败，会自动回退到“渲染图片并引用发送”；若图片发送仍失败，再回退为“单条纯文本引用发送”。
+  
+`GEMINI_LONG_MESSAGE_CHUNK_SIZE` 当前仅作为兼容保留，不再是默认主链路兜底。
 
 ### 2) 引用回复（Quote）优先，但不强依赖
 优先使用：
@@ -108,5 +112,7 @@ NapCat 通常会把 OneBot v11 配置放在挂载目录里（例如 `napcat/data
 这不会影响 Bot 正常回复，只是多模态能力降级。
 
 ### “合并转发失败”
-不同实现对 Forward 支持差异较大；失败后插件会自动降级为分片发送。
-如需更少刷屏，可适当调大 `GEMINI_LONG_MESSAGE_CHUNK_SIZE`。
+不同实现对 Forward 支持差异较大；失败后插件会自动降级为“图片引用 -> 单条文本引用”。
+
+若你希望关闭图片兜底，可设置：
+- `GEMINI_LONG_REPLY_IMAGE_FALLBACK_ENABLED=false`

@@ -294,7 +294,15 @@ class Config(BaseModel):
     
     # ==================== 消息处理配置 ====================
     gemini_forward_threshold: int = 300      # 合并转发阈值 (字符数)
-    # forward 不可用时，长消息按该长度分片发送（跨实现稳定）
+    # 长回复发送失败时，是否启用“渲染图片并发送”兜底
+    gemini_long_reply_image_fallback_enabled: bool = True
+    # 长回复渲染图片时最多处理的字符数（超出会截断）
+    gemini_long_reply_image_max_chars: int = 12000
+    # 长回复渲染图片最大宽度（像素）
+    gemini_long_reply_image_max_width: int = 960
+    # 长回复渲染图片字号
+    gemini_long_reply_image_font_size: int = 24
+    # 兼容保留：历史分片配置，当前主链路不再使用
     gemini_long_message_chunk_size: int = 800
 
     # ==================== 搜索缓存配置 ====================

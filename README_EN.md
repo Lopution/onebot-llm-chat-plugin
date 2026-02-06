@@ -158,7 +158,11 @@ cp .env.example .env
 | `GEMINI_MASTER_ID` | Master QQ ID | ✅ | - |
 | `GEMINI_GROUP_WHITELIST` | Group whitelist | ❌ | - |
 | `GEMINI_OFFLINE_SYNC_ENABLED` | Offline sync (non-standard API, off by default) | ❌ | `false` |
-| `GEMINI_LONG_MESSAGE_CHUNK_SIZE` | Chunk size when forward message is unavailable | ❌ | `800` |
+| `GEMINI_LONG_REPLY_IMAGE_FALLBACK_ENABLED` | Enable rendered-image fallback on send failure | ❌ | `true` |
+| `GEMINI_LONG_REPLY_IMAGE_MAX_CHARS` | Max chars for rendered long-reply image | ❌ | `12000` |
+| `GEMINI_LONG_REPLY_IMAGE_MAX_WIDTH` | Rendered image width (px) | ❌ | `960` |
+| `GEMINI_LONG_REPLY_IMAGE_FONT_SIZE` | Rendered image font size | ❌ | `24` |
+| `GEMINI_LONG_MESSAGE_CHUNK_SIZE` | Compatibility-only (not used in main fallback chain) | ❌ | `800` |
 | `SERPER_API_KEY` | Serper API key | ❌ | - |
 | `MIKA_STRICT_STARTUP` | Strict startup mode (fail-fast on loader errors) | ❌ | `false` |
 
