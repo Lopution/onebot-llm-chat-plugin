@@ -16,10 +16,9 @@ import base64
 from typing import Any, Dict, List, Optional, Union
 
 from nonebot import get_driver
-from nonebot.adapters import Bot
 
 from .config import Config
-from .utils.image_processor import extract_image_file_ids, extract_images
+from .utils.image_processor import extract_images, resolve_image_urls
 from .deps import get_gemini_client_dep, get_config
 from nonebot import logger as log
 from .utils.recent_images import get_image_cache
@@ -35,6 +34,7 @@ from .utils.session_lock import get_session_lock_manager
 from .utils.safe_api import safe_call_api, safe_send
 from .utils.event_context import build_event_context
 from .utils.text_image_renderer import render_text_to_png_bytes
+from .utils.nb_types import BotT
 
 # 获取 driver 实例
 driver = get_driver()
@@ -48,7 +48,7 @@ def _make_session_key(*, user_id: str, group_id: Optional[str]) -> str:
 
 
 async def _resolve_onebot_v12_image_urls(
-    bot: "Bot",
+    bot: BotT,
     event: Any,
     image_urls: list[str],
     *,
@@ -59,27 +59,16 @@ async def _resolve_onebot_v12_image_urls(
     说明：为了保持既有测试的可 patch 性，这里仍以 :func:`extract_images` 作为主提取器，
     再补充通过 ``get_file`` 解析 file_id 的逻辑。
     """
-    if max_images <= 0 or len(image_urls) >= max_images:
+    if max_images <= 0:
         return image_urls
-
-    remaining = max_images - len(image_urls)
-    file_ids = extract_image_file_ids(getattr(event, "original_message", None), max_images=remaining)
-    if not file_ids:
-        return image_urls
-
-    for file_id in file_ids:
-        res = await safe_call_api(bot, "get_file", file_id=file_id)
-        if not isinstance(res, dict):
-            continue
-        url = str(res.get("url") or res.get("download_url") or "").strip()
-        if not (url.startswith("http://") or url.startswith("https://")):
-            continue
-        if url not in image_urls:
-            image_urls.append(url)
-            if len(image_urls) >= max_images:
-                break
-
-    return image_urls
+    resolved = await resolve_image_urls(bot, getattr(event, "original_message", None), max_images=max_images)
+    merged: List[str] = []
+    for url in [*(image_urls or []), *resolved]:
+        if url and url not in merged:
+            merged.append(url)
+        if len(merged) >= max_images:
+            break
+    return merged
 
 
 def _render_transcript_content(content: Any) -> str:
@@ -189,14 +178,14 @@ def _handle_task_exception(task: "asyncio.Task") -> None:
 
 
 @driver.on_bot_connect
-async def sync_offline_messages(bot: "Bot"):
+async def sync_offline_messages(bot: BotT):
     """Bot 启动时同步离线期间的群聊消息（后台异步执行）"""
     import asyncio
     task = asyncio.create_task(_sync_offline_messages_task(bot))
     task.add_done_callback(_handle_task_exception)
 
 
-async def _sync_offline_messages_task(bot: "Bot"):
+async def _sync_offline_messages_task(bot: BotT):
     """同步离线消息的具体逻辑"""
     # 使用依赖注入获取配置和客户端
     plugin_config = get_config()
@@ -309,7 +298,7 @@ async def _sync_offline_messages_task(bot: "Bot"):
 
 
 async def handle_reset(
-    bot: "Bot",
+    bot: BotT,
     event: Any,
     plugin_config: Config = None,
     gemini_client = None,
@@ -317,7 +306,7 @@ async def handle_reset(
     """处理清空记忆指令
     
     Args:
-        bot: "Bot" 实例
+        bot: BotT 实例
         event: 消息事件
         plugin_config: 插件配置（可选，默认通过依赖注入获取）
         gemini_client: API 客户端（可选，默认通过依赖注入获取）
@@ -345,7 +334,7 @@ async def handle_reset(
 
 
 async def handle_private(
-    bot: "Bot",
+    bot: BotT,
     event: Any,
     plugin_config: Config = None,
     gemini_client = None,
@@ -370,8 +359,6 @@ async def handle_private(
     # 使用依赖注入获取资源（如果未提供）
     if plugin_config is None:
         plugin_config = get_config()
-    if gemini_client is None:
-        gemini_client = get_gemini_client()
     
     if not plugin_config.gemini_reply_private:
         return
@@ -385,7 +372,7 @@ async def handle_private(
 
 async def _handle_private_locked(
     *,
-    bot: "Bot",
+    bot: BotT,
     event: Any,
     plugin_config: Config,
     gemini_client,
@@ -396,12 +383,12 @@ async def _handle_private_locked(
     image_urls = await _resolve_onebot_v12_image_urls(
         bot, event, image_urls, max_images=int(plugin_config.gemini_max_images)
     )
-    image_urls = await _resolve_onebot_v12_image_urls(
-        bot, event, image_urls, max_images=int(plugin_config.gemini_max_images)
-    )
     
     if not message_text and not image_urls:
         return
+
+    if gemini_client is None:
+        gemini_client = get_gemini_client()
 
     # 兼容 tests：测试用例可能传入 `MagicMock(spec=Config)`，但未补齐新增的历史图片配置字段。
     # 这里为这些字段提供最小默认值，避免 AttributeError（不改变已有行为）。
@@ -552,14 +539,20 @@ async def _handle_private_locked(
     )
 
 
-async def parse_message_with_mentions(bot: "Bot", event: Any) -> tuple:
+async def parse_message_with_mentions(
+    bot: BotT,
+    event: Any,
+    *,
+    max_images: int = 10,
+    quote_image_caption_enabled: bool = True,
+) -> tuple:
     """解析消息并保留 @ 提及和引用内容
     
     将消息中的 at 段转换为文本格式 "@昵称"，
     将 reply 段解析为被引用消息的内容，以便 LLM 能够感知上下文。
     
     Args:
-        bot: "Bot" 实例
+        bot: BotT 实例
         event: 群消息事件
         
     Returns:
@@ -651,6 +644,9 @@ async def parse_message_with_mentions(bot: "Bot", event: Any) -> tuple:
                         
                         # 解析被引用消息的内容
                         raw_message = msg_data.get("message", [])
+                        resolved_quote_images = await resolve_image_urls(
+                            bot, raw_message, max_images=max_images
+                        )
                         quoted_parts = []
                         
                         # 如果 raw_message 是字符串（raw_message 格式）
@@ -665,21 +661,7 @@ async def parse_message_with_mentions(bot: "Bot", event: Any) -> tuple:
                                 if seg_type == "text":
                                     quoted_parts.append(seg_data.get("text", ""))
                                 elif seg_type == "image":
-                                    # 提取图片 URL
-                                    img_url = seg_data.get("url") or seg_data.get("file")
-                                    if img_url:
-                                        extra_images.append(img_url)
-                                        quoted_parts.append("[图片]")
-                                        # 缓存这张图片以供后续使用
-                                        image_cache.cache_images(
-                                            group_id=group_id_str,
-                                            user_id=sender_id,
-                                            image_urls=[img_url],
-                                            sender_name=sender_name,
-                                            message_id=reply_msg_id_str
-                                        )
-                                    else:
-                                        quoted_parts.append("[图片]")
+                                    quoted_parts.append("[图片]")
                                 elif seg_type == "face":
                                     # QQ 表情
                                     quoted_parts.append("[表情]")
@@ -705,6 +687,21 @@ async def parse_message_with_mentions(bot: "Bot", event: Any) -> tuple:
                         
                         quoted_text = "".join(quoted_parts).strip()
                         
+                        if resolved_quote_images:
+                            for img_url in resolved_quote_images:
+                                if img_url not in extra_images:
+                                    extra_images.append(img_url)
+                            image_cache.cache_images(
+                                group_id=group_id_str,
+                                user_id=sender_id,
+                                image_urls=resolved_quote_images,
+                                sender_name=sender_name,
+                                message_id=reply_msg_id_str,
+                            )
+                            if quote_image_caption_enabled:
+                                quoted_parts.append(f"[引用图片共{len(resolved_quote_images)}张]")
+                                quoted_text = "".join(quoted_parts).strip()
+
                         if quoted_text or extra_images:
                             quoted_content = f"[引用 {sender_name} 的消息: {quoted_text or '[多媒体内容]'}]"
                         
@@ -726,7 +723,7 @@ async def parse_message_with_mentions(bot: "Bot", event: Any) -> tuple:
 
 
 async def handle_group(
-    bot: "Bot",
+    bot: BotT,
     event: Any,
     plugin_config: Config = None,
     gemini_client = None,
@@ -795,7 +792,7 @@ async def handle_group(
 
 async def _handle_group_locked(
     *,
-    bot: "Bot",
+    bot: BotT,
     event: Any,
     plugin_config: Config,
     gemini_client,
@@ -807,15 +804,26 @@ async def _handle_group_locked(
         return
 
     # 解析消息，获取文本和引用消息中的额外图片
-    raw_text, reply_images = await parse_message_with_mentions(bot, event)
+    raw_text, reply_images = await parse_message_with_mentions(
+        bot,
+        event,
+        max_images=int(plugin_config.gemini_max_images),
+        quote_image_caption_enabled=bool(
+            getattr(plugin_config, "gemini_quote_image_caption_enabled", True)
+        ),
+    )
     # 兼容测试/异常输入：如果 original_message 为空，回退到 get_plaintext()
     if not raw_text:
         raw_text = (ctx.plaintext or "").strip()
-    image_urls = extract_images(getattr(event, "original_message", None), plugin_config.gemini_max_images)
+    image_urls = await resolve_image_urls(
+        bot,
+        getattr(event, "original_message", None),
+        max_images=int(plugin_config.gemini_max_images),
+    )
     
     # 合并引用消息中的图片
     if reply_images:
-        image_urls = image_urls + reply_images
+        image_urls = list(dict.fromkeys([*image_urls, *reply_images]))
         log.debug(f"[Reply图片] 合并引用图片 | count={len(reply_images)}")
     
     if not raw_text and not image_urls:
@@ -1024,7 +1032,7 @@ def _build_quote_image_segments(message_id: Optional[str], platform: str, image_
 
 
 async def send_rendered_image_with_quote(
-    bot: "Bot",
+    bot: BotT,
     event: Any,
     content: str,
     plugin_config: Config = None,
@@ -1106,7 +1114,7 @@ async def send_rendered_image_with_quote(
 
 
 async def send_reply_with_policy(
-    bot: "Bot",
+    bot: BotT,
     event: Any,
     reply_text: str,
     *,
@@ -1144,7 +1152,7 @@ async def send_reply_with_policy(
 
 
 async def send_forward_msg(
-    bot: "Bot",
+    bot: BotT,
     event: Any,
     content: str,
     plugin_config: Config = None
@@ -1152,7 +1160,7 @@ async def send_forward_msg(
     """发送转发消息（用于长文本）
     
     Args:
-        bot: "Bot" 实例
+        bot: BotT 实例
         event: 消息事件
         content: 要发送的内容
         plugin_config: 插件配置（可选，默认通过依赖注入获取）

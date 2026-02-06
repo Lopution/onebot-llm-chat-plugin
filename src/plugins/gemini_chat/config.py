@@ -89,6 +89,14 @@ class Config(BaseModel):
     
     # 启动时是否验证 API 连接
     gemini_validate_on_startup: bool = True
+    # /metrics 是否支持 Prometheus 文本导出
+    gemini_metrics_prometheus_enabled: bool = True
+    # /health 是否启用主动 API 连通性探测（默认关闭，避免额外成本）
+    gemini_health_check_api_probe_enabled: bool = False
+    # 主动探测超时（秒）
+    gemini_health_check_api_probe_timeout_seconds: float = 3.0
+    # 主动探测缓存 TTL（秒）
+    gemini_health_check_api_probe_ttl_seconds: int = 30
     
     @field_validator('gemini_temperature', 'gemini_proactive_temperature')
     @classmethod
@@ -96,6 +104,20 @@ class Config(BaseModel):
         """验证温度参数范围（0.0-2.0）"""
         if v < 0.0 or v > 2.0:
             raise ValueError(f"温度参数必须在 0.0 到 2.0 之间，当前值: {v}")
+        return v
+
+    @field_validator("gemini_health_check_api_probe_timeout_seconds")
+    @classmethod
+    def validate_health_probe_timeout(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("gemini_health_check_api_probe_timeout_seconds 必须大于 0")
+        return v
+
+    @field_validator("gemini_health_check_api_probe_ttl_seconds")
+    @classmethod
+    def validate_health_probe_ttl(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("gemini_health_check_api_probe_ttl_seconds 必须大于等于 1")
         return v
     
     @field_validator('gemini_api_key')
@@ -152,6 +174,15 @@ class Config(BaseModel):
         if not v.startswith(('http://', 'https://')):
             raise ValueError("Base URL 必须以 http:// 或 https:// 开头")
         return v.rstrip('/')  # 统一去除尾部斜杠
+
+    @field_validator("gemini_context_mode")
+    @classmethod
+    def validate_context_mode(cls, v: str) -> str:
+        """验证上下文模式。"""
+        value = (v or "").strip().lower()
+        if value not in {"legacy", "structured"}:
+            raise ValueError("gemini_context_mode 仅支持 legacy 或 structured")
+        return value
     
     @field_validator('gemini_master_id')
     @classmethod
@@ -199,6 +230,61 @@ class Config(BaseModel):
             keys.append(self.gemini_api_key)
         keys.extend(self.gemini_api_key_list)
         return list(set(keys))  # 去重
+
+    # ==================== 配置分层访问器（P1） ====================
+    def get_core_config(self) -> dict:
+        """核心对话/网络配置（分层读取，不改变现有 env 键）。"""
+        return {
+            "api_key": self.gemini_api_key,
+            "api_key_list": list(self.gemini_api_key_list),
+            "base_url": self.gemini_base_url,
+            "model": self.gemini_model,
+            "fast_model": self.gemini_fast_model,
+            "max_context": self.gemini_max_context,
+            "temperature": self.gemini_temperature,
+            "http_timeout_seconds": self.gemini_http_client_timeout_seconds,
+        }
+
+    def get_search_config(self) -> dict:
+        """搜索相关配置分层。"""
+        return {
+            "cache_ttl_seconds": self.gemini_search_cache_ttl_seconds,
+            "cache_max_size": self.gemini_search_cache_max_size,
+            "classify_cache_ttl_seconds": self.gemini_search_classify_cache_ttl_seconds,
+            "classify_cache_max_size": self.gemini_search_classify_cache_max_size,
+            "llm_gate_enabled": self.gemini_search_llm_gate_enabled,
+            "llm_gate_fallback_mode": self.gemini_search_llm_gate_fallback_mode,
+        }
+
+    def get_image_config(self) -> dict:
+        """图片处理与缓存配置分层。"""
+        return {
+            "max_images": self.gemini_max_images,
+            "require_keyword": self.gemini_image_require_keyword,
+            "download_concurrency": self.gemini_image_download_concurrency,
+            "cache_max_entries": self.gemini_image_cache_max_entries,
+            "keywords": list(self.gemini_image_keywords),
+        }
+
+    def get_proactive_config(self) -> dict:
+        """主动发言配置分层。"""
+        return {
+            "keywords": list(self.gemini_proactive_keywords),
+            "rate": self.gemini_proactive_rate,
+            "cooldown_seconds": self.gemini_proactive_cooldown,
+            "cooldown_messages": self.gemini_proactive_cooldown_messages,
+            "heat_threshold": self.gemini_heat_threshold,
+            "ignore_len": self.gemini_proactive_ignore_len,
+        }
+
+    def get_observability_config(self) -> dict:
+        """可观测性配置分层。"""
+        return {
+            "prometheus_enabled": self.gemini_metrics_prometheus_enabled,
+            "health_api_probe_enabled": self.gemini_health_check_api_probe_enabled,
+            "health_api_probe_timeout_seconds": self.gemini_health_check_api_probe_timeout_seconds,
+            "health_api_probe_ttl_seconds": self.gemini_health_check_api_probe_ttl_seconds,
+        }
     
     # ==================== 用户标识配置 ====================
     gemini_master_id: int = 0              # Master 的 QQ 号
@@ -214,6 +300,18 @@ class Config(BaseModel):
     gemini_history_count: int = 50     # 群历史消息查询数量
     # SQLiteContextStore 的 LRU 缓存条目数上限（越小越省内存，越大越高命中率）
     gemini_context_cache_max_size: int = 200
+    # 上下文存储模式：legacy=历史兼容，structured=结构化内容（推荐）
+    gemini_context_mode: str = "structured"
+    # 上下文最大保留轮次（优先于按消息条数截断）
+    gemini_context_max_turns: int = 30
+    # 软 token 上限（估算），超过后会逐轮裁剪旧上下文
+    gemini_context_max_tokens_soft: int = 12000
+    # 是否启用摘要压缩（默认关闭，稳定优先）
+    gemini_context_summary_enabled: bool = False
+    # 多模态严格模式：清理不合法的历史多模态块，避免接口报错
+    gemini_multimodal_strict: bool = True
+    # 是否为引用消息中的图片注入简短说明（best-effort）
+    gemini_quote_image_caption_enabled: bool = True
 
     # ==================== OneBot 兼容性配置 ====================
     # 离线消息同步依赖非标准 API（如 get_group_msg_history），默认关闭以提升兼容性
@@ -304,6 +402,17 @@ class Config(BaseModel):
     gemini_long_reply_image_font_size: int = 24
     # 兼容保留：历史分片配置，当前主链路不再使用
     gemini_long_message_chunk_size: int = 800
+
+    # 空回复本地收敛策略（传输层）
+    # 在不重跑整条业务链路（分类/构建/上下文降级）的前提下，做有限次快速重试
+    gemini_empty_reply_local_retries: int = 1
+    gemini_empty_reply_local_retry_delay_seconds: float = 0.4
+    # 传输层超时本地重试（仅针对 TimeoutException）
+    gemini_transport_timeout_retries: int = 1
+    gemini_transport_timeout_retry_delay_seconds: float = 0.6
+    # 是否允许空回复触发业务级上下文降级重试（默认关闭，便于排障）
+    gemini_empty_reply_context_degrade_enabled: bool = False
+    gemini_empty_reply_context_degrade_max_level: int = 2
 
     # ==================== 搜索缓存配置 ====================
     gemini_search_cache_ttl_seconds: int = 60

@@ -12,10 +12,7 @@
 - [`group_state`](group_state.py:1): 群状态管理
 """
 
-from typing import Any
-
 from nonebot import on_message, on_command, get_plugin_config
-from nonebot.adapters import Bot, Event
 from nonebot import logger as log
 import random
 import time
@@ -27,9 +24,10 @@ from .utils.recent_images import get_image_cache
 from .group_state import heat_monitor, get_proactive_cooldowns, get_proactive_message_counts
 from .metrics import metrics
 from .utils.event_context import build_event_context
+from .utils.nb_types import BotT, EventT
 
 
-async def check_at_me_anywhere(bot: "Bot", event: "Event") -> bool:
+async def check_at_me_anywhere(bot: BotT, event: EventT) -> bool:
     """检查消息是否 @ 了机器人
     
     OneBot V11 Adapter 的 _check_at_me() 会在消息到达 matcher 之前
@@ -83,14 +81,14 @@ reset_cmd = on_command("清空记忆", aliases={"reset", "重置记忆"}, priori
 
 
 @reset_cmd.handle()
-async def _handle_reset(bot: "Bot", event: "Event"):
+async def _handle_reset(bot: BotT, event: EventT):
     """清空记忆指令处理"""
     await handle_reset(bot, event, plugin_config)
 
 
 # ==================== 消息匹配器 ====================
 
-async def _is_private_message(bot: "Bot", event: "Event") -> bool:
+async def _is_private_message(bot: BotT, event: EventT) -> bool:
     ctx = build_event_context(bot, event)
     return bool(ctx.user_id) and not ctx.is_group
 
@@ -100,7 +98,7 @@ private_chat = on_message(rule=_is_private_message, priority=10, block=False)
 
 
 @private_chat.handle()
-async def _handle_private(bot: "Bot", event: "Event"):
+async def _handle_private(bot: BotT, event: EventT):
     """私聊消息处理"""
     await handle_private(bot, event, plugin_config)
 
@@ -110,7 +108,7 @@ group_chat = on_message(rule=check_at_me_anywhere, priority=10, block=False)
 
 
 @group_chat.handle()
-async def _handle_group(bot: "Bot", event: "Event"):
+async def _handle_group(bot: BotT, event: EventT):
     """群聊消息处理（@机器人时触发）"""
     await handle_group(bot, event, plugin_config)
 
@@ -120,7 +118,7 @@ async def _handle_group(bot: "Bot", event: "Event"):
 _proactive_cooldowns = get_proactive_cooldowns()
 _proactive_message_counts = get_proactive_message_counts()
 
-async def check_proactive(event: "Event") -> bool:
+async def check_proactive(event: EventT) -> bool:
     """检查是否触发主动发言 (二级触发：感知层)"""
     # NOTE: rule 只能拿到 event；这里基于 duck typing 做 best-effort。
     group_id_str = str(getattr(event, "group_id", ""))
@@ -267,7 +265,7 @@ async def check_proactive(event: "Event") -> bool:
 proactive_chat = on_message(rule=check_proactive, priority=98, block=False)
 
 @proactive_chat.handle()
-async def _handle_proactive(bot: "Bot", event: "Event"):
+async def _handle_proactive(bot: BotT, event: EventT):
     """主动发言处理 (二级触发：认知层)"""
     from .deps import get_gemini_client_dep
 
@@ -379,7 +377,7 @@ image_cache_matcher = on_message(priority=99, block=False)
 
 
 @image_cache_matcher.handle()
-async def _cache_images(bot: "Bot", event: "Event"):
+async def _cache_images(bot: BotT, event: EventT):
     """缓存群聊中的图片消息 & 记录热度
     
     这个 matcher 优先级很低（99），能看到几乎所有群消息。

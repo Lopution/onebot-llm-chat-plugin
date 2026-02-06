@@ -11,7 +11,6 @@
 - [`context_compress`](context_compress.py:1): 上下文压缩算法
 - [`context_db`](context_db.py:1): 数据库连接管理
 """
-import asyncio
 import json
 import re
 from typing import List, Dict, Any, Optional, Tuple, TypedDict, Union
@@ -19,10 +18,13 @@ from typing import List, Dict, Any, Optional, Tuple, TypedDict, Union
 from nonebot import logger as log
 
 from .context_cache import LRUCache
+from .context_manager import ContextManager
 from .context_compress import compress_context_for_safety as _compress_context_for_safety
 from .context_compress import compress_message_content as _compress_message_content
 from .context_compress import sanitize_text_for_safety as _sanitize_text_for_safety
+from .context_schema import normalize_content
 from .context_db import DB_PATH, get_db, init_database, close_database
+from .session_lock import SessionLockManager
 
 # 内存缓存最大条目数（越小越省内存）
 MAX_CACHE_SIZE: int = 200
@@ -50,6 +52,8 @@ class MessageDict(TypedDict, total=False):
     content: Union[str, List[Dict[str, Any]]]  # 字符串或多模态列表
     message_id: str
     timestamp: float  # 消息时间戳
+    tool_calls: List[Dict[str, Any]]
+    tool_call_id: str
 
 
 class SQLiteContextStore:
@@ -82,15 +86,34 @@ class SQLiteContextStore:
         (r"我今年(\d{1,3})", "age"),
     ]
     
-    def __init__(self, max_context: int = 40, max_cache_size: int = MAX_CACHE_SIZE):
+    def __init__(
+        self,
+        max_context: int = 40,
+        max_cache_size: int = MAX_CACHE_SIZE,
+        *,
+        context_mode: str = "structured",
+        max_turns: int = 30,
+        max_tokens_soft: int = 12000,
+        summary_enabled: bool = False,
+    ):
         self.max_context = max_context
         # 使用 LRU 缓存替代普通字典，限制缓存大小防止内存溢出
         self._cache: LRUCache = LRUCache(max_size=max_cache_size)
         self._max_cache_size = max_cache_size
+        self._context_manager = ContextManager(
+            context_mode=context_mode,
+            max_turns=max_turns,
+            max_tokens_soft=max_tokens_soft,
+            summary_enabled=summary_enabled,
+            hard_max_messages=max_context * CONTEXT_MESSAGE_MULTIPLIER,
+        )
         # 关键信息缓存（用户 QQ 号 -> 提取的信息）
         self._key_info_cache: Dict[str, Dict[str, str]] = {}
-        # 写锁（防止并发 Read-Modify-Write 导致数据丢失）
-        self._write_lock: asyncio.Lock = asyncio.Lock()
+        # 会话级写锁池（按 context_key 串行，避免全局锁造成跨会话阻塞）
+        self._lock_manager = SessionLockManager(
+            max_locks=max(512, max_cache_size * 4),
+            ttl_seconds=3600.0,
+        )
     
     def _make_key(self, user_id: str, group_id: Optional[str] = None) -> str:
         """生成上下文键
@@ -282,19 +305,16 @@ class SQLiteContextStore:
         策略：仅保留最近 N 条完整消息（FIFO）
         注意：用户决定禁用智能摘要功能，因此不再注入摘要。
         """
-        max_messages = self.max_context * CONTEXT_MESSAGE_MULTIPLIER  # 默认 80 条
-        
-        if len(messages) <= max_messages:
-            return messages
-        
-        # 简单截断，保留最近的消息
-        compressed = messages[-max_messages:]
-            
+        max_messages = self.max_context * CONTEXT_MESSAGE_MULTIPLIER
+        compressed = self._context_manager.process(messages)
+        if len(compressed) > max_messages:
+            compressed = compressed[-max_messages:]
+
         log.debug(
             f"上下文截断 | key={context_key} | "
             f"原消息数={len(messages)} | 截断后={len(compressed)}"
         )
-        
+
         return compressed
     
     def _sanitize_text_for_safety(self, text: str) -> str:
@@ -332,7 +352,8 @@ class SQLiteContextStore:
             ) as cursor:
                 row = await cursor.fetchone()
                 if row:
-                    messages = json.loads(row[0])
+                    raw_messages = json.loads(row[0])
+                    messages = self._context_manager.normalize(raw_messages)
                     self._cache.set(key, messages)
                     log.debug(f"从数据库加载上下文: {key} | 消息数={len(messages)}")
                     return messages
@@ -348,22 +369,31 @@ class SQLiteContextStore:
         content: Any,
         group_id: Optional[str] = None,
         message_id: Optional[str] = None,
-        timestamp: Optional[float] = None
+        timestamp: Optional[float] = None,
+        tool_calls: Optional[List[Dict[str, Any]]] = None,
+        tool_call_id: Optional[str] = None,
     ) -> None:
         """添加消息到上下文
         
         改进：使用智能压缩替代简单截断，保留关键用户信息
         """
-        async with self._write_lock:
-            key = self._make_key(user_id, group_id)
+        key = self._make_key(user_id, group_id)
+        async with self._lock_manager.get_lock(key):
             
             # 获取当前上下文
             messages = await self.get_context(user_id, group_id)
             
             # 构建消息对象
-            new_msg = {"role": role, "content": content}
+            new_msg: MessageDict = {
+                "role": role,
+                "content": normalize_content(content),
+            }
             if message_id:
                 new_msg["message_id"] = str(message_id)
+            if tool_calls and role == "assistant":
+                new_msg["tool_calls"] = tool_calls
+            if tool_call_id and role == "tool":
+                new_msg["tool_call_id"] = str(tool_call_id)
             # 添加时间戳
             if timestamp is None:
                 import time
@@ -372,8 +402,9 @@ class SQLiteContextStore:
                 
             messages.append(new_msg)
             
-            # 智能压缩上下文（保留关键信息，替代简单截断）
-            if len(messages) > self.max_context * 2:
+            # 统一上下文管理：结构化 + turn/token 截断
+            messages = self._context_manager.process(messages)
+            if len(messages) > self.max_context * CONTEXT_MESSAGE_MULTIPLIER:
                 messages = await self._compress_context(messages, key)
             
             # 更新缓存（使用 LRU 策略）
@@ -399,10 +430,11 @@ class SQLiteContextStore:
                     
                     # 2. 插入归档记录 (全量历史)
                     # 处理 content，如果是列表(多模态)则转JSON字符串，如果是字符串则直接存
-                    if isinstance(content, (list, dict)):
-                        archive_content = json.dumps(content, ensure_ascii=False)
+                    normalized_content = normalize_content(content)
+                    if isinstance(normalized_content, (list, dict)):
+                        archive_content = json.dumps(normalized_content, ensure_ascii=False)
                     else:
-                        archive_content = str(content)
+                        archive_content = str(normalized_content)
                     
                     await db.execute("""
                         INSERT INTO message_archive (context_key, user_id, role, content, message_id, timestamp)
@@ -475,11 +507,26 @@ class SQLiteContextStore:
 context_store: Optional[SQLiteContextStore] = None
 
 
-def get_context_store(max_context: int = 40, max_cache_size: int = MAX_CACHE_SIZE) -> SQLiteContextStore:
+def get_context_store(
+    max_context: int = 40,
+    max_cache_size: int = MAX_CACHE_SIZE,
+    *,
+    context_mode: str = "structured",
+    max_turns: int = 30,
+    max_tokens_soft: int = 12000,
+    summary_enabled: bool = False,
+) -> SQLiteContextStore:
     """获取全局上下文存储实例"""
     global context_store
     if context_store is None:
-        context_store = SQLiteContextStore(max_context=max_context, max_cache_size=max_cache_size)
+        context_store = SQLiteContextStore(
+            max_context=max_context,
+            max_cache_size=max_cache_size,
+            context_mode=context_mode,
+            max_turns=max_turns,
+            max_tokens_soft=max_tokens_soft,
+            summary_enabled=summary_enabled,
+        )
     return context_store
 
 

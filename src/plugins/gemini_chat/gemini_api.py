@@ -39,7 +39,7 @@ from .config import plugin_config
 from .gemini_api_sanitize import clean_thinking_markers
 from .gemini_api_proactive import extract_json_object
 from .gemini_api_messages import pre_search, build_messages
-from .gemini_api_tools import handle_tool_calls
+from .gemini_api_tools import ToolLoopResult, handle_tool_calls
 from .gemini_api_transport import send_api_request
 from .metrics import metrics
 
@@ -245,7 +245,16 @@ class GeminiClient:
                 int(getattr(plugin_config, "gemini_context_cache_max_size", 200) or 200),
             )
             self._context_store: Optional[SQLiteContextStore] = get_context_store(
-                max_context, max_cache_size=cache_size
+                max_context,
+                max_cache_size=cache_size,
+                context_mode=str(getattr(plugin_config, "gemini_context_mode", "structured")),
+                max_turns=int(getattr(plugin_config, "gemini_context_max_turns", 30) or 30),
+                max_tokens_soft=int(
+                    getattr(plugin_config, "gemini_context_max_tokens_soft", 12000) or 12000
+                ),
+                summary_enabled=bool(
+                    getattr(plugin_config, "gemini_context_summary_enabled", False)
+                ),
             )
             log.info("使用 SQLite 持久化上下文存储")
         else:
@@ -411,18 +420,33 @@ class GeminiClient:
         role: str,
         content: Union[str, List[Dict[str, Any]]],
         group_id: Optional[str] = None,
-        message_id: Optional[str] = None
+        message_id: Optional[str] = None,
+        tool_calls: Optional[List[Dict[str, Any]]] = None,
+        tool_call_id: Optional[str] = None,
     ):
         """异步添加消息到上下文（支持持久化存储）"""
         current_time = time.time()
         
         if self._use_persistent and self._context_store:
-            await self._context_store.add_message(user_id, role, content, group_id, message_id, timestamp=current_time)
+            await self._context_store.add_message(
+                user_id,
+                role,
+                content,
+                group_id,
+                message_id,
+                timestamp=current_time,
+                tool_calls=tool_calls,
+                tool_call_id=tool_call_id,
+            )
         else:
             key = self._get_context_key(user_id, group_id)
             msg = {"role": role, "content": content, "timestamp": current_time}
             if message_id:
                 msg["message_id"] = str(message_id)
+            if tool_calls and role == "assistant":
+                msg["tool_calls"] = tool_calls
+            if tool_call_id and role == "tool":
+                msg["tool_call_id"] = str(tool_call_id)
             self._contexts[key].append(msg)
             max_history_messages = self.max_context * CONTEXT_HISTORY_MULTIPLIER
             if len(self._contexts[key]) > max_history_messages:
@@ -500,7 +524,9 @@ class GeminiClient:
         content: Union[str, List[Dict[str, Any]]],
         group_id: Optional[str] = None,
         message_id: Optional[str] = None,
-        timestamp: Optional[float] = None
+        timestamp: Optional[float] = None,
+        tool_calls: Optional[List[Dict[str, Any]]] = None,
+        tool_call_id: Optional[str] = None,
     ):
         """添加消息到上下文（公共 API）
         
@@ -516,13 +542,24 @@ class GeminiClient:
         
         if self._use_persistent and self._context_store:
             await self._context_store.add_message(
-                user_id, role, content, group_id, message_id, timestamp=current_time
+                user_id,
+                role,
+                content,
+                group_id,
+                message_id,
+                timestamp=current_time,
+                tool_calls=tool_calls,
+                tool_call_id=tool_call_id,
             )
         else:
             key = self._get_context_key(user_id, group_id)
             msg = {"role": role, "content": content, "timestamp": current_time}
             if message_id:
                 msg["message_id"] = str(message_id)
+            if tool_calls and role == "assistant":
+                msg["tool_calls"] = tool_calls
+            if tool_call_id and role == "tool":
+                msg["tool_call_id"] = str(tool_call_id)
             self._contexts[key].append(msg)
             max_history_messages = self.max_context * CONTEXT_HISTORY_MULTIPLIER
             if len(self._contexts[key]) > max_history_messages:
@@ -616,6 +653,7 @@ class GeminiClient:
         system_injection: Optional[str],
         context_level: int,
         history_override: Optional[List[Dict[str, Any]]] = None,
+        search_result: Optional[str] = None,
     ) -> Optional[str]:
         """处理服务端错误的重试逻辑。
 
@@ -640,6 +678,7 @@ class GeminiClient:
                 system_injection=system_injection,
                 context_level=context_level,
                 history_override=history_override,
+                search_result_override=search_result,
             )
         return None
 
@@ -653,10 +692,10 @@ class GeminiClient:
         request_id: str,
         enable_tools: bool,
         tools: Optional[List[Dict[str, Any]]] = None,
-    ) -> str:
+    ) -> Tuple[str, List[Dict[str, Any]]]:
         """根据是否存在工具调用，解析最终回复文本。"""
         if tool_calls and enable_tools:
-            return await self._handle_tool_calls(
+            result = await self._handle_tool_calls(
                 messages,
                 assistant_message,
                 tool_calls,
@@ -664,8 +703,12 @@ class GeminiClient:
                 group_id,
                 request_id,
                 tools,
+                return_trace=True,
             )
-        return assistant_message.get("content") or ""
+            if isinstance(result, ToolLoopResult):
+                return result.reply, result.trace_messages
+            return str(result), []
+        return assistant_message.get("content") or "", []
 
     def _log_raw_model_reply(self, reply: str, request_id: str) -> None:
         """输出模型原始回复（调试用）。"""
@@ -804,6 +847,7 @@ class GeminiClient:
         system_injection: Optional[str],
         context_level: int,
         history_override: Optional[List[Dict[str, Any]]],
+        search_result: str,
     ) -> Optional[str]:
         """处理空回复的“上下文降级”重试逻辑（保持拆分前行为不变）。
 
@@ -816,17 +860,32 @@ class GeminiClient:
             f"total_time={total_elapsed:.2f}s"
         )
 
+        if not bool(getattr(plugin_config, "gemini_empty_reply_context_degrade_enabled", False)):
+            log.warning(f"[req:{request_id}] 空回复不触发业务级上下文降级（配置关闭）")
+            return None
+
+        max_degrade_level = int(
+            getattr(
+                plugin_config,
+                "gemini_empty_reply_context_degrade_max_level",
+                MAX_CONTEXT_DEGRADATION_LEVEL,
+            )
+            or MAX_CONTEXT_DEGRADATION_LEVEL
+        )
+        if max_degrade_level < 0:
+            max_degrade_level = 0
+
         # [智能降级] 空回复时逐级减少上下文
         # Level 0 -> Level 1 (20条) -> Level 2 (5条) -> 放弃
         next_context_level = context_level + 1
-        if next_context_level <= MAX_CONTEXT_DEGRADATION_LEVEL:
+        if next_context_level <= max_degrade_level:
             import asyncio
 
             wait_time = EMPTY_REPLY_RETRY_DELAY_SECONDS
             await asyncio.sleep(wait_time)
             log.warning(
                 f"[req:{request_id}] 触发上下文降级重试 | "
-                f"Level {context_level} -> Level {next_context_level}"
+                f"Level {context_level} -> Level {next_context_level} (max={max_degrade_level})"
             )
             return await self.chat(
                 message=message,
@@ -839,6 +898,7 @@ class GeminiClient:
                 system_injection=system_injection,
                 context_level=next_context_level,  # 提升降级层级
                 history_override=history_override,
+                search_result_override=search_result,
             )
         return None
 
@@ -881,6 +941,7 @@ class GeminiClient:
         group_id: Optional[str],
         image_urls: Optional[List[str]],
         search_result: str,
+        enable_tools: bool = True,
         system_injection: Optional[str] = None,
         context_level: int = 0,  # [新增] 上下文降级层级
         history_override: Optional[List[Dict[str, Any]]] = None,
@@ -905,6 +966,7 @@ class GeminiClient:
             get_image_processor=get_image_processor,
             has_user_profile=HAS_USER_PROFILE,
             get_user_profile_store=get_user_profile_store,
+            enable_tools=enable_tools,
         )
 
         return (
@@ -951,7 +1013,8 @@ class GeminiClient:
         group_id: Optional[str],
         request_id: str,
         tools: Optional[List[Dict[str, Any]]] = None,
-    ) -> str:
+        return_trace: bool = False,
+    ) -> str | ToolLoopResult:
         """处理工具调用（委派到独立模块，保持行为不变）。"""
         client = await self._get_client()
         return await handle_tool_calls(
@@ -966,6 +1029,7 @@ class GeminiClient:
             base_url=self.base_url,
             http_client=client,
             tools=tools,
+            return_trace=return_trace,
         )
     
     async def _update_context(
@@ -974,7 +1038,8 @@ class GeminiClient:
         group_id: Optional[str],
         current_content: Union[str, List[Dict[str, Any]]],
         reply: str,
-        user_message_id: Optional[str] = None
+        user_message_id: Optional[str] = None,
+        tool_trace: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         """
         更新上下文（保存对话历史）
@@ -987,6 +1052,31 @@ class GeminiClient:
             user_message_id: 用户消息 ID（用于去重）
         """
         await self._add_to_context_async(user_id, "user", current_content, group_id, user_message_id)
+
+        for trace_msg in tool_trace or []:
+            if not isinstance(trace_msg, dict):
+                continue
+            trace_role = str(trace_msg.get("role") or "").strip().lower()
+            if trace_role not in {"assistant", "tool"}:
+                continue
+            trace_content: Union[str, List[Dict[str, Any]]] = trace_msg.get("content") or ""
+            tool_calls = trace_msg.get("tool_calls")
+            tool_call_id = trace_msg.get("tool_call_id")
+            if (
+                trace_role == "assistant"
+                and not tool_calls
+                and isinstance(trace_content, str)
+                and trace_content.strip() == reply.strip()
+            ):
+                continue
+            await self._add_to_context_async(
+                user_id,
+                trace_role,
+                trace_content,
+                group_id,
+                tool_calls=tool_calls if isinstance(tool_calls, list) else None,
+                tool_call_id=str(tool_call_id) if tool_call_id else None,
+            )
         
         # [改进] 群聊中为 Bot 回复添加角色标签，帮助 LLM 区分说话者
         # 格式: [Mika]: xxx，与用户消息的 [昵称(QQ)]: xxx 格式一致
@@ -1081,6 +1171,7 @@ class GeminiClient:
         system_injection: Optional[str] = None,  # System 级注入（用于主动发言等场景）
         context_level: int = 0,  # [新增] 上下文降级层级 (0=完整, 1=截断, 2=最小)
         history_override: Optional[List[Dict[str, Any]]] = None,
+        search_result_override: Optional[str] = None,  # 内部参数：复用首轮搜索结果，避免重试重复分类/搜索
     ) -> str:
         """
         发送消息（支持 OpenAI 格式）
@@ -1108,6 +1199,7 @@ class GeminiClient:
             system_injection: System 级注入内容（可选，用于主动发言场景等）
             context_level: 上下文降级层级 (0=完整, 1=截断20条, 2=最小5条)
             history_override: 覆盖上下文历史（仅影响本次请求构建 messages；None=使用存储的历史）
+            search_result_override: 复用搜索结果（内部重试参数，外部无需传）
             
         Returns:
             助手回复内容
@@ -1123,11 +1215,18 @@ class GeminiClient:
             # ===== 上下文诊断日志 =====
             await self._log_context_diagnostics(user_id, group_id, request_id)
             
-            # 1. 预处理：搜索增强（传入 user_id 和 group_id 以便获取上下文）
-            search_result = await self._pre_search(
-                message, enable_tools, request_id,
-                user_id=user_id, group_id=group_id
-            )
+            # 1. 预处理：搜索增强（重试时可复用首轮结果，避免重复触发分类器/搜索）
+            if search_result_override is None:
+                search_result = await self._pre_search(
+                    message, enable_tools, request_id,
+                    user_id=user_id, group_id=group_id
+                )
+            else:
+                search_result = search_result_override
+                log.info(
+                    f"[req:{request_id}] 复用首轮搜索判定结果，跳过重复分类/搜索 | "
+                    f"search_injected={'yes' if bool(search_result) else 'no'}"
+                )
 
             # 输出搜索结果状态
             self._log_search_result_status(search_result, request_id)
@@ -1138,7 +1237,13 @@ class GeminiClient:
             # - api_content: API 请求消息（可能含搜索结果）
             # - request_body: 请求体
             messages, original_content, api_content, request_body = await self._build_messages(
-                message, user_id, group_id, image_urls, search_result, system_injection,
+                message,
+                user_id,
+                group_id,
+                image_urls,
+                search_result,
+                enable_tools,
+                system_injection,
                 context_level=context_level,  # 传递上下文降级层级
                 history_override=history_override,
             )
@@ -1166,13 +1271,14 @@ class GeminiClient:
                     system_injection=system_injection,
                     context_level=context_level,
                     history_override=history_override,
+                    search_result=search_result,
                 )
                 if retry_reply is not None:
                     return retry_reply
                 raise
             
             # 4. 处理工具调用（如有）
-            reply = await self._resolve_reply(
+            reply, tool_trace = await self._resolve_reply(
                 messages=messages,
                 assistant_message=assistant_message,
                 tool_calls=tool_calls,
@@ -1192,6 +1298,14 @@ class GeminiClient:
             
             # 6. 检查空回复 - 智能降级重试机制
             if not reply:
+                empty_meta = assistant_message.get("_empty_reply_meta") if isinstance(assistant_message, dict) else None
+                if isinstance(empty_meta, dict):
+                    log.warning(
+                        f"[req:{request_id}] transport_empty_meta | kind={empty_meta.get('kind', '')} | "
+                        f"finish={empty_meta.get('finish_reason', '') or 'unknown'} | "
+                        f"local_retries={empty_meta.get('local_retries', 0)} | "
+                        f"response_id={empty_meta.get('response_id', '') or '-'}"
+                    )
                 retry_reply = await self._handle_empty_reply_retry(
                     request_id=request_id,
                     start_time=start_time,
@@ -1205,6 +1319,7 @@ class GeminiClient:
                     system_injection=system_injection,
                     context_level=context_level,
                     history_override=history_override,
+                    search_result=search_result,
                 )
                 if retry_reply is not None:
                     return retry_reply
@@ -1215,7 +1330,14 @@ class GeminiClient:
             # 步骤 5: 更新上下文
             # 使用从 chat 拆分出来的消息分离逻辑得到的 original_content
             # 注意：如果 original_content 是多模态列表，_update_context 需要能处理
-            await self._update_context(user_id, group_id, original_content, reply, message_id)
+            await self._update_context(
+                user_id,
+                group_id,
+                original_content,
+                reply,
+                message_id,
+                tool_trace=tool_trace,
+            )
             
             # 日志：确认保存的是原始消息
             if search_result:

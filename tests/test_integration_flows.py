@@ -1,4 +1,5 @@
 import pytest
+import httpx
 from unittest.mock import AsyncMock, MagicMock, patch
 
 
@@ -38,6 +39,135 @@ async def test_tool_call_flow_triggers_handler():
 
         assert reply == "工具调用后的回复"
         mocked_handle.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_chat_empty_reply_degradation_reuses_first_search_result():
+    """空回复触发上下文降级时，应复用首轮搜索结果，避免重复触发分类/搜索。"""
+    from gemini_chat.gemini_api import GeminiClient
+
+    with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        client = GeminiClient(api_key="test-key")
+
+    observed = []
+
+    async def _fake_build_messages(
+        message,
+        user_id,
+        group_id,
+        image_urls,
+        search_result,
+        enable_tools=True,
+        system_injection=None,
+        context_level=0,
+        history_override=None,
+    ):
+        observed.append((context_level, search_result))
+        return (
+            [{"role": "user", "content": "hi"}],
+            "hi",
+            "hi",
+            {"messages": [{"role": "user", "content": "hi"}], "stream": False},
+        )
+
+    empty_assistant = {"role": "assistant", "content": ""}
+    with patch(
+        "gemini_chat.gemini_api.plugin_config.gemini_empty_reply_context_degrade_enabled",
+        True,
+    ), patch.object(client, "_pre_search", AsyncMock(return_value="SEARCH_RESULT")) as mocked_pre_search, patch.object(
+        client,
+        "_build_messages",
+        AsyncMock(side_effect=_fake_build_messages),
+    ), patch.object(
+        client,
+        "_send_api_request",
+        AsyncMock(return_value=(empty_assistant, None, "test-key")),
+    ) as mocked_send, patch.object(
+        client,
+        "_resolve_reply",
+        AsyncMock(side_effect=[("", []), ("", []), ("最终回复", [])]),
+    ), patch.object(
+        client,
+        "_update_context",
+        AsyncMock(),
+    ), patch.object(
+        client,
+        "_log_context_diagnostics",
+        AsyncMock(),
+    ), patch("asyncio.sleep", new_callable=AsyncMock):
+        reply = await client.chat("mika在吗", user_id="u1")
+
+    assert reply == "最终回复"
+    assert mocked_pre_search.await_count == 1
+    assert mocked_send.await_count == 3
+    assert observed == [
+        (0, "SEARCH_RESULT"),
+        (1, "SEARCH_RESULT"),
+        (2, "SEARCH_RESULT"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_chat_empty_reply_default_no_context_degrade():
+    """默认配置下，空回复不触发业务级上下文降级，避免盲重跑整链路。"""
+    from gemini_chat.gemini_api import GeminiClient
+
+    with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        client = GeminiClient(api_key="test-key")
+
+    observed_context_levels = []
+
+    async def _fake_build_messages(
+        message,
+        user_id,
+        group_id,
+        image_urls,
+        search_result,
+        enable_tools=True,
+        system_injection=None,
+        context_level=0,
+        history_override=None,
+    ):
+        observed_context_levels.append(context_level)
+        return (
+            [{"role": "user", "content": "hi"}],
+            "hi",
+            "hi",
+            {"messages": [{"role": "user", "content": "hi"}], "stream": False},
+        )
+
+    empty_assistant = {
+        "role": "assistant",
+        "content": "",
+        "_empty_reply_meta": {"kind": "provider_empty", "local_retries": 1},
+    }
+    with patch.object(client, "_pre_search", AsyncMock(return_value="SEARCH_RESULT")) as mocked_pre_search, patch.object(
+        client,
+        "_build_messages",
+        AsyncMock(side_effect=_fake_build_messages),
+    ), patch.object(
+        client,
+        "_send_api_request",
+        AsyncMock(return_value=(empty_assistant, None, "test-key")),
+    ) as mocked_send, patch.object(
+        client,
+        "_resolve_reply",
+        AsyncMock(return_value=("", [])),
+    ), patch.object(
+        client,
+        "_update_context",
+        AsyncMock(),
+    ), patch.object(
+        client,
+        "_log_context_diagnostics",
+        AsyncMock(),
+    ):
+        reply = await client.chat("mika在吗", user_id="u1")
+
+    assert "刚才走神了" in reply
+    assert mocked_pre_search.await_count == 1
+    assert mocked_send.await_count == 1
+    assert observed_context_levels == [0]
 
 
 @pytest.mark.asyncio
@@ -486,6 +616,140 @@ async def test_send_api_request_content_empty_reasoning_triggers_completion_requ
 
 
 @pytest.mark.asyncio
+async def test_send_api_request_content_empty_without_reasoning_local_retry_success():
+    """主对话 content 为空且无 reasoning 时，应在 transport 层本地重试一次并直接收敛。"""
+    from gemini_chat.gemini_api_transport import send_api_request
+
+    mock_http = AsyncMock()
+
+    # 1st: empty content, no reasoning
+    r1 = MagicMock()
+    r1.status_code = 200
+    r1.json.return_value = {
+        "id": "resp-empty",
+        "choices": [
+            {
+                "message": {"role": "assistant", "content": ""},
+                "finish_reason": "stop",
+            }
+        ],
+    }
+    r1.raise_for_status = MagicMock()
+
+    # 2nd: local retry succeeds
+    r2 = MagicMock()
+    r2.status_code = 200
+    r2.json.return_value = {
+        "id": "resp-ok",
+        "choices": [
+            {
+                "message": {"role": "assistant", "content": "补偿回答"},
+                "finish_reason": "stop",
+            }
+        ],
+    }
+    r2.raise_for_status = MagicMock()
+
+    mock_http.post = AsyncMock(side_effect=[r1, r2])
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        assistant_message, tool_calls, api_key = await send_api_request(
+            http_client=mock_http,
+            request_body={
+                "model": "gemini-test",
+                "messages": [{"role": "user", "content": "hi"}],
+                "stream": False,
+            },
+            request_id="req-empty-local-retry",
+            retry_count=0,
+            api_key="test-key",
+            base_url="https://api.example.com",
+            model="gemini-test",
+        )
+
+    assert tool_calls is None
+    assert api_key == "test-key"
+    assert assistant_message.get("content") == "补偿回答"
+    assert mock_http.post.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_send_api_request_timeout_local_retry_success():
+    """主请求超时时，应在传输层本地重试并收敛。"""
+    from gemini_chat.gemini_api_transport import send_api_request
+
+    mock_http = AsyncMock()
+    r_ok = MagicMock()
+    r_ok.status_code = 200
+    r_ok.json.return_value = {
+        "id": "resp-timeout-retry-ok",
+        "choices": [
+            {
+                "message": {"role": "assistant", "content": "timeout retry ok"},
+                "finish_reason": "stop",
+            }
+        ],
+    }
+    r_ok.raise_for_status = MagicMock()
+
+    mock_http.post = AsyncMock(side_effect=[httpx.TimeoutException("timeout"), r_ok])
+
+    with patch("asyncio.sleep", new_callable=AsyncMock), patch(
+        "gemini_chat.gemini_api_transport.plugin_config.gemini_transport_timeout_retries",
+        1,
+    ), patch(
+        "gemini_chat.gemini_api_transport.plugin_config.gemini_transport_timeout_retry_delay_seconds",
+        0.01,
+    ):
+        assistant_message, tool_calls, api_key = await send_api_request(
+            http_client=mock_http,
+            request_body={
+                "model": "gemini-test",
+                "messages": [{"role": "user", "content": "hi"}],
+                "stream": False,
+            },
+            request_id="req-timeout-local-retry",
+            retry_count=0,
+            api_key="test-key",
+            base_url="https://api.example.com",
+            model="gemini-test",
+        )
+
+    assert tool_calls is None
+    assert api_key == "test-key"
+    assert assistant_message.get("content") == "timeout retry ok"
+    assert mock_http.post.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_send_api_request_timeout_no_local_retry_raises():
+    """关闭超时重试后，TimeoutException 应直接抛出给上层。"""
+    from gemini_chat.gemini_api_transport import send_api_request
+
+    mock_http = AsyncMock()
+    mock_http.post = AsyncMock(side_effect=httpx.TimeoutException("timeout"))
+
+    with patch(
+        "gemini_chat.gemini_api_transport.plugin_config.gemini_transport_timeout_retries",
+        0,
+    ):
+        with pytest.raises(httpx.TimeoutException):
+            await send_api_request(
+                http_client=mock_http,
+                request_body={
+                    "model": "gemini-test",
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "stream": False,
+                },
+                request_id="req-timeout-no-retry",
+                retry_count=0,
+                api_key="test-key",
+                base_url="https://api.example.com",
+                model="gemini-test",
+            )
+
+
+@pytest.mark.asyncio
 async def test_pre_search_llm_gate_no_search_skips_serper():
     from gemini_chat.gemini_api_messages import pre_search
 
@@ -640,7 +904,7 @@ async def test_image_processing_in_build_messages():
         use_persistent=False,
         context_store=None,
         has_image_processor=True,
-        get_image_processor=lambda: mock_processor,
+        get_image_processor=lambda *_args, **_kwargs: mock_processor,
         has_user_profile=False,
         get_user_profile_store=None,
     )
@@ -675,7 +939,7 @@ async def test_image_processing_fallback_to_url_on_error():
         use_persistent=False,
         context_store=None,
         has_image_processor=True,
-        get_image_processor=lambda: mock_processor,
+        get_image_processor=lambda *_args, **_kwargs: mock_processor,
         has_user_profile=False,
         get_user_profile_store=None,
     )
@@ -686,6 +950,44 @@ async def test_image_processing_fallback_to_url_on_error():
         item.get("type") == "image_url" and item.get("image_url", {}).get("url") == "https://example.com/a.png"
         for item in user_message["content"]
     )
+
+
+@pytest.mark.asyncio
+async def test_build_messages_strips_tool_history_when_tools_disabled():
+    from gemini_chat.gemini_api_messages import build_messages
+
+    async def fake_get_context_async(user_id, group_id=None):
+        return [
+            {"role": "user", "content": "你好"},
+            {"role": "assistant", "content": "", "tool_calls": [{"id": "c1"}]},
+            {"role": "tool", "content": "tool-result", "tool_call_id": "c1"},
+            {"role": "assistant", "content": "最终答案"},
+        ]
+
+    result = await build_messages(
+        "继续",
+        user_id="u1",
+        group_id="g1",
+        image_urls=None,
+        search_result="",
+        model="gemini-test",
+        system_prompt="你是助手",
+        available_tools=[],
+        system_injection=None,
+        context_level=0,
+        get_context_async=fake_get_context_async,
+        use_persistent=False,
+        context_store=None,
+        has_image_processor=False,
+        get_image_processor=None,
+        has_user_profile=False,
+        get_user_profile_store=None,
+        enable_tools=False,
+    )
+
+    roles = [msg.get("role") for msg in result.messages]
+    assert "tool" not in roles
+    assert any(msg.get("role") == "assistant" and msg.get("content") == "最终答案" for msg in result.messages)
 
 
 @pytest.mark.asyncio

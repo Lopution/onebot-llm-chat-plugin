@@ -13,11 +13,12 @@
 from typing import Any, Dict, List
 from nonebot.params import Depends
 from .utils.event_context import build_event_context
+from .utils.nb_types import BotT, EventT
 
 
 async def get_chat_history(
-    bot: Any,
-    event: Any,
+    bot: BotT,
+    event: EventT,
 ) -> List[Dict[str, Any]]:
     """依赖项：获取用户聊天历史"""
     from .utils.context_store import get_context_store
@@ -28,7 +29,7 @@ async def get_chat_history(
     return await store.get_context(ctx.user_id, ctx.group_id)
 
 
-async def get_user_profile_data(bot: Any, event: Any) -> Dict[str, Any]:
+async def get_user_profile_data(bot: BotT, event: EventT) -> Dict[str, Any]:
     """依赖项：获取用户档案"""
     from .utils.user_profile import get_user_profile_store
     
@@ -40,7 +41,7 @@ async def get_user_profile_data(bot: Any, event: Any) -> Dict[str, Any]:
         return {}
 
 
-async def get_processed_images(bot: Any, event: Any) -> List[Dict[str, Any]]:
+async def get_processed_images(bot: BotT, event: EventT) -> List[Dict[str, Any]]:
     """依赖项：获取处理后的图片（Base64 格式）"""
     from .utils.image_processor import resolve_image_urls
     from .lifecycle import plugin_config
@@ -68,5 +69,5 @@ def get_gemini_client_dep():
 
 def get_config():
     """依赖项：获取插件配置"""
-    from .lifecycle import plugin_config
+    from . import plugin_config
     return plugin_config

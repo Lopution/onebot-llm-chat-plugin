@@ -159,11 +159,27 @@ cp .env.example .env
 | `GEMINI_MASTER_ID` | 主人 QQ 号 | ✅ | - |
 | `GEMINI_GROUP_WHITELIST` | 群组白名单 | ❌ | - |
 | `GEMINI_OFFLINE_SYNC_ENABLED` | 离线同步（非标准 API，默认关闭） | ❌ | `false` |
+| `GEMINI_CONTEXT_MODE` | 上下文模式（`legacy`/`structured`） | ❌ | `structured` |
+| `GEMINI_CONTEXT_MAX_TURNS` | 上下文最大轮次（先于按条数截断） | ❌ | `30` |
+| `GEMINI_CONTEXT_MAX_TOKENS_SOFT` | 上下文软 token 阈值（估算） | ❌ | `12000` |
+| `GEMINI_CONTEXT_SUMMARY_ENABLED` | 启用摘要压缩（默认关闭） | ❌ | `false` |
+| `GEMINI_MULTIMODAL_STRICT` | 多模态严格模式（不支持时自动清洗） | ❌ | `true` |
+| `GEMINI_QUOTE_IMAGE_CAPTION_ENABLED` | 引用消息图片注释（best-effort） | ❌ | `true` |
 | `GEMINI_LONG_REPLY_IMAGE_FALLBACK_ENABLED` | 发送失败后启用图片渲染兜底 | ❌ | `true` |
 | `GEMINI_LONG_REPLY_IMAGE_MAX_CHARS` | 长回复渲染图片的最大字符数 | ❌ | `12000` |
 | `GEMINI_LONG_REPLY_IMAGE_MAX_WIDTH` | 长回复渲染图片宽度（像素） | ❌ | `960` |
 | `GEMINI_LONG_REPLY_IMAGE_FONT_SIZE` | 长回复渲染图片字号 | ❌ | `24` |
 | `GEMINI_LONG_MESSAGE_CHUNK_SIZE` | 兼容保留（当前主链路不再使用） | ❌ | `800` |
+| `GEMINI_EMPTY_REPLY_LOCAL_RETRIES` | 空回复传输层本地重试次数（不重跑整链路） | ❌ | `1` |
+| `GEMINI_EMPTY_REPLY_LOCAL_RETRY_DELAY_SECONDS` | 空回复本地重试间隔（秒） | ❌ | `0.4` |
+| `GEMINI_TRANSPORT_TIMEOUT_RETRIES` | 传输层超时本地重试次数（仅超时） | ❌ | `1` |
+| `GEMINI_TRANSPORT_TIMEOUT_RETRY_DELAY_SECONDS` | 传输层超时重试间隔（秒） | ❌ | `0.6` |
+| `GEMINI_EMPTY_REPLY_CONTEXT_DEGRADE_ENABLED` | 空回复时启用业务级上下文降级 | ❌ | `false` |
+| `GEMINI_EMPTY_REPLY_CONTEXT_DEGRADE_MAX_LEVEL` | 业务级上下文降级最大层级 | ❌ | `2` |
+| `GEMINI_METRICS_PROMETHEUS_ENABLED` | 启用 `/metrics` Prometheus 文本导出 | ❌ | `true` |
+| `GEMINI_HEALTH_CHECK_API_PROBE_ENABLED` | 在 `/health` 启用 API 主动探测 | ❌ | `false` |
+| `GEMINI_HEALTH_CHECK_API_PROBE_TIMEOUT_SECONDS` | 健康探测超时（秒） | ❌ | `3.0` |
+| `GEMINI_HEALTH_CHECK_API_PROBE_TTL_SECONDS` | 健康探测结果缓存 TTL（秒） | ❌ | `30` |
 | `SERPER_API_KEY` | Serper 搜索 API Key | ❌ | - |
 | `MIKA_STRICT_STARTUP` | 严格启动模式（加载失败直接退出） | ❌ | `false` |
 

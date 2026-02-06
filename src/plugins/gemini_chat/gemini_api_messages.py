@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Union
 from nonebot import logger as log
 
 from .config import plugin_config
+from .utils.context_schema import normalize_content
 
 
 @dataclass
@@ -18,6 +19,93 @@ class MessageBuildResult:
     original_content: Union[str, List[Dict[str, Any]]]
     api_content: Union[str, List[Dict[str, Any]]]
     request_body: Dict[str, Any]
+
+
+def _sanitize_content_for_request(content: Any, *, allow_images: bool) -> Union[str, List[Dict[str, Any]]]:
+    normalized = normalize_content(content)
+    if isinstance(normalized, str):
+        return normalized
+
+    parts: List[Dict[str, Any]] = []
+    for part in normalized:
+        if not isinstance(part, dict):
+            continue
+        part_type = str(part.get("type") or "").lower()
+        if part_type == "text":
+            parts.append({"type": "text", "text": str(part.get("text") or "")})
+            continue
+        if part_type == "image_url":
+            if not allow_images:
+                parts.append({"type": "text", "text": "[图片]"})
+                continue
+            image_url = part.get("image_url")
+            if isinstance(image_url, dict):
+                url = str(image_url.get("url") or "").strip()
+            else:
+                url = str(image_url or "").strip()
+            if url:
+                parts.append({"type": "image_url", "image_url": {"url": url}})
+            else:
+                parts.append({"type": "text", "text": "[图片]"})
+            continue
+        text = str(part.get("text") or "").strip()
+        if text:
+            parts.append({"type": "text", "text": text})
+
+    if not parts:
+        return ""
+    return parts
+
+
+def _sanitize_history_message_for_request(
+    raw_msg: Dict[str, Any],
+    *,
+    allow_images: bool,
+    allow_tools: bool,
+) -> Optional[Dict[str, Any]]:
+    role = str(raw_msg.get("role") or "").strip().lower()
+    if role not in {"system", "user", "assistant", "tool"}:
+        return None
+    if role == "tool" and not allow_tools:
+        return None
+
+    msg: Dict[str, Any] = {"role": role}
+    msg["content"] = _sanitize_content_for_request(raw_msg.get("content", ""), allow_images=allow_images)
+
+    tool_calls = raw_msg.get("tool_calls")
+    if role == "assistant" and allow_tools and isinstance(tool_calls, list) and tool_calls:
+        msg["tool_calls"] = tool_calls
+
+    tool_call_id = raw_msg.get("tool_call_id")
+    if role == "tool" and allow_tools and tool_call_id:
+        msg["tool_call_id"] = str(tool_call_id)
+
+    message_id = raw_msg.get("message_id")
+    if message_id:
+        msg["message_id"] = str(message_id)
+
+    timestamp = raw_msg.get("timestamp")
+    if timestamp is not None:
+        try:
+            msg["timestamp"] = float(timestamp)
+        except (TypeError, ValueError):
+            pass
+
+    if role == "assistant" and not msg.get("tool_calls"):
+        content = msg.get("content")
+        if content is None:
+            return None
+        if isinstance(content, str) and not content.strip():
+            return None
+        if isinstance(content, list):
+            has_non_empty_text = any(
+                str(item.get("type") or "").lower() != "text" or str(item.get("text") or "").strip()
+                for item in content
+                if isinstance(item, dict)
+            )
+            if not has_non_empty_text:
+                return None
+    return msg
 
 
 async def pre_search(
@@ -272,6 +360,7 @@ async def build_messages(
     get_image_processor,
     has_user_profile: bool,
     get_user_profile_store,
+    enable_tools: bool = True,
 ) -> MessageBuildResult:
     """构建消息历史与请求体，保持与原逻辑一致。"""
     # ===== 1. 构建原始内容（用于保存到历史，不含搜索结果） =====
@@ -279,8 +368,12 @@ async def build_messages(
         original_content: Union[str, List[Dict[str, Any]]] = message
     else:
         original_content = [{"type": "text", "text": message}]
-        for i, _url in enumerate(image_urls):
-            original_content.append({"type": "text", "text": f"[图片 {i+1}]"})
+        for url in image_urls:
+            url_str = str(url or "").strip()
+            if url_str.startswith(("http://", "https://", "data:")):
+                original_content.append({"type": "image_url", "image_url": {"url": url_str}})
+            else:
+                original_content.append({"type": "text", "text": "[图片]"})
 
     # ===== 2. 构建 API 内容（仅用户消息，搜索结果移至 System） =====
     if not image_urls:
@@ -377,11 +470,21 @@ async def build_messages(
     )
 
     messages: List[Dict[str, Any]] = [{"role": "system", "content": enhanced_system_prompt}]
+    strict_multimodal = bool(getattr(plugin_config, "gemini_multimodal_strict", True))
+    model_lower = str(model or "").lower()
+    supports_images = not any(k in model_lower for k in ("embedding", "rerank"))
+    supports_tools = bool(enable_tools)
+    if not strict_multimodal:
+        supports_images = True
+        supports_tools = bool(enable_tools)
+
     history = (
         await get_context_async(user_id, group_id)
         if history_override is None
         else list(history_override)
     )
+    dropped_tool_messages = 0
+    dropped_unsupported_images = 0
 
     if context_level > 0:
         context_limits = {1: 20, 2: 5}
@@ -404,47 +507,80 @@ async def build_messages(
                 )
 
     current_time = __import__("time").time()
-    for msg in history:
-        if msg.get("content"):
-            role = msg.get("role")
-            content = msg.get("content")
+    for raw_msg in history:
+        raw_role = str(raw_msg.get("role") or "").strip().lower()
+        if raw_role == "tool" and not supports_tools:
+            dropped_tool_messages += 1
+            continue
+        raw_content = normalize_content(raw_msg.get("content", ""))
+        if not supports_images and isinstance(raw_content, list):
+            dropped_unsupported_images += sum(
+                1
+                for part in raw_content
+                if isinstance(part, dict) and str(part.get("type") or "").lower() == "image_url"
+            )
+        sanitized = _sanitize_history_message_for_request(
+            raw_msg,
+            allow_images=supports_images,
+            allow_tools=supports_tools,
+        )
+        if not sanitized:
+            continue
 
-            msg_id = msg.get("message_id")
-            if msg_id and isinstance(content, str) and "[图片" in content:
-                content = f"{content} <msg_id:{msg_id}>"
+        role = sanitized.get("role")
+        content = sanitized.get("content")
+        msg_id = sanitized.get("message_id")
 
-            msg_timestamp_raw = msg.get("timestamp", 0)
+        if msg_id and isinstance(content, str) and "[图片" in content:
+            content = f"{content} <msg_id:{msg_id}>"
+
+        msg_timestamp_raw = sanitized.get("timestamp", 0)
+        msg_timestamp = 0.0
+        try:
+            msg_timestamp = float(msg_timestamp_raw or 0)
+        except (TypeError, ValueError):
             msg_timestamp = 0.0
-            try:
-                msg_timestamp = float(msg_timestamp_raw or 0)
-            except (TypeError, ValueError):
-                msg_timestamp = 0.0
 
-            if msg_timestamp > 0 and isinstance(content, str):
-                time_diff = current_time - msg_timestamp
+        if msg_timestamp > 0:
+            time_diff = current_time - msg_timestamp
+            time_hint = ""
+
+            if time_diff < 60:
                 time_hint = ""
+            elif time_diff < 300:
+                time_hint = "[几分钟前] "
+            elif time_diff < 1800:
+                time_hint = "[半小时前] "
+            elif time_diff < 3600:
+                time_hint = "[约1小时前] "
+            elif time_diff < 7200:
+                time_hint = "[1-2小时前] "
+            elif time_diff < 86400:
+                hours = int(time_diff / 3600)
+                time_hint = f"[约{hours}小时前] "
+            else:
+                days = int(time_diff / 86400)
+                time_hint = f"[{days}天前] "
 
-                if time_diff < 60:
-                    time_hint = ""
-                elif time_diff < 300:
-                    time_hint = "[几分钟前] "
-                elif time_diff < 1800:
-                    time_hint = "[半小时前] "
-                elif time_diff < 3600:
-                    time_hint = "[约1小时前] "
-                elif time_diff < 7200:
-                    time_hint = "[1-2小时前] "
-                elif time_diff < 86400:
-                    hours = int(time_diff / 3600)
-                    time_hint = f"[约{hours}小时前] "
-                else:
-                    days = int(time_diff / 86400)
-                    time_hint = f"[{days}天前] "
-
-                if time_hint:
+            if time_hint:
+                if isinstance(content, str):
                     content = f"{time_hint}{content}"
+                elif isinstance(content, list):
+                    content = [{"type": "text", "text": time_hint.strip()}] + content
 
-            messages.append({"role": role, "content": content})
+        out_msg: Dict[str, Any] = {"role": role, "content": content}
+        if role == "assistant" and isinstance(sanitized.get("tool_calls"), list):
+            out_msg["tool_calls"] = sanitized["tool_calls"]
+        if role == "tool" and sanitized.get("tool_call_id"):
+            out_msg["tool_call_id"] = sanitized["tool_call_id"]
+        messages.append(out_msg)
+
+    if dropped_tool_messages > 0 or dropped_unsupported_images > 0:
+        log.info(
+            f"历史上下文清洗完成 | dropped_tools={dropped_tool_messages} | "
+            f"dropped_images={dropped_unsupported_images} | "
+            f"supports_tools={supports_tools} | supports_images={supports_images}"
+        )
 
     if search_result:
         # 将搜索结果从高权限 system 注入降为低权限消息，降低 prompt injection 风险。

@@ -259,6 +259,97 @@ class TestConfigDefaults:
         assert config.gemini_search_min_query_length == 4
         assert config.gemini_search_max_injection_results == 6
 
+
+class TestConfigSectionViews:
+    """配置分层访问器测试（P1）。"""
+
+    def test_get_core_config(self, valid_api_key: str):
+        from gemini_chat.config import Config
+
+        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        core = config.get_core_config()
+
+        assert core["api_key"] == valid_api_key
+        assert core["model"] == config.gemini_model
+        assert core["max_context"] == config.gemini_max_context
+
+    def test_get_search_config(self, valid_api_key: str):
+        from gemini_chat.config import Config
+
+        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        search = config.get_search_config()
+
+        assert search["cache_ttl_seconds"] == config.gemini_search_cache_ttl_seconds
+        assert search["cache_max_size"] == config.gemini_search_cache_max_size
+        assert search["llm_gate_enabled"] == config.gemini_search_llm_gate_enabled
+
+    def test_get_image_config(self, valid_api_key: str):
+        from gemini_chat.config import Config
+
+        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        image = config.get_image_config()
+
+        assert image["max_images"] == config.gemini_max_images
+        assert image["download_concurrency"] == config.gemini_image_download_concurrency
+        assert image["cache_max_entries"] == config.gemini_image_cache_max_entries
+
+    def test_get_proactive_config(self, valid_api_key: str):
+        from gemini_chat.config import Config
+
+        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        proactive = config.get_proactive_config()
+
+        assert proactive["rate"] == config.gemini_proactive_rate
+        assert proactive["cooldown_seconds"] == config.gemini_proactive_cooldown
+        assert proactive["heat_threshold"] == config.gemini_heat_threshold
+
+    def test_get_observability_config(self, valid_api_key: str):
+        from gemini_chat.config import Config
+
+        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        obs = config.get_observability_config()
+
+        assert obs["prometheus_enabled"] == config.gemini_metrics_prometheus_enabled
+        assert obs["health_api_probe_enabled"] == config.gemini_health_check_api_probe_enabled
+        assert (
+            obs["health_api_probe_timeout_seconds"]
+            == config.gemini_health_check_api_probe_timeout_seconds
+        )
+        assert obs["health_api_probe_ttl_seconds"] == config.gemini_health_check_api_probe_ttl_seconds
+
+
+class TestObservabilityValidation:
+    """可观测性配置校验测试（P2）。"""
+
+    def test_default_observability_values(self, valid_api_key: str):
+        from gemini_chat.config import Config
+
+        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        assert config.gemini_metrics_prometheus_enabled is True
+        assert config.gemini_health_check_api_probe_enabled is False
+        assert config.gemini_health_check_api_probe_timeout_seconds == 3.0
+        assert config.gemini_health_check_api_probe_ttl_seconds == 30
+
+    def test_invalid_health_probe_timeout(self, valid_api_key: str):
+        from gemini_chat.config import Config
+
+        with pytest.raises(ValidationError):
+            Config(
+                gemini_api_key=valid_api_key,
+                gemini_master_id=123456789,
+                gemini_health_check_api_probe_timeout_seconds=0,
+            )
+
+    def test_invalid_health_probe_ttl(self, valid_api_key: str):
+        from gemini_chat.config import Config
+
+        with pytest.raises(ValidationError):
+            Config(
+                gemini_api_key=valid_api_key,
+                gemini_master_id=123456789,
+                gemini_health_check_api_probe_ttl_seconds=0,
+            )
+
     def test_default_builtin_search_settings(self, valid_api_key: str):
         """测试内置搜索默认配置"""
         from gemini_chat.config import Config

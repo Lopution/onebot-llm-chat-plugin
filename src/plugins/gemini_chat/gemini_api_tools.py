@@ -5,11 +5,20 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
 from nonebot import logger as log
 from .metrics import metrics
 from .config import plugin_config
+
+
+@dataclass
+class ToolLoopResult:
+    """工具循环结果。"""
+
+    reply: str
+    trace_messages: List[Dict[str, Any]]
 
 
 async def handle_tool_calls(
@@ -25,7 +34,8 @@ async def handle_tool_calls(
     base_url: str,
     http_client,
     tools: Optional[List[Dict[str, Any]]] = None,
-) -> str:
+    return_trace: bool = False,
+) -> str | ToolLoopResult:
     """处理工具调用并返回最终回复（支持多轮 tool loop）。"""
     max_rounds = max(1, int(getattr(plugin_config, "gemini_tool_max_rounds", 5) or 5))
     tool_timeout = float(getattr(plugin_config, "gemini_tool_timeout_seconds", 20.0) or 20.0)
@@ -35,6 +45,7 @@ async def handle_tool_calls(
 
     current_assistant_message = assistant_message
     current_tool_calls = list(tool_calls or [])
+    trace_messages: List[Dict[str, Any]] = []
 
     round_idx = 0
     while current_tool_calls:
@@ -45,6 +56,7 @@ async def handle_tool_calls(
         metrics.tool_calls_total += len(current_tool_calls)
 
         messages.append(current_assistant_message)
+        trace_messages.append(dict(current_assistant_message))
 
         for tool_call in current_tool_calls:
             function_name = tool_call["function"]["name"]
@@ -90,14 +102,13 @@ async def handle_tool_calls(
                 log.warning(f"[req:{request_id}] 未注册的工具: {function_name}")
                 metrics.tool_blocked_total += 1
 
-            messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": tool_call_id,
-                    "content": tool_result,
-                }
-            )
-
+            tool_message = {
+                "role": "tool",
+                "tool_call_id": tool_call_id,
+                "content": tool_result,
+            }
+            messages.append(tool_message)
+            trace_messages.append(tool_message)
         log.debug(f"[req:{request_id}] 发送工具结果，获取下一步回复")
         next_request_body: Dict[str, Any] = {
             "model": model,
@@ -136,7 +147,10 @@ async def handle_tool_calls(
                     log.warning(
                         f"[req:{request_id}] 工具调用达到上限({max_rounds})，且未启用强制最终答复，直接返回当前 content"
                     )
-                    return next_message.get("content") or ""
+                    reply_text = next_message.get("content") or ""
+                    if return_trace:
+                        return ToolLoopResult(reply=reply_text, trace_messages=trace_messages)
+                    return reply_text
 
                 log.warning(
                     f"[req:{request_id}] 工具调用达到上限({max_rounds})，强制模型停止使用工具并给出最终答复"
@@ -172,14 +186,25 @@ async def handle_tool_calls(
                 final_message = (
                     (final_data.get("choices") or [{}])[0].get("message", {}) or {}
                 )
-                return final_message.get("content") or ""
+                final_reply = final_message.get("content") or ""
+                trace_messages.append(dict(final_message))
+                if return_trace:
+                    return ToolLoopResult(reply=final_reply, trace_messages=trace_messages)
+                return final_reply
 
             # 继续下一轮
             current_assistant_message = next_message
             current_tool_calls = list(next_tool_calls)
             continue
 
-        return next_message.get("content") or ""
+        reply_text = next_message.get("content") or ""
+        trace_messages.append(dict(next_message))
+        if return_trace:
+            return ToolLoopResult(reply=reply_text, trace_messages=trace_messages)
+        return reply_text
 
     # 正常情况下不会到这里（while 条件保证）
-    return current_assistant_message.get("content") or ""
+    fallback = current_assistant_message.get("content") or ""
+    if return_trace:
+        return ToolLoopResult(reply=fallback, trace_messages=trace_messages)
+    return fallback

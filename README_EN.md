@@ -158,11 +158,27 @@ cp .env.example .env
 | `GEMINI_MASTER_ID` | Master QQ ID | ✅ | - |
 | `GEMINI_GROUP_WHITELIST` | Group whitelist | ❌ | - |
 | `GEMINI_OFFLINE_SYNC_ENABLED` | Offline sync (non-standard API, off by default) | ❌ | `false` |
+| `GEMINI_CONTEXT_MODE` | Context mode (`legacy`/`structured`) | ❌ | `structured` |
+| `GEMINI_CONTEXT_MAX_TURNS` | Max context turns (applied before raw message count trim) | ❌ | `30` |
+| `GEMINI_CONTEXT_MAX_TOKENS_SOFT` | Soft token threshold for context trimming (estimated) | ❌ | `12000` |
+| `GEMINI_CONTEXT_SUMMARY_ENABLED` | Enable summary compression (disabled by default) | ❌ | `false` |
+| `GEMINI_MULTIMODAL_STRICT` | Strict multimodal sanitation when capability is missing | ❌ | `true` |
+| `GEMINI_QUOTE_IMAGE_CAPTION_ENABLED` | Add caption hint for quoted images (best-effort) | ❌ | `true` |
 | `GEMINI_LONG_REPLY_IMAGE_FALLBACK_ENABLED` | Enable rendered-image fallback on send failure | ❌ | `true` |
 | `GEMINI_LONG_REPLY_IMAGE_MAX_CHARS` | Max chars for rendered long-reply image | ❌ | `12000` |
 | `GEMINI_LONG_REPLY_IMAGE_MAX_WIDTH` | Rendered image width (px) | ❌ | `960` |
 | `GEMINI_LONG_REPLY_IMAGE_FONT_SIZE` | Rendered image font size | ❌ | `24` |
 | `GEMINI_LONG_MESSAGE_CHUNK_SIZE` | Compatibility-only (not used in main fallback chain) | ❌ | `800` |
+| `GEMINI_EMPTY_REPLY_LOCAL_RETRIES` | Transport-level local retries on empty replies (without replaying full chain) | ❌ | `1` |
+| `GEMINI_EMPTY_REPLY_LOCAL_RETRY_DELAY_SECONDS` | Delay between local empty-reply retries (seconds) | ❌ | `0.4` |
+| `GEMINI_TRANSPORT_TIMEOUT_RETRIES` | Transport-level local retries for timeout only | ❌ | `1` |
+| `GEMINI_TRANSPORT_TIMEOUT_RETRY_DELAY_SECONDS` | Delay between timeout retries (seconds) | ❌ | `0.6` |
+| `GEMINI_EMPTY_REPLY_CONTEXT_DEGRADE_ENABLED` | Enable business-level context degradation on empty replies | ❌ | `false` |
+| `GEMINI_EMPTY_REPLY_CONTEXT_DEGRADE_MAX_LEVEL` | Max degradation level for business-level context retries | ❌ | `2` |
+| `GEMINI_METRICS_PROMETHEUS_ENABLED` | Enable Prometheus text output on `/metrics` | ❌ | `true` |
+| `GEMINI_HEALTH_CHECK_API_PROBE_ENABLED` | Enable active API probe in `/health` | ❌ | `false` |
+| `GEMINI_HEALTH_CHECK_API_PROBE_TIMEOUT_SECONDS` | API health probe timeout (seconds) | ❌ | `3.0` |
+| `GEMINI_HEALTH_CHECK_API_PROBE_TTL_SECONDS` | API health probe cache TTL (seconds) | ❌ | `30` |
 | `SERPER_API_KEY` | Serper API key | ❌ | - |
 | `MIKA_STRICT_STARTUP` | Strict startup mode (fail-fast on loader errors) | ❌ | `false` |
 

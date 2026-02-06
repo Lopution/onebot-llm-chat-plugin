@@ -29,6 +29,15 @@ from .config import Config
 
 STRICT_STARTUP = os.getenv("MIKA_STRICT_STARTUP", "0").strip().lower() in {"1", "true", "yes", "on"}
 
+
+def _is_missing_dependency_error(exc: Exception) -> bool:
+    if isinstance(exc, ModuleNotFoundError):
+        return True
+    text = str(exc)
+    if "No module named" in text:
+        return True
+    return False
+
 try:
     from nonebot.plugin import PluginMetadata
 except Exception:
@@ -66,11 +75,11 @@ try:
     try:
         from . import matchers  # noqa: F401, E402
     except Exception as exc:
-        if STRICT_STARTUP:
+        if STRICT_STARTUP or not _is_missing_dependency_error(exc):
             raise
         log.warning(f"gemini_chat: matcher 注册失败，已跳过（可设置 MIKA_STRICT_STARTUP=1 强制失败）| error={exc}")
 except Exception as exc:
-    if STRICT_STARTUP:
+    if STRICT_STARTUP or not _is_missing_dependency_error(exc):
         raise
     log.warning(f"gemini_chat: 生命周期注册失败，已降级到最小模式（可设置 MIKA_STRICT_STARTUP=1 强制失败）| error={exc}")
 

@@ -68,6 +68,12 @@ NapCat 通常会把 OneBot v11 配置放在挂载目录里（例如 `napcat/data
 
 这意味着你不需要迁移历史数据库；v11/v12 只要群号一致即可复用同一份上下文。
 
+### 5) 结构化上下文（增强图片/工具连续理解）
+- 默认启用 `GEMINI_CONTEXT_MODE=structured`
+- 上下文按“轮次优先 + 软 token 阈值”裁剪，避免只按条数粗截断导致语义断裂
+- 工具调用轨迹会写入会话历史，减少多轮工具场景“失忆”问题
+- 当模型/平台不支持对应多模态能力时，`GEMINI_MULTIMODAL_STRICT=true` 会自动清洗不合法块，优先保证可用性
+
 ## 兼容策略（best-effort + 降级）
 
 ### 1) 发送策略：短消息引用，长消息 Forward
@@ -105,6 +111,18 @@ Forward 调用的典型 API：
 
 开启后仍是 best-effort：某个群同步失败会跳过，不影响 Bot 上线与其它群的处理。
 
+## 可观测性端点
+
+- `GET /health`：返回数据库状态、客户端状态，以及可选的 API 主动探测结果。  
+- `GET /metrics`：默认返回 JSON 指标快照；当 `Accept: text/plain` 或 `?format=prometheus` 时，可返回 Prometheus 文本（需启用 `GEMINI_METRICS_PROMETHEUS_ENABLED=true`）。  
+- `GET /metrics/prometheus`：固定返回 Prometheus 文本格式（若禁用会返回 404）。
+
+可选开关（默认保守）：
+- `GEMINI_METRICS_PROMETHEUS_ENABLED=true`
+- `GEMINI_HEALTH_CHECK_API_PROBE_ENABLED=false`
+- `GEMINI_HEALTH_CHECK_API_PROBE_TIMEOUT_SECONDS=3.0`
+- `GEMINI_HEALTH_CHECK_API_PROBE_TTL_SECONDS=30`
+
 ## 常见排错
 
 ### “图片解析不到 / 只显示 `[图片]`”
@@ -116,3 +134,15 @@ Forward 调用的典型 API：
 
 若你希望关闭图片兜底，可设置：
 - `GEMINI_LONG_REPLY_IMAGE_FALLBACK_ENABLED=false`
+
+### “API 经常空回复，且反复重试”
+P0 之后默认策略是“传输层先收敛，业务层不盲重试”：
+- `GEMINI_EMPTY_REPLY_LOCAL_RETRIES=1`
+- `GEMINI_EMPTY_REPLY_LOCAL_RETRY_DELAY_SECONDS=0.4`
+- `GEMINI_TRANSPORT_TIMEOUT_RETRIES=1`
+- `GEMINI_TRANSPORT_TIMEOUT_RETRY_DELAY_SECONDS=0.6`
+- `GEMINI_EMPTY_REPLY_CONTEXT_DEGRADE_ENABLED=false`
+
+若你确认不是网络/上游问题，才建议临时开启业务级上下文降级：
+- `GEMINI_EMPTY_REPLY_CONTEXT_DEGRADE_ENABLED=true`
+- `GEMINI_EMPTY_REPLY_CONTEXT_DEGRADE_MAX_LEVEL=2`
