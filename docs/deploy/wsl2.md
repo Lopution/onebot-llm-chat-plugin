@@ -1,8 +1,8 @@
 # WSL2 使用指南（可选）
 
-适用场景：你在 Windows 上运行 OneBot 实现（例如 NapCat），但希望把 Bot 跑在 WSL2 的 Linux 环境里。
+适用场景：你在 Windows 上运行 OneBot 实现（例如 NapCat），希望把 Bot 放在 WSL2 的 Linux 环境里运行。
 
-本项目不再内置“systemd/开机自启/长期守护”模板。如果你需要后台常驻，请使用你熟悉的方式（例如 `tmux/screen`、Windows 任务计划程序、或你自己的服务管理器）。
+本项目仅提供“可选 WSL2 运行”说明，不内置 `systemd` / 开机自启 / 长期守护模板。
 
 ## 1) 放置项目目录（重要）
 
@@ -29,8 +29,8 @@ python3 scripts/doctor.py
 
 配置文件建议：
 
-- 日常使用：`.env`
-- 长期部署：`.env.prod`（`start.sh` 会优先按它做检查；NoneBot 也会优先读取它）
+- 使用 `.env` 或 `.env.prod` 都可以
+- 若两者同时存在，`start.sh` 会优先按 `.env.prod` 做检查
 
 ## 3) 配置 OneBot 反向 WS
 
@@ -74,26 +74,3 @@ GEMINI_SEMANTIC_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v
 ```
 
 如果你是离线/受限网络环境：把模型准备到本地目录，再按配置使用对应的 `*_MODEL_FALLBACK` 或本地路径参数。
-
-## 5) (可选) 限制 WSL2 内存
-
-WSL2 的 `VmmemWSL` 会把 Linux 页缓存也算在内存占用里，长期运行/大量 I/O 后“看起来吃满”是常见现象。
-
-如果你只求稳定运行 Bot、并尽量少吃内存，可以在 Windows 用户目录创建/修改 `~/.wslconfig`
-(例如 `C:\\Users\\<你>\\.wslconfig`)：
-
-```ini
-[wsl2]
-memory=6GB
-processors=2
-swap=0
-
-# 需要较新 WSL 版本才支持(不支持则忽略这一行)
-autoMemoryReclaim=dropcache
-```
-
-然后执行一次让配置生效：
-
-```powershell
-wsl --shutdown
-```

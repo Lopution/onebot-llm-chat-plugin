@@ -45,7 +45,7 @@
 
 - 启动方式：`./start.sh`（或 `python bot.py`）
 - 验收点：
-  - WSL2 重启后可恢复
+  - WSL2 环境内可正常启动并连接 OneBot
   - 若使用 Docker 客户端，WS 地址可达
   - 日志无 `Unknown parameter`/`ForwardRef` 启动告警
 
