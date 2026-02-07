@@ -29,8 +29,8 @@ git push origin v0.1.0
 
 ## Release Artifacts
 
-- `onebot-llm-chat-plugin-vX.Y.Z-source.tar.gz`
-- `onebot-llm-chat-plugin-vX.Y.Z-source.zip`
+- `mika-chat-core-vX.Y.Z-source.tar.gz`
+- `mika-chat-core-vX.Y.Z-source.zip`
 
 ## Rollback
 

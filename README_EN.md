@@ -11,7 +11,7 @@
 [![NoneBot2](https://img.shields.io/badge/NoneBot-2.0+-red.svg)](https://nonebot.dev/)
 [![OneBot](https://img.shields.io/badge/OneBot-v11%20%2F%20v12-black.svg)](https://onebot.dev/)
 
-[📖 Docs](docs/index.md) · [🐛 Report Issues](https://github.com/Lopution/onebot-llm-chat-plugin/issues) · [💡 Feature Requests](https://github.com/Lopution/onebot-llm-chat-plugin/issues)
+[📖 Docs](docs/index.md) · [🐛 Report Issues](https://github.com/Lopution/mika-chat-core/issues) · [💡 Feature Requests](https://github.com/Lopution/mika-chat-core/issues)
 
 </div>
 
@@ -62,8 +62,8 @@ OneBot v11/v12 support with best-effort auto-degradation
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/Lopution/onebot-llm-chat-plugin.git
-cd onebot-llm-chat-plugin
+git clone https://github.com/Lopution/mika-chat-core.git
+cd mika-chat-core
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
@@ -82,6 +82,25 @@ For Windows, run:
 ```powershell
 .\start.ps1
 ```
+
+### Standard NoneBot Plugin Installation (Migration in Progress)
+
+This repository is being migrated to a standard NoneBot plugin package layout.
+For new projects, prefer loading the standard module name:
+
+```bash
+# Inside your NoneBot project (local development stage)
+pip install -e .
+```
+
+Then load it in your host app:
+
+```python
+nonebot.load_plugin("nonebot_plugin_mika_chat")
+```
+
+> After PyPI release, you can use `pip install nonebot-plugin-mika-chat` or `nb plugin install nonebot-plugin-mika-chat`.
+> During compatibility window, old module name `nonebot_plugin_gemini_chat` still works and is planned to be removed in `v0.3.0`.
 
 ### OneBot Connection (Reverse WebSocket)
 
@@ -122,8 +141,8 @@ After the bot starts, configure your OneBot implementation/client as a reverse W
 ### 1. Clone
 
 ```bash
-git clone https://github.com/Lopution/onebot-llm-chat-plugin.git
-cd onebot-llm-chat-plugin
+git clone https://github.com/Lopution/mika-chat-core.git
+cd mika-chat-core
 ```
 
 ### 2. Create a virtual environment (recommended)
@@ -164,6 +183,8 @@ cp .env.example .env
 | `GEMINI_CONTEXT_SUMMARY_ENABLED` | Enable summary compression (disabled by default) | ❌ | `false` |
 | `GEMINI_MULTIMODAL_STRICT` | Strict multimodal sanitation when capability is missing | ❌ | `true` |
 | `GEMINI_QUOTE_IMAGE_CAPTION_ENABLED` | Add caption hint for quoted images (best-effort) | ❌ | `true` |
+| `GEMINI_QUOTE_IMAGE_CAPTION_PROMPT` | Quote-image hint template (supports `{count}`) | ❌ | `[引用图片共{count}张]` |
+| `GEMINI_QUOTE_IMAGE_CAPTION_TIMEOUT_SECONDS` | Quote message parsing timeout (seconds) | ❌ | `3.0` |
 | `GEMINI_LONG_REPLY_IMAGE_FALLBACK_ENABLED` | Enable rendered-image fallback on send failure | ❌ | `true` |
 | `GEMINI_LONG_REPLY_IMAGE_MAX_CHARS` | Max chars for rendered long-reply image | ❌ | `12000` |
 | `GEMINI_LONG_REPLY_IMAGE_MAX_WIDTH` | Rendered image width (px) | ❌ | `960` |
@@ -179,6 +200,11 @@ cp .env.example .env
 | `GEMINI_HEALTH_CHECK_API_PROBE_ENABLED` | Enable active API probe in `/health` | ❌ | `false` |
 | `GEMINI_HEALTH_CHECK_API_PROBE_TIMEOUT_SECONDS` | API health probe timeout (seconds) | ❌ | `3.0` |
 | `GEMINI_HEALTH_CHECK_API_PROBE_TTL_SECONDS` | API health probe cache TTL (seconds) | ❌ | `30` |
+| `GEMINI_CONTEXT_TRACE_ENABLED` | Enable context-build trace logs | ❌ | `false` |
+| `GEMINI_CONTEXT_TRACE_SAMPLE_RATE` | Context trace sampling ratio (0~1) | ❌ | `1.0` |
+| `GEMINI_ACTIVE_REPLY_LTM_ENABLED` | Global gate for proactive LTM-like reply | ❌ | `true` |
+| `GEMINI_ACTIVE_REPLY_PROBABILITY` | Final probability gate for proactive reply (0~1) | ❌ | `1.0` |
+| `GEMINI_ACTIVE_REPLY_WHITELIST` | Group whitelist for proactive reply (empty = no extra limit) | ❌ | `[]` |
 | `SERPER_API_KEY` | Serper API key | ❌ | - |
 | `MIKA_STRICT_STARTUP` | Strict startup mode (fail-fast on loader errors) | ❌ | `false` |
 
@@ -227,20 +253,22 @@ If you deploy on Windows but want Bot + NapCat to run long-term in WSL2 (auto-st
 - 📁 systemd templates: [`deploy/wsl2/systemd/`](deploy/wsl2/systemd/)
 - 📁 Windows scripts: [`deploy/wsl2/windows/`](deploy/wsl2/windows/)
 
+For dual-repo maintenance (open-source dev repo + local deployment repo), see:
+- 📖 [`docs/deploy/repo-sync.md`](docs/deploy/repo-sync.md)
+
 ---
 
 ## 📁 Project Structure
 
 ```
-onebot-llm-chat-plugin/
+mika-chat-core/
 ├── bot.py                 # Bot entrypoint
 ├── start.sh               # Startup script (Linux/WSL)
 ├── .env.example           # Env template
 ├── requirements.txt       # Python dependencies
 ├── mkdocs.yml             # Docs config
 │
-├── src/plugins/
-│   └── gemini_chat/       # Core plugin
+├── src/nonebot_plugin_mika_chat/  # Core plugin (standard module name)
 │       ├── __init__.py
 │       ├── config.py
 │       ├── gemini_api.py
@@ -291,7 +319,7 @@ pytest tests/ -v
 Run with coverage:
 
 ```bash
-pytest tests/ -v --cov=src/plugins/gemini_chat --cov-report=html
+pytest tests/ -v --cov=src/nonebot_plugin_mika_chat --cov-report=html
 ```
 
 ---

@@ -13,7 +13,7 @@
 
 ## API 参考
 
-::: src.plugins.gemini_chat.gemini_api
+::: nonebot_plugin_mika_chat.gemini_api
     options:
       show_source: true
       members_order: source

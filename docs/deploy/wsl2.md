@@ -13,11 +13,13 @@
 
 ## 1) 建议的目录与数据位置
 
-强烈建议把项目放在 WSL 的 ext4 文件系统里（例如 `/root/onebot-llm-chat-plugin` 或 `/home/<user>/onebot-llm-chat-plugin`），不要放在 `/mnt/c/...`，SQLite 性能与锁竞争会差很多。
+强烈建议把项目放在 WSL 的 ext4 文件系统里（例如 `/root/mika-chat-core` 或 `/home/<user>/mika-chat-core`），不要放在 `/mnt/c/...`，SQLite 性能与锁竞争会差很多。
+
+下文统一使用 `<PROJECT_DIR>` 表示你的项目目录。
 
 本项目数据库默认落在：
 
-- `onebot-llm-chat-plugin/data/gemini_chat/contexts.db`（可用 `GEMINI_DATA_DIR` 或 `GEMINI_CONTEXT_DB_PATH` 覆盖）
+- `<PROJECT_DIR>/data/gemini_chat/contexts.db`（可用 `GEMINI_DATA_DIR` 或 `GEMINI_CONTEXT_DB_PATH` 覆盖）
 
 ## 低内存建议（项目侧）
 
@@ -42,14 +44,14 @@ pip install -e ".[semantic]"
 ```env
 GEMINI_SEMANTIC_BACKEND=fastembed
 GEMINI_SEMANTIC_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
-GEMINI_SEMANTIC_MODEL_FALLBACK=/root/onebot-llm-chat-plugin/models/semantic_model
+GEMINI_SEMANTIC_MODEL_FALLBACK=<PROJECT_DIR>/models/semantic_model
 GEMINI_SEMANTIC_USE_E5_PREFIXES=false
 ```
 
 > 注意：`fastembed.TextEmbedding` **不支持** `intfloat/multilingual-e5-small`（可用 `TextEmbedding.list_supported_models()` 验证）。  
-> 如果你想继续用本地目录模型（例如 `/root/onebot-llm-chat-plugin/models/semantic_model`），建议保持 `GEMINI_SEMANTIC_BACKEND=sentence-transformers`（或 `auto`）。
+> 如果你想继续用本地目录模型（例如 `<PROJECT_DIR>/models/semantic_model`），建议保持 `GEMINI_SEMANTIC_BACKEND=sentence-transformers`（或 `auto`）。
 
-> 如果你当前 `GEMINI_SEMANTIC_MODEL` 配的是本地目录（例如 `/root/onebot-llm-chat-plugin/models/semantic_model`），那更适合继续用 `sentence-transformers`。
+> 如果你当前 `GEMINI_SEMANTIC_MODEL` 配的是本地目录（例如 `<PROJECT_DIR>/models/semantic_model`），那更适合继续用 `sentence-transformers`。
 
 如果你遇到下载失败（例如 systemd 下无法访问 HuggingFace）：
 
@@ -58,7 +60,7 @@ GEMINI_SEMANTIC_USE_E5_PREFIXES=false
 - 重新安装 systemd unit 并重启：
 
 ```bash
-sudo /root/onebot-llm-chat-plugin/deploy/wsl2/install-systemd.sh
+sudo <PROJECT_DIR>/deploy/wsl2/install-systemd.sh
 sudo systemctl restart mika-bot.service
 ```
 
@@ -125,14 +127,14 @@ wsl --shutdown
 - `deploy/wsl2/systemd/mika-bot.service`
 - `deploy/wsl2/install-systemd.sh`
 
-如果你的目录不是 `/root/onebot-llm-chat-plugin` 与 `/root/napcat`：
+如果你的目录不是 `<PROJECT_DIR>` 与 `/root/napcat`：
 
 - 先编辑 `deploy/wsl2/systemd/*.service` 里的路径（`MIKA_BOT_DIR` / `NAPCAT_DIR` / `EnvironmentFile` / `ExecStart` / `WorkingDirectory`）。
 
 安装（需要 root）：
 
 ```bash
-sudo /root/onebot-llm-chat-plugin/deploy/wsl2/install-systemd.sh
+sudo <PROJECT_DIR>/deploy/wsl2/install-systemd.sh
 ```
 
 安装后常用命令：

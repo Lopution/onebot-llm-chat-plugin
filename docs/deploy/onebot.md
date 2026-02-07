@@ -3,6 +3,18 @@
 本项目希望尽可能兼容不同的 OneBot 实现（NapCat / go-cqhttp / 其它实现，以及 OneBot v12 适配器）。
 因此在一些**非标准/可选**能力上采用 **best-effort + 自动降级**：能用就用，不能用就回退为更通用的行为，保证 Bot 长期稳定运行。
 
+## 插件模块迁移说明（兼容期）
+
+- 新标准模块路径：`nonebot_plugin_mika_chat`
+- 旧模块路径：`nonebot_plugin_gemini_chat`（当前仍保留兼容壳）
+
+当前版本会优先按新模块名加载；兼容期内旧模块名仍可用。
+计划在 `v0.3.0` 移除旧模块壳，请在宿主中优先使用：
+
+```python
+nonebot.load_plugin("nonebot_plugin_mika_chat")
+```
+
 ## 如何连接到 Bot（反向 WebSocket）
 
 Bot 启动后，需要在你的 OneBot 实现/客户端侧配置“反向 WebSocket（WS Client）”，连接到 Bot 的 WS 地址：
@@ -146,3 +158,18 @@ P0 之后默认策略是“传输层先收敛，业务层不盲重试”：
 若你确认不是网络/上游问题，才建议临时开启业务级上下文降级：
 - `GEMINI_EMPTY_REPLY_CONTEXT_DEGRADE_ENABLED=true`
 - `GEMINI_EMPTY_REPLY_CONTEXT_DEGRADE_MAX_LEVEL=2`
+
+### “想要排查上下文构建是否异常”
+可临时开启上下文 trace：
+- `GEMINI_CONTEXT_TRACE_ENABLED=true`
+- `GEMINI_CONTEXT_TRACE_SAMPLE_RATE=1.0`
+
+在线上环境建议将采样率降到 0.1 或更低，避免日志过量。
+
+### “主动发言在某些群太频繁/不希望触发”
+可使用主动回复门控：
+- `GEMINI_ACTIVE_REPLY_LTM_ENABLED=true`
+- `GEMINI_ACTIVE_REPLY_PROBABILITY=0.3`
+- `GEMINI_ACTIVE_REPLY_WHITELIST=["123456789"]`
+
+其中 `GEMINI_ACTIVE_REPLY_WHITELIST` 留空表示不额外限制群范围（仍受主白名单与原有 proactive 规则控制）。

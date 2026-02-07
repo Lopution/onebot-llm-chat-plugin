@@ -11,7 +11,7 @@
 [![NoneBot2](https://img.shields.io/badge/NoneBot-2.0+-red.svg)](https://nonebot.dev/)
 [![OneBot](https://img.shields.io/badge/OneBot-v11%20%2F%20v12-black.svg)](https://onebot.dev/)
 
-[📖 文档](docs/index.md) · [🐛 报告问题](https://github.com/Lopution/onebot-llm-chat-plugin/issues) · [💡 功能建议](https://github.com/Lopution/onebot-llm-chat-plugin/issues)
+[📖 文档](docs/index.md) · [🐛 报告问题](https://github.com/Lopution/mika-chat-core/issues) · [💡 功能建议](https://github.com/Lopution/mika-chat-core/issues)
 
 </div>
 
@@ -62,8 +62,8 @@
 
 ```bash
 # 1. 克隆并安装
-git clone https://github.com/Lopution/onebot-llm-chat-plugin.git
-cd onebot-llm-chat-plugin
+git clone https://github.com/Lopution/mika-chat-core.git
+cd mika-chat-core
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
@@ -82,6 +82,24 @@ Windows 用户可直接运行（首次会自动创建虚拟环境并安装依赖
 ```powershell
 .\start.ps1
 ```
+
+### 标准 NoneBot 插件安装（迁移中）
+
+本项目正在迁移为标准 NoneBot 插件包结构，推荐新项目优先使用标准模块名：
+
+```bash
+# 在 NoneBot 项目中（本地开发阶段）
+pip install -e .
+```
+
+并在宿主中加载：
+
+```python
+nonebot.load_plugin("nonebot_plugin_mika_chat")
+```
+
+> 发布到 PyPI 后，可直接使用 `pip install nonebot-plugin-mika-chat` 或 `nb plugin install nonebot-plugin-mika-chat`。
+> 兼容期内旧模块名 `nonebot_plugin_gemini_chat` 仍可加载，计划在 `v0.3.0` 移除。
 
 ### OneBot 连接（反向 WebSocket）
 
@@ -123,8 +141,8 @@ Bot 启动后，需要在你的 OneBot 实现/客户端侧配置“反向 WebSoc
 ### 1. 克隆项目
 
 ```bash
-git clone https://github.com/Lopution/onebot-llm-chat-plugin.git
-cd onebot-llm-chat-plugin
+git clone https://github.com/Lopution/mika-chat-core.git
+cd mika-chat-core
 ```
 
 ### 2. 创建虚拟环境（推荐）
@@ -165,6 +183,8 @@ cp .env.example .env
 | `GEMINI_CONTEXT_SUMMARY_ENABLED` | 启用摘要压缩（默认关闭） | ❌ | `false` |
 | `GEMINI_MULTIMODAL_STRICT` | 多模态严格模式（不支持时自动清洗） | ❌ | `true` |
 | `GEMINI_QUOTE_IMAGE_CAPTION_ENABLED` | 引用消息图片注释（best-effort） | ❌ | `true` |
+| `GEMINI_QUOTE_IMAGE_CAPTION_PROMPT` | 引用图片提示模板（支持 `{count}` 占位符） | ❌ | `[引用图片共{count}张]` |
+| `GEMINI_QUOTE_IMAGE_CAPTION_TIMEOUT_SECONDS` | 引用消息解析超时（秒） | ❌ | `3.0` |
 | `GEMINI_LONG_REPLY_IMAGE_FALLBACK_ENABLED` | 发送失败后启用图片渲染兜底 | ❌ | `true` |
 | `GEMINI_LONG_REPLY_IMAGE_MAX_CHARS` | 长回复渲染图片的最大字符数 | ❌ | `12000` |
 | `GEMINI_LONG_REPLY_IMAGE_MAX_WIDTH` | 长回复渲染图片宽度（像素） | ❌ | `960` |
@@ -180,6 +200,11 @@ cp .env.example .env
 | `GEMINI_HEALTH_CHECK_API_PROBE_ENABLED` | 在 `/health` 启用 API 主动探测 | ❌ | `false` |
 | `GEMINI_HEALTH_CHECK_API_PROBE_TIMEOUT_SECONDS` | 健康探测超时（秒） | ❌ | `3.0` |
 | `GEMINI_HEALTH_CHECK_API_PROBE_TTL_SECONDS` | 健康探测结果缓存 TTL（秒） | ❌ | `30` |
+| `GEMINI_CONTEXT_TRACE_ENABLED` | 上下文构建 trace 日志开关 | ❌ | `false` |
+| `GEMINI_CONTEXT_TRACE_SAMPLE_RATE` | 上下文 trace 采样率（0~1） | ❌ | `1.0` |
+| `GEMINI_ACTIVE_REPLY_LTM_ENABLED` | 主动回复 LTM 门控总开关 | ❌ | `true` |
+| `GEMINI_ACTIVE_REPLY_PROBABILITY` | 主动回复最终概率门控（0~1） | ❌ | `1.0` |
+| `GEMINI_ACTIVE_REPLY_WHITELIST` | 允许主动回复的群白名单（空=不额外限制） | ❌ | `[]` |
 | `SERPER_API_KEY` | Serper 搜索 API Key | ❌ | - |
 | `MIKA_STRICT_STARTUP` | 严格启动模式（加载失败直接退出） | ❌ | `false` |
 
@@ -228,20 +253,22 @@ python3 bot.py
 - 📁 systemd 模板：[`deploy/wsl2/systemd/`](deploy/wsl2/systemd/)
 - 📁 Windows 脚本：[`deploy/wsl2/windows/`](deploy/wsl2/windows/)
 
+维护双仓（开源开发仓 + 本地部署仓）时，请参阅：
+- 📖 [`docs/deploy/repo-sync.md`](docs/deploy/repo-sync.md)
+
 ---
 
 ## 📁 项目结构
 
 ```
-onebot-llm-chat-plugin/
+mika-chat-core/
 ├── bot.py                 # 机器人入口
 ├── start.sh               # 启动脚本
 ├── .env.example           # 环境变量配置示例
 ├── requirements.txt       # Python 依赖
 ├── mkdocs.yml             # 文档配置
 │
-├── src/plugins/
-│   └── gemini_chat/       # 核心插件
+├── src/nonebot_plugin_mika_chat/  # 核心插件（标准模块名）
 │       ├── __init__.py    # 插件入口
 │       ├── config.py      # 配置管理
 │       ├── gemini_api.py  # OpenAI 兼容格式 API 客户端
@@ -297,7 +324,7 @@ pytest tests/ -v
 运行覆盖率测试：
 
 ```bash
-pytest tests/ -v --cov=src/plugins/gemini_chat --cov-report=html
+pytest tests/ -v --cov=src/nonebot_plugin_mika_chat --cov-report=html
 ```
 
 ---
