@@ -8,7 +8,7 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_build_request_context_payload_group_merges_reply_images():
-    from gemini_chat.handlers import build_request_context_payload
+    from mika_chat_core.handlers import build_request_context_payload
 
     bot = MagicMock()
     event = MagicMock()
@@ -28,14 +28,14 @@ async def test_build_request_context_payload_group_merges_reply_images():
         session_key="group:123456",
     )
 
-    with patch("gemini_chat.handlers.build_event_context", return_value=ctx), \
+    with patch("mika_chat_core.handlers.build_event_context", return_value=ctx), \
          patch(
-             "gemini_chat.handlers.parse_message_with_mentions",
+             "mika_chat_core.handlers.parse_message_with_mentions",
              new=AsyncMock(return_value=("hello group", ["https://img.example/reply1.jpg"])),
          ), \
-         patch("gemini_chat.handlers.extract_images", return_value=["https://img.example/main1.jpg"]), \
+         patch("mika_chat_core.handlers.extract_images", return_value=["https://img.example/main1.jpg"]), \
          patch(
-             "gemini_chat.handlers._resolve_onebot_v12_image_urls",
+             "mika_chat_core.handlers._resolve_onebot_v12_image_urls",
              new=AsyncMock(return_value=["https://img.example/main1.jpg"]),
          ):
         payload = await build_request_context_payload(bot, event, plugin_config)
@@ -50,7 +50,7 @@ async def test_build_request_context_payload_group_merges_reply_images():
 
 @pytest.mark.asyncio
 async def test_build_request_context_payload_private_uses_plaintext():
-    from gemini_chat.handlers import build_request_context_payload
+    from mika_chat_core.handlers import build_request_context_payload
 
     bot = MagicMock()
     event = MagicMock()
@@ -64,10 +64,10 @@ async def test_build_request_context_payload_private_uses_plaintext():
         session_key="private:10001",
     )
 
-    with patch("gemini_chat.handlers.build_event_context", return_value=ctx), \
-         patch("gemini_chat.handlers.extract_images", return_value=[]), \
+    with patch("mika_chat_core.handlers.build_event_context", return_value=ctx), \
+         patch("mika_chat_core.handlers.extract_images", return_value=[]), \
          patch(
-             "gemini_chat.handlers._resolve_onebot_v12_image_urls",
+             "mika_chat_core.handlers._resolve_onebot_v12_image_urls",
              new=AsyncMock(return_value=[]),
          ):
         payload = await build_request_context_payload(bot, event, plugin_config)

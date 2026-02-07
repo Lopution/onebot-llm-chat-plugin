@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 @pytest.mark.asyncio
 async def test_resolve_image_urls_v12_file_id_best_effort():
-    from gemini_chat.utils.image_processor import resolve_image_urls
+    from mika_chat_core.utils.image_processor import resolve_image_urls
 
     bot = MagicMock()
 

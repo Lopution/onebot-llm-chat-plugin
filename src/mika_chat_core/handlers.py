@@ -12,13 +12,15 @@
 - [`lifecycle`](lifecycle.py:1): 插件生命周期管理
 """
 
+import asyncio
 import base64
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Union
 
 from nonebot import get_driver
 
 from .config import Config
-from .utils.image_processor import extract_images, resolve_image_urls
+from .utils.image_processor import extract_images, resolve_image_urls, extract_and_resolve_images
 from .deps import get_gemini_client_dep, get_config
 from nonebot import logger as log
 from .utils.recent_images import get_image_cache
@@ -40,11 +42,36 @@ from .utils.nb_types import BotT
 driver = get_driver()
 
 
+@dataclass
+class RequestContextPayload:
+    """统一的请求上下文载荷。"""
+
+    ctx: Any
+    message_text: str
+    image_urls: List[str]
+    reply_images: List[str]
+
+
+@dataclass
+class SendStageResult:
+    """发送阶段结果。"""
+
+    ok: bool
+    method: str
+    error: str = ""
+
+
 def _make_session_key(*, user_id: str, group_id: Optional[str]) -> str:
     """与 SQLiteContextStore 的 key 规则对齐，确保同一会话串行。"""
     if group_id:
         return f"group:{group_id}"
     return f"private:{user_id}"
+
+
+def _cfg(plugin_config: Config, key: str, default: Any) -> Any:
+    """读取配置项并提供稳定默认值（不修改配置对象本身）。"""
+    value = getattr(plugin_config, key, default)
+    return default if value is None else value
 
 
 async def _resolve_onebot_v12_image_urls(
@@ -61,7 +88,11 @@ async def _resolve_onebot_v12_image_urls(
     """
     if max_images <= 0:
         return image_urls
-    resolved = await resolve_image_urls(bot, getattr(event, "original_message", None), max_images=max_images)
+    resolved = await extract_and_resolve_images(
+        bot,
+        getattr(event, "original_message", None),
+        max_images=max_images,
+    )
     merged: List[str] = []
     for url in [*(image_urls or []), *resolved]:
         if url and url not in merged:
@@ -69,6 +100,60 @@ async def _resolve_onebot_v12_image_urls(
         if len(merged) >= max_images:
             break
     return merged
+
+
+async def build_request_context_payload(
+    bot: BotT,
+    event: Any,
+    plugin_config: Config,
+) -> RequestContextPayload:
+    """统一构建一次请求的输入上下文（文本 + 图片 + 引用图片）。"""
+    ctx = build_event_context(bot, event)
+    max_images = max(0, int(_cfg(plugin_config, "gemini_max_images", 10) or 10))
+
+    message_text = (ctx.plaintext or "").strip()
+    reply_images: List[str] = []
+
+    if ctx.is_group:
+        message_text, reply_images = await parse_message_with_mentions(
+            bot,
+            event,
+            max_images=max_images,
+            quote_image_caption_enabled=bool(
+                _cfg(plugin_config, "gemini_quote_image_caption_enabled", True)
+            ),
+            quote_image_caption_prompt=str(
+                _cfg(plugin_config, "gemini_quote_image_caption_prompt", "[引用图片共{count}张]")
+            ),
+            quote_image_caption_timeout_seconds=float(
+                _cfg(plugin_config, "gemini_quote_image_caption_timeout_seconds", 3.0)
+            ),
+        )
+        if not message_text:
+            message_text = (ctx.plaintext or "").strip()
+
+    image_urls = extract_images(getattr(event, "original_message", None), max_images)
+    image_urls = await _resolve_onebot_v12_image_urls(
+        bot,
+        event,
+        image_urls,
+        max_images=max_images,
+    )
+
+    if reply_images:
+        image_urls = list(dict.fromkeys([*image_urls, *reply_images]))
+        log.info(
+            f"[上下文载荷] 引用图片已注入 | session={ctx.session_key} | reply_images={len(reply_images)}"
+        )
+    elif ctx.is_group:
+        log.debug(f"[上下文载荷] 引用图片未命中 | session={ctx.session_key}")
+
+    return RequestContextPayload(
+        ctx=ctx,
+        message_text=message_text,
+        image_urls=image_urls,
+        reply_images=reply_images,
+    )
 
 
 def _render_transcript_content(content: Any) -> str:
@@ -155,7 +240,7 @@ def _build_proactive_chatroom_injection(
 def get_gemini_client():
     """兼容旧 tests：历史上测试 patch `gemini_chat.handlers.get_gemini_client`。
 
-    当前实现使用依赖注入入口 [`get_gemini_client_dep()`](bot/src/plugins/gemini_chat/deps.py:1)。
+    当前实现使用依赖注入入口 [`get_gemini_client_dep()`](mika_chat_core/deps.py:1)。
     """
     return get_gemini_client_dep()
 
@@ -163,13 +248,13 @@ def get_gemini_client():
 def get_user_profile_store():
     """兼容旧 tests：历史上测试会 patch `gemini_chat.handlers.get_user_profile_store`。
 
-    当前实现的真实入口在 [`utils.user_profile.get_user_profile_store()`](bot/src/plugins/gemini_chat/utils/user_profile.py:1)。
+    当前实现的真实入口在 [`utils.user_profile.get_user_profile_store()`](mika_chat_core/utils/user_profile.py:1)。
     """
     from .utils.user_profile import get_user_profile_store as _get
 
     return _get()
 
-def _handle_task_exception(task: "asyncio.Task") -> None:
+def _handle_task_exception(task: asyncio.Task[Any]) -> None:
     """处理后台任务的异常，防止异常被静默忽略"""
     if task.done() and not task.cancelled():
         exc = task.exception()
@@ -377,32 +462,16 @@ async def _handle_private_locked(
     plugin_config: Config,
     gemini_client,
 ) -> None:
-    ctx = build_event_context(bot, event)
-    message_text = (ctx.plaintext or "").strip()
-    image_urls = extract_images(getattr(event, "original_message", None), plugin_config.gemini_max_images)
-    image_urls = await _resolve_onebot_v12_image_urls(
-        bot, event, image_urls, max_images=int(plugin_config.gemini_max_images)
-    )
-    
+    payload = await build_request_context_payload(bot, event, plugin_config)
+    ctx = payload.ctx
+    message_text = payload.message_text
+    image_urls = payload.image_urls
+
     if not message_text and not image_urls:
         return
 
     if gemini_client is None:
         gemini_client = get_gemini_client()
-
-    # 兼容 tests：测试用例可能传入 `MagicMock(spec=Config)`，但未补齐新增的历史图片配置字段。
-    # 这里为这些字段提供最小默认值，避免 AttributeError（不改变已有行为）。
-    plugin_config.gemini_history_image_mode = getattr(plugin_config, "gemini_history_image_mode", "hybrid")
-    plugin_config.gemini_history_image_inline_max = getattr(plugin_config, "gemini_history_image_inline_max", 1)
-    plugin_config.gemini_history_image_two_stage_max = getattr(plugin_config, "gemini_history_image_two_stage_max", 2)
-    plugin_config.gemini_history_image_enable_collage = getattr(plugin_config, "gemini_history_image_enable_collage", True)
-    plugin_config.gemini_history_image_collage_max = getattr(plugin_config, "gemini_history_image_collage_max", 4)
-    plugin_config.gemini_history_image_collage_target_px = getattr(
-        plugin_config, "gemini_history_image_collage_target_px", 768
-    )
-    plugin_config.gemini_history_image_trigger_keywords = getattr(
-        plugin_config, "gemini_history_image_trigger_keywords", []
-    )
     
     user_id = ctx.user_id
     # 兼容旧行为（tests 依赖）：
@@ -455,19 +524,19 @@ async def _handle_private_locked(
         candidate_images = image_cache.peek_recent_images(
             group_id=None,
             user_id=user_id,
-            limit=plugin_config.gemini_history_image_collage_max
+            limit=int(_cfg(plugin_config, "gemini_history_image_collage_max", 4))
         )
         
         decision = determine_history_image_action(
             message_text=message_text,
             candidate_images=candidate_images,
             context_messages=None,  # 私聊暂不传上下文
-            mode=plugin_config.gemini_history_image_mode,
-            inline_max=plugin_config.gemini_history_image_inline_max,
-            two_stage_max=plugin_config.gemini_history_image_two_stage_max,
-            collage_max=plugin_config.gemini_history_image_collage_max,
-            enable_collage=plugin_config.gemini_history_image_enable_collage,
-            custom_keywords=plugin_config.gemini_history_image_trigger_keywords or None,
+            mode=str(_cfg(plugin_config, "gemini_history_image_mode", "hybrid")),
+            inline_max=int(_cfg(plugin_config, "gemini_history_image_inline_max", 1)),
+            two_stage_max=int(_cfg(plugin_config, "gemini_history_image_two_stage_max", 2)),
+            collage_max=int(_cfg(plugin_config, "gemini_history_image_collage_max", 4)),
+            enable_collage=bool(_cfg(plugin_config, "gemini_history_image_enable_collage", True)),
+            custom_keywords=_cfg(plugin_config, "gemini_history_image_trigger_keywords", []) or None,
         )
         
         if decision.action == HistoryImageAction.INLINE:
@@ -483,7 +552,9 @@ async def _handle_private_locked(
             collage_urls = [img.url for img in decision.images_to_inject]
             collage_result = await create_collage_from_urls(
                 collage_urls,
-                target_max_px=plugin_config.gemini_history_image_collage_target_px
+                target_max_px=int(
+                    _cfg(plugin_config, "gemini_history_image_collage_target_px", 768)
+                )
             )
             if collage_result:
                 base64_data, mime_type = collage_result
@@ -496,8 +567,9 @@ async def _handle_private_locked(
                 log.info(f"[历史图片] COLLAGE | user={user_id} | images={len(collage_urls)} | reason={decision.reason}")
             else:
                 # 拼图失败，回退到 inline
-                image_urls = [img.url for img in decision.images_to_inject[:plugin_config.gemini_history_image_inline_max]]
-                cached_hint = build_image_mapping_hint(decision.images_to_inject[:plugin_config.gemini_history_image_inline_max])
+                inline_max = int(_cfg(plugin_config, "gemini_history_image_inline_max", 1))
+                image_urls = [img.url for img in decision.images_to_inject[:inline_max]]
+                cached_hint = build_image_mapping_hint(decision.images_to_inject[:inline_max])
                 metrics.history_image_inline_used_total += 1
                 metrics.history_image_images_injected_total += len(image_urls)
                 log.warning(f"[历史图片] COLLAGE失败回退INLINE | user={user_id} | images={len(image_urls)}")
@@ -545,6 +617,8 @@ async def parse_message_with_mentions(
     *,
     max_images: int = 10,
     quote_image_caption_enabled: bool = True,
+    quote_image_caption_prompt: str = "[引用图片共{count}张]",
+    quote_image_caption_timeout_seconds: float = 3.0,
 ) -> tuple:
     """解析消息并保留 @ 提及和引用内容
     
@@ -632,9 +706,28 @@ async def parse_message_with_mentions(
                     try:
                         reply_id_arg: Any
                         reply_id_arg = int(reply_msg_id_str) if reply_msg_id_str.isdigit() else reply_msg_id_str
-                        msg_data = await safe_call_api(bot, "get_msg", message_id=reply_id_arg)
+                        timeout_seconds = max(0.5, float(quote_image_caption_timeout_seconds or 3.0))
+                        try:
+                            msg_data = await asyncio.wait_for(
+                                safe_call_api(bot, "get_msg", message_id=reply_id_arg),
+                                timeout=timeout_seconds,
+                            )
+                        except asyncio.TimeoutError:
+                            msg_data = None
+                            log.warning(
+                                f"[Reply处理] 获取引用消息超时(get_msg) | msg_id={reply_msg_id} | timeout={timeout_seconds:.1f}s"
+                            )
                         if msg_data is None:
-                            msg_data = await safe_call_api(bot, "get_message", message_id=reply_id_arg)
+                            try:
+                                msg_data = await asyncio.wait_for(
+                                    safe_call_api(bot, "get_message", message_id=reply_id_arg),
+                                    timeout=timeout_seconds,
+                                )
+                            except asyncio.TimeoutError:
+                                msg_data = None
+                                log.warning(
+                                    f"[Reply处理] 获取引用消息超时(get_message) | msg_id={reply_msg_id} | timeout={timeout_seconds:.1f}s"
+                                )
                         if not isinstance(msg_data, dict):
                             raise ValueError("get_msg/get_message returned empty or non-dict")
 
@@ -644,7 +737,7 @@ async def parse_message_with_mentions(
                         
                         # 解析被引用消息的内容
                         raw_message = msg_data.get("message", [])
-                        resolved_quote_images = await resolve_image_urls(
+                        resolved_quote_images = await extract_and_resolve_images(
                             bot, raw_message, max_images=max_images
                         )
                         quoted_parts = []
@@ -699,7 +792,14 @@ async def parse_message_with_mentions(
                                 message_id=reply_msg_id_str,
                             )
                             if quote_image_caption_enabled:
-                                quoted_parts.append(f"[引用图片共{len(resolved_quote_images)}张]")
+                                try:
+                                    caption_text = str(quote_image_caption_prompt).format(
+                                        count=len(resolved_quote_images),
+                                        sender=sender_name,
+                                    )
+                                except Exception:
+                                    caption_text = f"[引用图片共{len(resolved_quote_images)}张]"
+                                quoted_parts.append(caption_text)
                                 quoted_text = "".join(quoted_parts).strip()
 
                         if quoted_text or extra_images:
@@ -799,49 +899,17 @@ async def _handle_group_locked(
     is_proactive: bool,
     proactive_reason: Optional[str],
 ) -> None:
-    ctx = build_event_context(bot, event)
+    payload = await build_request_context_payload(bot, event, plugin_config)
+    ctx = payload.ctx
     if not ctx.is_group or not ctx.group_id:
         return
 
-    # 解析消息，获取文本和引用消息中的额外图片
-    raw_text, reply_images = await parse_message_with_mentions(
-        bot,
-        event,
-        max_images=int(plugin_config.gemini_max_images),
-        quote_image_caption_enabled=bool(
-            getattr(plugin_config, "gemini_quote_image_caption_enabled", True)
-        ),
-    )
-    # 兼容测试/异常输入：如果 original_message 为空，回退到 get_plaintext()
-    if not raw_text:
-        raw_text = (ctx.plaintext or "").strip()
-    image_urls = await resolve_image_urls(
-        bot,
-        getattr(event, "original_message", None),
-        max_images=int(plugin_config.gemini_max_images),
-    )
-    
-    # 合并引用消息中的图片
-    if reply_images:
-        image_urls = list(dict.fromkeys([*image_urls, *reply_images]))
-        log.debug(f"[Reply图片] 合并引用图片 | count={len(reply_images)}")
+    raw_text = payload.message_text
+    image_urls = payload.image_urls
     
     if not raw_text and not image_urls:
         return
 
-    # 兼容 tests：测试用例可能传入 `MagicMock(spec=Config)`，但未补齐新增的历史图片配置字段。
-    plugin_config.gemini_history_image_mode = getattr(plugin_config, "gemini_history_image_mode", "hybrid")
-    plugin_config.gemini_history_image_inline_max = getattr(plugin_config, "gemini_history_image_inline_max", 1)
-    plugin_config.gemini_history_image_two_stage_max = getattr(plugin_config, "gemini_history_image_two_stage_max", 2)
-    plugin_config.gemini_history_image_enable_collage = getattr(plugin_config, "gemini_history_image_enable_collage", True)
-    plugin_config.gemini_history_image_collage_max = getattr(plugin_config, "gemini_history_image_collage_max", 4)
-    plugin_config.gemini_history_image_collage_target_px = getattr(
-        plugin_config, "gemini_history_image_collage_target_px", 768
-    )
-    plugin_config.gemini_history_image_trigger_keywords = getattr(
-        plugin_config, "gemini_history_image_trigger_keywords", []
-    )
-    
     # 获取身份标签
     user_id_int = ctx.user_id
     nickname = ctx.sender_name or "Sensei"
@@ -867,7 +935,7 @@ async def _handle_group_locked(
         candidate_images = image_cache.peek_recent_images(
             group_id=str(ctx.group_id),
             user_id=str(user_id_int),
-            limit=plugin_config.gemini_history_image_collage_max
+            limit=int(_cfg(plugin_config, "gemini_history_image_collage_max", 4))
         )
         
         # 获取上下文用于策略判定
@@ -881,12 +949,12 @@ async def _handle_group_locked(
             message_text=raw_text,
             candidate_images=candidate_images,
             context_messages=context_messages,
-            mode=plugin_config.gemini_history_image_mode,
-            inline_max=plugin_config.gemini_history_image_inline_max,
-            two_stage_max=plugin_config.gemini_history_image_two_stage_max,
-            collage_max=plugin_config.gemini_history_image_collage_max,
-            enable_collage=plugin_config.gemini_history_image_enable_collage,
-            custom_keywords=plugin_config.gemini_history_image_trigger_keywords or None,
+            mode=str(_cfg(plugin_config, "gemini_history_image_mode", "hybrid")),
+            inline_max=int(_cfg(plugin_config, "gemini_history_image_inline_max", 1)),
+            two_stage_max=int(_cfg(plugin_config, "gemini_history_image_two_stage_max", 2)),
+            collage_max=int(_cfg(plugin_config, "gemini_history_image_collage_max", 4)),
+            enable_collage=bool(_cfg(plugin_config, "gemini_history_image_enable_collage", True)),
+            custom_keywords=_cfg(plugin_config, "gemini_history_image_trigger_keywords", []) or None,
         )
         
         if decision.action == HistoryImageAction.INLINE:
@@ -902,7 +970,9 @@ async def _handle_group_locked(
             collage_urls = [img.url for img in decision.images_to_inject]
             collage_result = await create_collage_from_urls(
                 collage_urls,
-                target_max_px=plugin_config.gemini_history_image_collage_target_px
+                target_max_px=int(
+                    _cfg(plugin_config, "gemini_history_image_collage_target_px", 768)
+                )
             )
             if collage_result:
                 base64_data, mime_type = collage_result
@@ -914,8 +984,9 @@ async def _handle_group_locked(
                 log.info(f"[历史图片] COLLAGE | group={ctx.group_id} | user={user_id_int} | images={len(collage_urls)} | reason={decision.reason}")
             else:
                 # 拼图失败，回退到 inline
-                image_urls = [img.url for img in decision.images_to_inject[:plugin_config.gemini_history_image_inline_max]]
-                cached_hint = build_image_mapping_hint(decision.images_to_inject[:plugin_config.gemini_history_image_inline_max])
+                inline_max = int(_cfg(plugin_config, "gemini_history_image_inline_max", 1))
+                image_urls = [img.url for img in decision.images_to_inject[:inline_max]]
+                cached_hint = build_image_mapping_hint(decision.images_to_inject[:inline_max])
                 metrics.history_image_inline_used_total += 1
                 metrics.history_image_images_injected_total += len(image_urls)
                 log.warning(f"[历史图片] COLLAGE失败回退INLINE | group={ctx.group_id} | user={user_id_int} | images={len(image_urls)}")
@@ -1018,6 +1089,36 @@ def _build_final_reply_text(reply_text: str, is_proactive: bool) -> str:
     if is_proactive:
         return f"【自主回复】\n{reply_text}"
     return reply_text
+
+
+async def _stage_short_quote_text(bot: BotT, event: Any, final_text: str) -> SendStageResult:
+    ok = await safe_send(bot, event, final_text, reply_message=True, at_sender=False)
+    return SendStageResult(ok=bool(ok), method="quote_text", error="" if ok else "safe_send_failed")
+
+
+async def _stage_long_forward(
+    bot: BotT,
+    event: Any,
+    final_text: str,
+    plugin_config: Config,
+) -> SendStageResult:
+    ok = await send_forward_msg(bot, event, final_text, plugin_config=plugin_config)
+    return SendStageResult(ok=bool(ok), method="forward", error="" if ok else "forward_failed")
+
+
+async def _stage_render_image(
+    bot: BotT,
+    event: Any,
+    final_text: str,
+    plugin_config: Config,
+) -> SendStageResult:
+    ok = await send_rendered_image_with_quote(bot, event, final_text, plugin_config=plugin_config)
+    return SendStageResult(ok=bool(ok), method="quote_image", error="" if ok else "render_or_send_failed")
+
+
+async def _stage_text_fallback(bot: BotT, event: Any, final_text: str) -> SendStageResult:
+    ok = await safe_send(bot, event, final_text, reply_message=True, at_sender=False)
+    return SendStageResult(ok=bool(ok), method="quote_text_fallback", error="" if ok else "safe_send_failed")
 
 
 def _build_quote_image_segments(message_id: Optional[str], platform: str, image_base64: str) -> list[dict]:
@@ -1135,20 +1236,35 @@ async def send_reply_with_policy(
     final_text = _build_final_reply_text(reply_text, is_proactive=is_proactive)
     threshold = int(getattr(plugin_config, "gemini_forward_threshold", 300) or 300)
     is_long = len(final_text) >= max(1, threshold)
+    session = build_event_context(bot, event).session_key
+
+    stage_result: Optional[SendStageResult] = None
 
     if is_long:
-        if await send_forward_msg(bot, event, final_text, plugin_config=plugin_config):
+        stage_result = await _stage_long_forward(bot, event, final_text, plugin_config)
+        if stage_result.ok:
+            log.info(f"[发送策略] session={session} | method={stage_result.method} | is_long={is_long}")
             return
     else:
-        if await safe_send(bot, event, final_text, reply_message=True, at_sender=False):
+        stage_result = await _stage_short_quote_text(bot, event, final_text)
+        if stage_result.ok:
+            log.info(f"[发送策略] session={session} | method={stage_result.method} | is_long={is_long}")
             return
 
     if bool(getattr(plugin_config, "gemini_long_reply_image_fallback_enabled", True)):
-        if await send_rendered_image_with_quote(bot, event, final_text, plugin_config=plugin_config):
+        stage_result = await _stage_render_image(bot, event, final_text, plugin_config)
+        if stage_result.ok:
+            log.info(f"[发送策略] session={session} | method={stage_result.method} | is_long={is_long}")
             return
 
-    if not await safe_send(bot, event, final_text, reply_message=True, at_sender=False):
-        log.error("文本最终兜底发送失败")
+    stage_result = await _stage_text_fallback(bot, event, final_text)
+    if stage_result.ok:
+        log.info(f"[发送策略] session={session} | method={stage_result.method} | is_long={is_long}")
+        return
+
+    log.error(
+        f"[发送策略] session={session} | method={stage_result.method} | is_long={is_long} | error={stage_result.error}"
+    )
 
 
 async def send_forward_msg(

@@ -293,7 +293,7 @@ async def _handle_proactive(bot: BotT, event: EventT):
 
     # ===== 主动发言链路的 @ 解析修复 =====
     # 目标：让主动发言的“判决输入 + 额外 System 指令”都能看到 @ 提及对象。
-    # 说明：群聊正常 handler 在 [`parse_message_with_mentions()`](bot/src/plugins/gemini_chat/handlers.py:297)
+    # 说明：群聊正常 handler 在 [`parse_message_with_mentions()`](mika_chat_core/handlers.py:297)
     # 中会把 at 段转成 "@昵称"；但主动发言之前的判决/提示此前用的是 `event.get_plaintext()`，
     # 可能丢失 @，导致模型误判“谁被祝生日快乐”。
     parsed_text = ""

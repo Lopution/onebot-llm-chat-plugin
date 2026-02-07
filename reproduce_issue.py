@@ -46,7 +46,7 @@ sys.modules["nonebot.adapters.onebot.v11"].GroupMessageEvent = GroupMessageEvent
 sys.modules["nonebot"].logger = MagicMock()
 
 # Mock config
-from plugins.gemini_chat.config import Config
+from mika_chat_core.config import Config
 mock_config = Config(gemini_api_key="AIxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
 mock_config.gemini_proactive_rate = 1.0  # Force trigger for testing
 mock_config.gemini_heat_threshold = 2    # Low threshold
@@ -59,7 +59,7 @@ mock_config.gemini_proactive_ignore_len = 0
 # Import matchers
 # We need to patch get_plugin_config before importing matchers
 with patch("nonebot.get_plugin_config", return_value=mock_config):
-    from plugins.gemini_chat import matchers
+    from mika_chat_core import matchers
 
 # Overwrite global config in matchers just in case
 matchers.plugin_config = mock_config
@@ -110,10 +110,10 @@ async def test_proactive():
     # Patch deps
     # We need to ensure deps module is mocked or patchable
     # Since we imported matchers, deps might be imported relative.
-    # We can patch 'plugins.gemini_chat.deps.get_gemini_client_dep'
+    # We can patch 'mika_chat_core.deps.get_gemini_client_dep'
     
-    with patch("plugins.gemini_chat.deps.get_gemini_client_dep", return_value=mock_client), \
-         patch("plugins.gemini_chat.matchers.handle_group") as mock_handle_group:
+    with patch("mika_chat_core.deps.get_gemini_client_dep", return_value=mock_client), \
+         patch("mika_chat_core.matchers.handle_group") as mock_handle_group:
          
          await matchers._handle_proactive(MagicMock(), event)
          

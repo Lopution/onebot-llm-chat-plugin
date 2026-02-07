@@ -100,7 +100,6 @@ nonebot.load_plugin("nonebot_plugin_mika_chat")
 ```
 
 > After PyPI release, you can use `pip install nonebot-plugin-mika-chat` or `nb plugin install nonebot-plugin-mika-chat`.
-> During compatibility window, old module name `nonebot_plugin_gemini_chat` still works and is planned to be removed in `v0.3.0`.
 
 ### OneBot Connection (Reverse WebSocket)
 
@@ -123,20 +122,25 @@ After the bot starts, configure your OneBot implementation/client as a reverse W
 | Dependency | Version | Notes |
 |------------|---------|-------|
 | **Python** | 3.10+ | 3.11+ recommended |
-| **Docker** | - | Used for NapCat QQ client |
-| **OS** | Linux / Windows | Linux recommended; for Windows use WSL2 |
+| **Docker** | Optional | Needed only for NapCat/Docker deployment |
+| **OS** | Linux / Windows / WSL2 | All supported |
 
 ### Adapter & Runtime
 
 | Component | Version | Notes |
 |-----------|---------|-------|
 | **OneBot Protocol** | v11 / v12 | Core communication protocol |
-| **NoneBot2** | 2.0+ | Framework layer |
+| **NoneBot2** | 2.0+ | Current default host (not the only direction) |
 | **OneBot implementation/client** | Any | e.g. NapCat / go-cqhttp / others |
 
 ---
 
 ## 🔧 Installation & Run
+
+### Choose Deployment Mode
+
+- **Mode A (recommended)**: Linux/Windows host + any OneBot implementation (no Docker)
+- **Mode B**: WSL2 + any OneBot implementation (Docker optional; common with NapCat)
 
 ### 1. Clone
 
@@ -221,13 +225,10 @@ system_prompt: |
 
 If prompt structure is incomplete or invalid, the plugin falls back gracefully instead of crashing at startup/runtime.
 
-### 5. Start NapCat (QQ client)
+### 5. Start your OneBot implementation
 
-Make sure Docker is ready and start NapCat:
-
-```bash
-docker start napcat
-```
+- If you use NapCat + Docker, start NapCat container first
+- If you use another OneBot implementation, start it following its own docs
 
 ### 6. Start the bot
 
@@ -247,7 +248,7 @@ python3 bot.py
 
 ## 🧰 WSL2 Long-running Deployment
 
-If you deploy on Windows but want Bot + NapCat to run long-term in WSL2 (auto-start + auto-restart), see:
+If you deploy on Windows but want Bot to run long-term in WSL2 (auto-start + auto-restart), see:
 
 - 📖 [WSL2 deployment guide](docs/deploy/wsl2.md)
 - 📁 systemd templates: [`deploy/wsl2/systemd/`](deploy/wsl2/systemd/)
@@ -268,8 +269,7 @@ mika-chat-core/
 ├── requirements.txt       # Python dependencies
 ├── mkdocs.yml             # Docs config
 │
-├── src/nonebot_plugin_mika_chat/  # Core plugin (standard module name)
-│       ├── __init__.py
+├── src/mika_chat_core/            # Host-agnostic core module
 │       ├── config.py
 │       ├── gemini_api.py
 │       ├── handlers.py
@@ -278,6 +278,9 @@ mika-chat-core/
 │       ├── tools.py
 │       ├── metrics.py
 │       └── utils/
+│
+├── src/nonebot_plugin_mika_chat/  # NoneBot adapter layer (thin entry)
+│       └── __init__.py
 │
 ├── docs/                  # Documentation
 └── tests/                 # Tests
@@ -296,6 +299,7 @@ mika-chat-core/
 | [Context Store](docs/api/context_store.md) | Context management |
 | [Config](docs/api/config.md) | Full configuration |
 | [OneBot Compatibility](docs/deploy/onebot.md) | v11/v12 compatibility notes |
+| [Cross-platform Acceptance Matrix](docs/deploy/acceptance-matrix.md) | Linux/Windows/WSL2 validation checklist |
 | [Release Process](docs/release-process.md) | Tag/Release flow and rollback |
 
 Build docs:
@@ -319,7 +323,7 @@ pytest tests/ -v
 Run with coverage:
 
 ```bash
-pytest tests/ -v --cov=src/nonebot_plugin_mika_chat --cov-report=html
+pytest tests/ -v --cov=src/mika_chat_core --cov-report=html
 ```
 
 ---

@@ -15,7 +15,7 @@ class MockDriver:
 import nonebot
 nonebot.get_driver = lambda: MockDriver()
 
-from gemini_chat.utils.context_store import init_database, close_database
+from mika_chat_core.utils.context_store import init_database, close_database
 
 async def main():
     print("正在初始化数据库表结构...")

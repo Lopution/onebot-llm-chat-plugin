@@ -18,7 +18,7 @@ class TestConfigValidation:
     
     def test_config_with_valid_api_key(self, valid_api_key: str):
         """测试使用有效 API Key 创建配置"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
         
         config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
         
@@ -27,7 +27,7 @@ class TestConfigValidation:
     
     def test_config_with_api_key_list(self, valid_api_key: str):
         """测试使用 API Key 列表创建配置"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
         
         key_list = [
             "AIzaSyTest1234567890abcdefghij",
@@ -41,7 +41,7 @@ class TestConfigValidation:
     
     def test_config_with_both_key_and_list(self, valid_api_key: str):
         """测试同时使用单个 Key 和 Key 列表"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
         
         extra_key = "AIzaSyExtra123456789abcdefghij"
         config = Config(
@@ -56,7 +56,7 @@ class TestConfigValidation:
     
     def test_config_without_api_key_raises_error(self):
         """测试没有配置任何 API Key 时抛出验证错误"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
         
         with pytest.raises(ValidationError) as exc_info:
             Config(gemini_api_key="", gemini_api_key_list=[], gemini_master_id=123456789)
@@ -66,7 +66,7 @@ class TestConfigValidation:
     
     def test_config_with_short_api_key_raises_error(self, invalid_api_key_short: str):
         """测试 API Key 过短时抛出验证错误"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
         
         with pytest.raises(ValidationError) as exc_info:
             Config(gemini_api_key=invalid_api_key_short)
@@ -76,7 +76,7 @@ class TestConfigValidation:
     
     def test_config_with_space_in_api_key_raises_error(self, invalid_api_key_with_space: str):
         """测试 API Key 包含空格时抛出验证错误"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
         
         with pytest.raises(ValidationError) as exc_info:
             Config(gemini_api_key=invalid_api_key_with_space)
@@ -86,7 +86,7 @@ class TestConfigValidation:
     
     def test_config_strips_api_key_whitespace(self, valid_api_key: str):
         """测试 API Key 首尾空格会被自动去除"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
         
         key_with_whitespace = f"  {valid_api_key}  "
         # 注意：这里会去除首尾空格但中间不能有空格
@@ -101,7 +101,7 @@ class TestConfigBaseUrl:
     
     def test_valid_https_base_url(self, valid_api_key: str):
         """测试有效的 HTTPS Base URL"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
         
         config = Config(
             gemini_api_key=valid_api_key,
@@ -113,7 +113,7 @@ class TestConfigBaseUrl:
     
     def test_valid_http_base_url(self, valid_api_key: str):
         """测试有效的 HTTP Base URL（本地开发用）"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
         
         config = Config(
             gemini_api_key=valid_api_key,
@@ -125,7 +125,7 @@ class TestConfigBaseUrl:
     
     def test_base_url_trailing_slash_removed(self, valid_api_key: str):
         """测试 Base URL 尾部斜杠会被去除"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
         
         config = Config(
             gemini_api_key=valid_api_key,
@@ -138,7 +138,7 @@ class TestConfigBaseUrl:
     
     def test_invalid_base_url_without_protocol(self, valid_api_key: str):
         """测试没有协议的 Base URL 抛出错误"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
         
         with pytest.raises(ValidationError) as exc_info:
             Config(
@@ -152,7 +152,7 @@ class TestConfigBaseUrl:
     
     def test_empty_base_url_raises_error(self, valid_api_key: str):
         """测试空 Base URL 抛出错误"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
         
         with pytest.raises(ValidationError):
             Config(
@@ -167,7 +167,7 @@ class TestConfigDefaults:
     
     def test_default_model(self, valid_api_key: str):
         """测试默认模型配置"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
 
         config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
 
@@ -176,7 +176,7 @@ class TestConfigDefaults:
     
     def test_default_base_url(self, valid_api_key: str):
         """测试默认 Base URL"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
         
         config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
         
@@ -184,7 +184,7 @@ class TestConfigDefaults:
     
     def test_default_max_context(self, valid_api_key: str):
         """测试默认上下文长度"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
         
         config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
         
@@ -192,7 +192,7 @@ class TestConfigDefaults:
     
     def test_default_max_images(self, valid_api_key: str):
         """测试默认最大图片数"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
         
         config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
         
@@ -200,7 +200,7 @@ class TestConfigDefaults:
     
     def test_default_master_name(self, valid_api_key: str):
         """测试默认主人称呼"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
         
         config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
         
@@ -208,7 +208,7 @@ class TestConfigDefaults:
     
     def test_default_validate_on_startup(self, valid_api_key: str):
         """测试默认启动验证选项"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
         
         config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
         
@@ -216,7 +216,7 @@ class TestConfigDefaults:
     
     def test_default_forward_threshold(self, valid_api_key: str):
         """测试默认转发阈值"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
         
         config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
         
@@ -224,7 +224,7 @@ class TestConfigDefaults:
 
     def test_default_long_reply_image_fallback(self, valid_api_key: str):
         """测试长回复图片兜底默认配置"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
 
         config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
 
@@ -235,7 +235,7 @@ class TestConfigDefaults:
     
     def test_default_group_whitelist_empty(self, valid_api_key: str):
         """测试默认群白名单为空"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
         
         config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
         
@@ -243,7 +243,7 @@ class TestConfigDefaults:
 
     def test_default_search_cache_settings(self, valid_api_key: str):
         """测试搜索缓存默认配置"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
 
         config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
 
@@ -252,7 +252,7 @@ class TestConfigDefaults:
 
     def test_default_external_search_p0_settings(self, valid_api_key: str):
         """测试外置搜索 P0 默认配置"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
 
         config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
 
@@ -264,7 +264,7 @@ class TestConfigSectionViews:
     """配置分层访问器测试（P1）。"""
 
     def test_get_core_config(self, valid_api_key: str):
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
 
         config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
         core = config.get_core_config()
@@ -274,7 +274,7 @@ class TestConfigSectionViews:
         assert core["max_context"] == config.gemini_max_context
 
     def test_get_search_config(self, valid_api_key: str):
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
 
         config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
         search = config.get_search_config()
@@ -284,7 +284,7 @@ class TestConfigSectionViews:
         assert search["llm_gate_enabled"] == config.gemini_search_llm_gate_enabled
 
     def test_get_image_config(self, valid_api_key: str):
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
 
         config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
         image = config.get_image_config()
@@ -294,7 +294,7 @@ class TestConfigSectionViews:
         assert image["cache_max_entries"] == config.gemini_image_cache_max_entries
 
     def test_get_proactive_config(self, valid_api_key: str):
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
 
         config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
         proactive = config.get_proactive_config()
@@ -304,7 +304,7 @@ class TestConfigSectionViews:
         assert proactive["heat_threshold"] == config.gemini_heat_threshold
 
     def test_get_observability_config(self, valid_api_key: str):
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
 
         config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
         obs = config.get_observability_config()
@@ -322,7 +322,7 @@ class TestObservabilityValidation:
     """可观测性配置校验测试（P2）。"""
 
     def test_default_observability_values(self, valid_api_key: str):
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
 
         config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
         assert config.gemini_metrics_prometheus_enabled is True
@@ -331,7 +331,7 @@ class TestObservabilityValidation:
         assert config.gemini_health_check_api_probe_ttl_seconds == 30
 
     def test_invalid_health_probe_timeout(self, valid_api_key: str):
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
 
         with pytest.raises(ValidationError):
             Config(
@@ -341,7 +341,7 @@ class TestObservabilityValidation:
             )
 
     def test_invalid_health_probe_ttl(self, valid_api_key: str):
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
 
         with pytest.raises(ValidationError):
             Config(
@@ -352,7 +352,7 @@ class TestObservabilityValidation:
 
     def test_default_builtin_search_settings(self, valid_api_key: str):
         """测试内置搜索默认配置"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
 
         config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
 
@@ -360,7 +360,7 @@ class TestObservabilityValidation:
 
     def test_default_llm_search_gate_settings(self, valid_api_key: str):
         """测试外置搜索 LLM gate 默认配置"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
 
         config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
 
@@ -373,7 +373,7 @@ class TestObservabilityValidation:
 
     def test_default_tool_security_settings(self, valid_api_key: str):
         """测试工具安全默认配置"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
 
         config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
 
@@ -382,7 +382,7 @@ class TestObservabilityValidation:
 
     def test_default_image_performance_settings(self, valid_api_key: str):
         """测试图片性能默认配置"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
 
         config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
 
@@ -391,7 +391,7 @@ class TestObservabilityValidation:
 
     def test_default_proactive_keyword_cooldown(self, valid_api_key: str):
         """测试关键词冷却默认配置"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
 
         config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
 
@@ -403,7 +403,7 @@ class TestConfigApiKeyList:
     
     def test_empty_strings_filtered_from_list(self):
         """测试空字符串会从 Key 列表中过滤"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
         
         key_list = [
             "AIzaSyTest1234567890abcdefghij",
@@ -418,7 +418,7 @@ class TestConfigApiKeyList:
     
     def test_short_key_in_list_raises_error(self):
         """测试列表中包含过短的 Key 抛出错误"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
         
         key_list = [
             "AIzaSyTest1234567890abcdefghij",
@@ -433,7 +433,7 @@ class TestConfigApiKeyList:
     
     def test_key_with_space_in_list_raises_error(self):
         """测试列表中包含空格的 Key 抛出错误"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
         
         key_list = [
             "AIzaSy Test1234567890abcdefghij"  # 包含空格
@@ -451,7 +451,7 @@ class TestConfigEffectiveKeys:
     
     def test_get_effective_keys_deduplicates(self):
         """测试获取有效 Key 时会去重"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
         
         same_key = "AIzaSyTest1234567890abcdefghij"
         config = Config(
@@ -468,7 +468,7 @@ class TestConfigEffectiveKeys:
     
     def test_get_effective_keys_combines_both_sources(self):
         """测试有效 Key 列表合并单个 Key 和列表"""
-        from gemini_chat.config import Config
+        from mika_chat_core.config import Config
         
         single_key = "AIzaSySingle12345678901234567"
         list_keys = [

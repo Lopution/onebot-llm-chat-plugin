@@ -62,12 +62,12 @@ _use_real_aiosqlite = os.getenv("GEMINI_TEST_USE_REAL_AIOSQLITE") == "1"
 _ensure_dependency_or_stub("aiosqlite", force_stub=not _use_real_aiosqlite)
 
 
-# ==================== 测试导入路径设置（避免把 src/plugins 置顶） ====================
-# 允许 `import gemini_chat`（tests 中大量使用），但不把该目录置于 sys.path 顶端。
-plugins_dir = PROJECT_ROOT / "src" / "plugins"
-plugins_dir_str = str(plugins_dir)
-if plugins_dir_str not in sys.path:
-    sys.path.append(plugins_dir_str)
+# ==================== 测试导入路径设置 ====================
+# 允许 `import mika_chat_core`（tests 中大量使用）。
+src_dir = PROJECT_ROOT / "src"
+src_dir_str = str(src_dir)
+if src_dir_str not in sys.path:
+    sys.path.append(src_dir_str)
 
 
 def pytest_addoption(parser):
@@ -88,10 +88,10 @@ def pytest_addoption(parser):
     parser.addoption("--cov-branch", action="store_true", default=False)
 
 # ==================== 在导入插件模块前 Mock NoneBot ====================
-# 必须在 import gemini_chat 之前 mock，否则 __init__.py 会调用 get_plugin_config() 报错
+# 必须在 import mika_chat_core 之前 mock，否则 __init__.py 会调用 get_plugin_config() 报错
 #
 # 关键修复：将 patch 从 pytest fixture 改为模块级别立即执行
-# 原因：测试模块在收集阶段（import 时）就触发了 gemini_chat/__init__.py 导入，
+# 原因：测试模块在收集阶段（import 时）就触发了 mika_chat_core 模块导入，
 #       此时 pytest fixture 尚未生效，导致 get_plugin_config() 调用失败。
 # 解决方案：在 conftest.py 文件头部直接使用 patch().start()，确保在任何模块导入前就生效。
 
@@ -103,7 +103,7 @@ _mock_driver.config.command_sep = {"."}
 def _fake_get_plugin_config(model: object):
     """为 tests 提供稳定的插件配置。
 
-    - 若真实 pydantic/Config 可用：直接实例化传入的 model（通常是 gemini_chat.config.Config）
+    - 若真实 pydantic/Config 可用：直接实例化传入的 model（通常是 mika_chat_core.config.Config）
       这样新增字段会自动带默认值，避免 MagicMock 缺字段导致 AttributeError。
     - 若 model 无法实例化（极简环境 / stub 不兼容）：回退到最小 MagicMock。
     """

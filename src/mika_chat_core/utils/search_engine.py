@@ -229,7 +229,7 @@ def configure_classify_cache(ttl_seconds: int, max_size: int) -> None:
     """配置 LLM 分类判定缓存参数。
 
     说明：分类缓存的 TTL/容量读取逻辑在
-    [`search_classifier`](bot/src/plugins/gemini_chat/utils/search_classifier.py:1)
+    [`search_classifier`](mika_chat_core/utils/search_classifier.py:1)
     中；此函数仅用于启动日志提示（保留旧接口）。
     """
 

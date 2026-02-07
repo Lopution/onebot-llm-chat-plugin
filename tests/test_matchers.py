@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from gemini_chat.matchers import check_at_me_anywhere, _is_private_message
+from mika_chat_core.matchers import check_at_me_anywhere, _is_private_message
 
 
 @dataclass

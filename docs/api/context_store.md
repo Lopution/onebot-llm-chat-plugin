@@ -15,7 +15,7 @@
 ## 使用示例
 
 ```python
-from nonebot_plugin_mika_chat.utils.context_store import get_context_store
+from mika_chat_core.utils.context_store import get_context_store
 
 async def context_example():
     store = get_context_store()
@@ -34,7 +34,7 @@ async def context_example():
 
 ## API 参考
 
-::: nonebot_plugin_mika_chat.utils.context_store
+::: mika_chat_core.utils.context_store
     options:
       show_source: true
       members_order: source

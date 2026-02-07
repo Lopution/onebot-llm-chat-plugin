@@ -7,7 +7,7 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_check_proactive_supports_session_id_fallback():
-    import gemini_chat.matchers as m
+    import mika_chat_core.matchers as m
 
     class Event:
         to_me = False
@@ -52,7 +52,7 @@ async def test_check_proactive_supports_session_id_fallback():
 
 @pytest.mark.asyncio
 async def test_extract_and_resolve_images_dedupes_urls():
-    from gemini_chat.utils.image_processor import extract_and_resolve_images
+    from mika_chat_core.utils.image_processor import extract_and_resolve_images
 
     bot = MagicMock()
 

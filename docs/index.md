@@ -40,6 +40,8 @@ python bot.py
 
 | 模块 | 说明 |
 |------|------|
+| [`mika_chat_core`](../src/mika_chat_core) | 中立核心模块（宿主无关） |
+| [`nonebot_plugin_mika_chat`](../src/nonebot_plugin_mika_chat) | NoneBot 适配层（当前默认入口） |
 | [`gemini_api`](api/gemini_api.md) | API 客户端封装 |
 | [`handlers`](api/handlers.md) | 消息处理器 |
 | [`search_engine`](api/search_engine.md) | Serper API 搜索引擎 (Google Search) |
@@ -50,21 +52,14 @@ python bot.py
 ## 架构设计
 
 ```
-src/nonebot_plugin_mika_chat/
-├── __init__.py          # 插件入口
-├── config.py            # 配置管理
-├── gemini_api.py        # API 客户端
-├── handlers.py          # 消息处理器
-├── lifecycle.py         # 生命周期管理
-├── matchers.py          # 消息匹配器
-├── metrics.py           # 指标统计
-├── tools.py             # 工具函数定义
-└── utils/
-    ├── context_store.py # 上下文存储
-    ├── image_processor.py # 图片处理
-    ├── prompt_loader.py # 提示词加载
-    ├── search_engine.py # 搜索引擎
-    └── user_profile.py  # 用户档案
+src/
+├── mika_chat_core/              # 中立核心模块
+│   ├── config.py
+│   ├── gemini_api.py
+│   ├── handlers.py
+│   └── ...
+└── nonebot_plugin_mika_chat/    # NoneBot 适配层（薄入口）
+    └── __init__.py
 ```
 
 ## 许可证

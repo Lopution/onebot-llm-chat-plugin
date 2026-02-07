@@ -23,7 +23,7 @@
 ## 使用示例
 
 ```python
-from nonebot_plugin_mika_chat.utils.search_engine import serper_search, should_search
+from mika_chat_core.utils.search_engine import serper_search, should_search
 
 async def search_example():
     # 先用快速关键词检测
@@ -34,7 +34,7 @@ async def search_example():
 
 ## API 参考
 
-::: nonebot_plugin_mika_chat.utils.search_engine
+::: mika_chat_core.utils.search_engine
     options:
       show_source: true
       members_order: source

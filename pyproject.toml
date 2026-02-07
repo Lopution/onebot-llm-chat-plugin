@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "nonebot-plugin-mika-chat"
 version = "0.1.0"
-description = "基于 OneBot 协议的 QQ 机器人项目，通过 OpenAI 兼容格式 API 调用 Gemini 模型"
+description = "Mika Chat Core（OneBot 聊天核心）及 NoneBot 适配层"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
@@ -85,12 +85,11 @@ Issues = "https://github.com/Lopution/mika-chat-core/issues"
 
 [project.entry-points."nonebot.plugin"]
 mika_chat = "nonebot_plugin_mika_chat"
-gemini_chat = "nonebot_plugin_gemini_chat"
 
 [tool.hatch.build.targets.wheel]
 packages = [
+    "src/mika_chat_core",
     "src/nonebot_plugin_mika_chat",
-    "src/nonebot_plugin_gemini_chat",
 ]
 
 [tool.ruff]

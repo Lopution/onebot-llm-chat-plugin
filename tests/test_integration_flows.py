@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 @pytest.mark.asyncio
 async def test_tool_call_flow_triggers_handler():
-    from gemini_chat.gemini_api import GeminiClient
+    from mika_chat_core.gemini_api import GeminiClient
 
-    with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+    with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
         client = GeminiClient(api_key="test-key")
 
         tool_calls = [
@@ -44,9 +44,9 @@ async def test_tool_call_flow_triggers_handler():
 @pytest.mark.asyncio
 async def test_chat_empty_reply_degradation_reuses_first_search_result():
     """空回复触发上下文降级时，应复用首轮搜索结果，避免重复触发分类/搜索。"""
-    from gemini_chat.gemini_api import GeminiClient
+    from mika_chat_core.gemini_api import GeminiClient
 
-    with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+    with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
         client = GeminiClient(api_key="test-key")
 
     observed = []
@@ -72,7 +72,7 @@ async def test_chat_empty_reply_degradation_reuses_first_search_result():
 
     empty_assistant = {"role": "assistant", "content": ""}
     with patch(
-        "gemini_chat.gemini_api.plugin_config.gemini_empty_reply_context_degrade_enabled",
+        "mika_chat_core.gemini_api.plugin_config.gemini_empty_reply_context_degrade_enabled",
         True,
     ), patch.object(client, "_pre_search", AsyncMock(return_value="SEARCH_RESULT")) as mocked_pre_search, patch.object(
         client,
@@ -110,9 +110,9 @@ async def test_chat_empty_reply_degradation_reuses_first_search_result():
 @pytest.mark.asyncio
 async def test_chat_empty_reply_default_no_context_degrade():
     """默认配置下，空回复不触发业务级上下文降级，避免盲重跑整链路。"""
-    from gemini_chat.gemini_api import GeminiClient
+    from mika_chat_core.gemini_api import GeminiClient
 
-    with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+    with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
         client = GeminiClient(api_key="test-key")
 
     observed_context_levels = []
@@ -172,7 +172,7 @@ async def test_chat_empty_reply_default_no_context_degrade():
 
 @pytest.mark.asyncio
 async def test_tool_call_unregistered_handler_returns_fallback():
-    from gemini_chat.gemini_api_tools import handle_tool_calls
+    from mika_chat_core.gemini_api_tools import handle_tool_calls
 
     tool_calls = [
         {
@@ -209,7 +209,7 @@ async def test_tool_call_unregistered_handler_returns_fallback():
 
 @pytest.mark.asyncio
 async def test_tool_call_rejected_by_allowlist():
-    from gemini_chat.gemini_api_tools import handle_tool_calls
+    from mika_chat_core.gemini_api_tools import handle_tool_calls
 
     tool_calls = [
         {
@@ -228,7 +228,7 @@ async def test_tool_call_rejected_by_allowlist():
     mock_response.raise_for_status = MagicMock()
     mock_http.post = AsyncMock(return_value=mock_response)
 
-    with patch("gemini_chat.gemini_api_tools.plugin_config.gemini_tool_allowlist", ["search_group_history"]):
+    with patch("mika_chat_core.gemini_api_tools.plugin_config.gemini_tool_allowlist", ["search_group_history"]):
         reply = await handle_tool_calls(
             messages=[{"role": "user", "content": "hi"}],
             assistant_message=assistant_message,
@@ -248,7 +248,7 @@ async def test_tool_call_rejected_by_allowlist():
 @pytest.mark.asyncio
 async def test_tool_call_loop_multiple_rounds_executes_handlers():
     """模型连续返回 tool_calls 时，应进行多轮 tool loop，直到拿到最终 content。"""
-    from gemini_chat.gemini_api_tools import handle_tool_calls
+    from mika_chat_core.gemini_api_tools import handle_tool_calls
 
     tool_calls_round1 = [
         {
@@ -296,8 +296,8 @@ async def test_tool_call_loop_multiple_rounds_executes_handlers():
         }
     ]
 
-    with patch("gemini_chat.gemini_api_tools.plugin_config.gemini_tool_allowlist", ["web_search"]), patch(
-        "gemini_chat.gemini_api_tools.plugin_config.gemini_tool_max_rounds",
+    with patch("mika_chat_core.gemini_api_tools.plugin_config.gemini_tool_allowlist", ["web_search"]), patch(
+        "mika_chat_core.gemini_api_tools.plugin_config.gemini_tool_max_rounds",
         5,
     ):
         reply = await handle_tool_calls(
@@ -328,7 +328,7 @@ async def test_tool_call_loop_multiple_rounds_executes_handlers():
 @pytest.mark.asyncio
 async def test_tool_call_loop_max_rounds_forces_final_response():
     """达到 max_rounds 后，应拔掉 tools 并强制模型给出最终答复。"""
-    from gemini_chat.gemini_api_tools import handle_tool_calls
+    from mika_chat_core.gemini_api_tools import handle_tool_calls
 
     tool_calls_round1 = [
         {
@@ -376,11 +376,11 @@ async def test_tool_call_loop_max_rounds_forces_final_response():
         }
     ]
 
-    with patch("gemini_chat.gemini_api_tools.plugin_config.gemini_tool_allowlist", ["web_search"]), patch(
-        "gemini_chat.gemini_api_tools.plugin_config.gemini_tool_max_rounds",
+    with patch("mika_chat_core.gemini_api_tools.plugin_config.gemini_tool_allowlist", ["web_search"]), patch(
+        "mika_chat_core.gemini_api_tools.plugin_config.gemini_tool_max_rounds",
         1,
     ), patch(
-        "gemini_chat.gemini_api_tools.plugin_config.gemini_tool_force_final_on_max_rounds",
+        "mika_chat_core.gemini_api_tools.plugin_config.gemini_tool_force_final_on_max_rounds",
         True,
     ):
         reply = await handle_tool_calls(
@@ -414,7 +414,7 @@ async def test_tool_call_loop_max_rounds_forces_final_response():
 
 @pytest.mark.asyncio
 async def test_search_injection_in_build_messages():
-    from gemini_chat.gemini_api_messages import pre_search, build_messages
+    from mika_chat_core.gemini_api_messages import pre_search, build_messages
 
     async def fake_get_context_async(user_id, group_id=None):
         return []
@@ -422,10 +422,10 @@ async def test_search_injection_in_build_messages():
     tool_handlers = {"web_search": AsyncMock()}
 
     with patch(
-        "gemini_chat.gemini_api_messages.plugin_config.gemini_search_llm_gate_enabled",
+        "mika_chat_core.gemini_api_messages.plugin_config.gemini_search_llm_gate_enabled",
         False,
-    ), patch("gemini_chat.utils.search_engine.should_search", return_value=True), patch(
-        "gemini_chat.utils.search_engine.serper_search", AsyncMock(return_value="SEARCH_RESULT")
+    ), patch("mika_chat_core.utils.search_engine.should_search", return_value=True), patch(
+        "mika_chat_core.utils.search_engine.serper_search", AsyncMock(return_value="SEARCH_RESULT")
     ):
         search_result = await pre_search(
             "今天有什么新闻",
@@ -481,7 +481,7 @@ async def test_search_injection_in_build_messages():
 @pytest.mark.asyncio
 async def test_build_messages_history_override_bypasses_get_context_async():
     """history_override 非 None 时，不应调用 get_context_async（用于主动发言清空上下文场景）。"""
-    from gemini_chat.gemini_api_messages import build_messages
+    from mika_chat_core.gemini_api_messages import build_messages
 
     get_context_async = AsyncMock(return_value=[{"role": "assistant", "content": "SHOULD_NOT_BE_USED"}])
 
@@ -512,7 +512,7 @@ async def test_build_messages_history_override_bypasses_get_context_async():
 
 @pytest.mark.asyncio
 async def test_pre_search_llm_gate_needs_search_triggers_serper():
-    from gemini_chat.gemini_api_messages import pre_search
+    from mika_chat_core.gemini_api_messages import pre_search
 
     async def fake_get_context_async(user_id, group_id=None):
         return []
@@ -520,16 +520,16 @@ async def test_pre_search_llm_gate_needs_search_triggers_serper():
     tool_handlers = {"web_search": AsyncMock()}
 
     with patch(
-        "gemini_chat.gemini_api_messages.plugin_config.gemini_search_llm_gate_enabled",
+        "mika_chat_core.gemini_api_messages.plugin_config.gemini_search_llm_gate_enabled",
         True,
     ), patch(
-        "gemini_chat.gemini_api_messages.plugin_config.gemini_search_llm_gate_fallback_mode",
+        "mika_chat_core.gemini_api_messages.plugin_config.gemini_search_llm_gate_fallback_mode",
         "strong_timeliness",
     ), patch(
-        "gemini_chat.utils.search_engine.classify_topic_for_search",
+        "mika_chat_core.utils.search_engine.classify_topic_for_search",
         AsyncMock(return_value=(True, "AI模型", "@mika [小明(123456)]: 请帮我查一下 Kimi K2 发布 谢谢")),
     ), patch(
-        "gemini_chat.utils.search_engine.serper_search",
+        "mika_chat_core.utils.search_engine.serper_search",
         AsyncMock(return_value="SEARCH_RESULT"),
     ) as mocked_serper:
         search_result = await pre_search(
@@ -560,7 +560,7 @@ async def test_pre_search_llm_gate_needs_search_triggers_serper():
 @pytest.mark.asyncio
 async def test_send_api_request_content_empty_reasoning_triggers_completion_request():
     """主对话 content 为空但 reasoning_content 存在时，应触发补全请求且最终返回非空 content（仅一次）。"""
-    from gemini_chat.gemini_api_transport import send_api_request
+    from mika_chat_core.gemini_api_transport import send_api_request
 
     # mock http client: 两次响应
     mock_http = AsyncMock()
@@ -618,7 +618,7 @@ async def test_send_api_request_content_empty_reasoning_triggers_completion_requ
 @pytest.mark.asyncio
 async def test_send_api_request_content_empty_without_reasoning_local_retry_success():
     """主对话 content 为空且无 reasoning 时，应在 transport 层本地重试一次并直接收敛。"""
-    from gemini_chat.gemini_api_transport import send_api_request
+    from mika_chat_core.gemini_api_transport import send_api_request
 
     mock_http = AsyncMock()
 
@@ -676,7 +676,7 @@ async def test_send_api_request_content_empty_without_reasoning_local_retry_succ
 @pytest.mark.asyncio
 async def test_send_api_request_timeout_local_retry_success():
     """主请求超时时，应在传输层本地重试并收敛。"""
-    from gemini_chat.gemini_api_transport import send_api_request
+    from mika_chat_core.gemini_api_transport import send_api_request
 
     mock_http = AsyncMock()
     r_ok = MagicMock()
@@ -695,10 +695,10 @@ async def test_send_api_request_timeout_local_retry_success():
     mock_http.post = AsyncMock(side_effect=[httpx.TimeoutException("timeout"), r_ok])
 
     with patch("asyncio.sleep", new_callable=AsyncMock), patch(
-        "gemini_chat.gemini_api_transport.plugin_config.gemini_transport_timeout_retries",
+        "mika_chat_core.gemini_api_transport.plugin_config.gemini_transport_timeout_retries",
         1,
     ), patch(
-        "gemini_chat.gemini_api_transport.plugin_config.gemini_transport_timeout_retry_delay_seconds",
+        "mika_chat_core.gemini_api_transport.plugin_config.gemini_transport_timeout_retry_delay_seconds",
         0.01,
     ):
         assistant_message, tool_calls, api_key = await send_api_request(
@@ -724,13 +724,13 @@ async def test_send_api_request_timeout_local_retry_success():
 @pytest.mark.asyncio
 async def test_send_api_request_timeout_no_local_retry_raises():
     """关闭超时重试后，TimeoutException 应直接抛出给上层。"""
-    from gemini_chat.gemini_api_transport import send_api_request
+    from mika_chat_core.gemini_api_transport import send_api_request
 
     mock_http = AsyncMock()
     mock_http.post = AsyncMock(side_effect=httpx.TimeoutException("timeout"))
 
     with patch(
-        "gemini_chat.gemini_api_transport.plugin_config.gemini_transport_timeout_retries",
+        "mika_chat_core.gemini_api_transport.plugin_config.gemini_transport_timeout_retries",
         0,
     ):
         with pytest.raises(httpx.TimeoutException):
@@ -751,7 +751,7 @@ async def test_send_api_request_timeout_no_local_retry_raises():
 
 @pytest.mark.asyncio
 async def test_pre_search_llm_gate_no_search_skips_serper():
-    from gemini_chat.gemini_api_messages import pre_search
+    from mika_chat_core.gemini_api_messages import pre_search
 
     async def fake_get_context_async(user_id, group_id=None):
         return []
@@ -759,13 +759,13 @@ async def test_pre_search_llm_gate_no_search_skips_serper():
     tool_handlers = {"web_search": AsyncMock()}
 
     with patch(
-        "gemini_chat.gemini_api_messages.plugin_config.gemini_search_llm_gate_enabled",
+        "mika_chat_core.gemini_api_messages.plugin_config.gemini_search_llm_gate_enabled",
         True,
     ), patch(
-        "gemini_chat.utils.search_engine.classify_topic_for_search",
+        "mika_chat_core.utils.search_engine.classify_topic_for_search",
         AsyncMock(return_value=(False, "闲聊", "")),
     ), patch(
-        "gemini_chat.utils.search_engine.serper_search",
+        "mika_chat_core.utils.search_engine.serper_search",
         AsyncMock(return_value="SEARCH_RESULT"),
     ) as mocked_serper:
         search_result = await pre_search(
@@ -787,7 +787,7 @@ async def test_pre_search_llm_gate_no_search_skips_serper():
 
 @pytest.mark.asyncio
 async def test_pre_search_llm_gate_failure_strong_timeliness_fallback():
-    from gemini_chat.gemini_api_messages import pre_search
+    from mika_chat_core.gemini_api_messages import pre_search
 
     async def fake_get_context_async(user_id, group_id=None):
         return []
@@ -796,16 +796,16 @@ async def test_pre_search_llm_gate_failure_strong_timeliness_fallback():
 
     # classify 返回 (False, 未知, "") 视为失败，且消息命中强时效词（如“比赛结果”）应回退外搜
     with patch(
-        "gemini_chat.gemini_api_messages.plugin_config.gemini_search_llm_gate_enabled",
+        "mika_chat_core.gemini_api_messages.plugin_config.gemini_search_llm_gate_enabled",
         True,
     ), patch(
-        "gemini_chat.gemini_api_messages.plugin_config.gemini_search_llm_gate_fallback_mode",
+        "mika_chat_core.gemini_api_messages.plugin_config.gemini_search_llm_gate_fallback_mode",
         "strong_timeliness",
     ), patch(
-        "gemini_chat.utils.search_engine.classify_topic_for_search",
+        "mika_chat_core.utils.search_engine.classify_topic_for_search",
         AsyncMock(return_value=(False, "未知", "")),
     ), patch(
-        "gemini_chat.utils.search_engine.serper_search",
+        "mika_chat_core.utils.search_engine.serper_search",
         AsyncMock(return_value="SEARCH_RESULT"),
     ) as mocked_serper:
         search_result = await pre_search(
@@ -827,7 +827,7 @@ async def test_pre_search_llm_gate_failure_strong_timeliness_fallback():
 
 @pytest.mark.asyncio
 async def test_search_injection_empty_result_not_injected():
-    from gemini_chat.gemini_api_messages import pre_search, build_messages
+    from mika_chat_core.gemini_api_messages import pre_search, build_messages
 
     async def fake_get_context_async(user_id, group_id=None):
         return []
@@ -835,10 +835,10 @@ async def test_search_injection_empty_result_not_injected():
     tool_handlers = {"web_search": AsyncMock()}
 
     with patch(
-        "gemini_chat.gemini_api_messages.plugin_config.gemini_search_llm_gate_enabled",
+        "mika_chat_core.gemini_api_messages.plugin_config.gemini_search_llm_gate_enabled",
         False,
-    ), patch("gemini_chat.utils.search_engine.should_search", return_value=True), patch(
-        "gemini_chat.utils.search_engine.serper_search", AsyncMock(return_value="")
+    ), patch("mika_chat_core.utils.search_engine.should_search", return_value=True), patch(
+        "mika_chat_core.utils.search_engine.serper_search", AsyncMock(return_value="")
     ):
         search_result = await pre_search(
             "今天有什么新闻",
@@ -879,7 +879,7 @@ async def test_search_injection_empty_result_not_injected():
 
 @pytest.mark.asyncio
 async def test_image_processing_in_build_messages():
-    from gemini_chat.gemini_api_messages import build_messages
+    from mika_chat_core.gemini_api_messages import build_messages
 
     async def fake_get_context_async(user_id, group_id=None):
         return []
@@ -916,7 +916,7 @@ async def test_image_processing_in_build_messages():
 
 @pytest.mark.asyncio
 async def test_image_processing_fallback_to_url_on_error():
-    from gemini_chat.gemini_api_messages import build_messages
+    from mika_chat_core.gemini_api_messages import build_messages
 
     async def fake_get_context_async(user_id, group_id=None):
         return []
@@ -954,7 +954,7 @@ async def test_image_processing_fallback_to_url_on_error():
 
 @pytest.mark.asyncio
 async def test_build_messages_strips_tool_history_when_tools_disabled():
-    from gemini_chat.gemini_api_messages import build_messages
+    from mika_chat_core.gemini_api_messages import build_messages
 
     async def fake_get_context_async(user_id, group_id=None):
         return [
@@ -992,7 +992,7 @@ async def test_build_messages_strips_tool_history_when_tools_disabled():
 
 @pytest.mark.asyncio
 async def test_proactive_handler_triggers_group_reply():
-    from gemini_chat import matchers
+    from mika_chat_core import matchers
 
     mock_event = MagicMock()
     mock_event.group_id = 1001
@@ -1014,8 +1014,8 @@ async def test_proactive_handler_triggers_group_reply():
     mock_client.context_store = mock_context_store
     mock_client.judge_proactive_intent = AsyncMock(return_value={"should_reply": True})
 
-    with patch("gemini_chat.deps.get_gemini_client_dep", return_value=mock_client), patch(
-        "gemini_chat.matchers.handle_group", AsyncMock()
+    with patch("mika_chat_core.deps.get_gemini_client_dep", return_value=mock_client), patch(
+        "mika_chat_core.matchers.handle_group", AsyncMock()
     ) as mocked_handle_group:
         await matchers._handle_proactive(mock_bot, mock_event)
 
@@ -1027,7 +1027,7 @@ async def test_proactive_handler_triggers_group_reply():
 
 @pytest.mark.asyncio
 async def test_proactive_handler_skips_when_judge_rejects():
-    from gemini_chat import matchers
+    from mika_chat_core import matchers
 
     mock_event = MagicMock()
     mock_event.group_id = 1001
@@ -1049,8 +1049,8 @@ async def test_proactive_handler_skips_when_judge_rejects():
     mock_client.context_store = mock_context_store
     mock_client.judge_proactive_intent = AsyncMock(return_value={"should_reply": False})
 
-    with patch("gemini_chat.deps.get_gemini_client_dep", return_value=mock_client), patch(
-        "gemini_chat.matchers.handle_group", AsyncMock()
+    with patch("mika_chat_core.deps.get_gemini_client_dep", return_value=mock_client), patch(
+        "mika_chat_core.matchers.handle_group", AsyncMock()
     ) as mocked_handle_group:
         await matchers._handle_proactive(mock_bot, mock_event)
 
@@ -1059,7 +1059,7 @@ async def test_proactive_handler_skips_when_judge_rejects():
 
 @pytest.mark.asyncio
 async def test_check_proactive_respects_cooldown():
-    from gemini_chat import matchers
+    from mika_chat_core import matchers
 
     event = MagicMock()
     event.to_me = False
@@ -1084,7 +1084,7 @@ async def test_check_proactive_respects_cooldown():
 @pytest.mark.asyncio
 async def test_pre_search_llm_gate_enabled_does_not_call_should_search():
     """当 llm_gate_enabled=True 时，即使关键词命中也不调用 should_search()"""
-    from gemini_chat.gemini_api_messages import pre_search
+    from mika_chat_core.gemini_api_messages import pre_search
 
     async def fake_get_context_async(user_id, group_id=None):
         return []
@@ -1093,19 +1093,19 @@ async def test_pre_search_llm_gate_enabled_does_not_call_should_search():
 
     # should_search 不应被调用（即使消息包含关键词）
     with patch(
-        "gemini_chat.gemini_api_messages.plugin_config.gemini_search_llm_gate_enabled",
+        "mika_chat_core.gemini_api_messages.plugin_config.gemini_search_llm_gate_enabled",
         True,
     ), patch(
-        "gemini_chat.gemini_api_messages.plugin_config.gemini_search_llm_gate_fallback_mode",
+        "mika_chat_core.gemini_api_messages.plugin_config.gemini_search_llm_gate_fallback_mode",
         "strong_timeliness",
     ), patch(
-        "gemini_chat.utils.search_engine.should_search",
+        "mika_chat_core.utils.search_engine.should_search",
         MagicMock(return_value=True),
     ) as mocked_should_search, patch(
-        "gemini_chat.utils.search_engine.classify_topic_for_search",
+        "mika_chat_core.utils.search_engine.classify_topic_for_search",
         AsyncMock(return_value=(False, "闲聊", "")),
     ), patch(
-        "gemini_chat.utils.search_engine.serper_search",
+        "mika_chat_core.utils.search_engine.serper_search",
         AsyncMock(return_value="SEARCH_RESULT"),
     ) as mocked_serper:
         search_result = await pre_search(
@@ -1131,7 +1131,7 @@ async def test_pre_search_llm_gate_enabled_does_not_call_should_search():
 @pytest.mark.asyncio
 async def test_pre_search_llm_gate_enabled_smart_search_disabled_skips_all():
     """当 llm_gate_enabled=True 但 enable_smart_search=False 时，直接跳过搜索，不走关键词路径"""
-    from gemini_chat.gemini_api_messages import pre_search
+    from mika_chat_core.gemini_api_messages import pre_search
 
     async def fake_get_context_async(user_id, group_id=None):
         return []
@@ -1139,16 +1139,16 @@ async def test_pre_search_llm_gate_enabled_smart_search_disabled_skips_all():
     tool_handlers = {"web_search": AsyncMock()}
 
     with patch(
-        "gemini_chat.gemini_api_messages.plugin_config.gemini_search_llm_gate_enabled",
+        "mika_chat_core.gemini_api_messages.plugin_config.gemini_search_llm_gate_enabled",
         True,
     ), patch(
-        "gemini_chat.utils.search_engine.should_search",
+        "mika_chat_core.utils.search_engine.should_search",
         MagicMock(return_value=True),
     ) as mocked_should_search, patch(
-        "gemini_chat.utils.search_engine.classify_topic_for_search",
+        "mika_chat_core.utils.search_engine.classify_topic_for_search",
         AsyncMock(return_value=(True, "天气", "今天天气")),
     ) as mocked_classify, patch(
-        "gemini_chat.utils.search_engine.serper_search",
+        "mika_chat_core.utils.search_engine.serper_search",
         AsyncMock(return_value="SEARCH_RESULT"),
     ) as mocked_serper:
         search_result = await pre_search(
@@ -1174,7 +1174,7 @@ async def test_pre_search_llm_gate_enabled_smart_search_disabled_skips_all():
 @pytest.mark.asyncio
 async def test_pre_search_llm_gate_disabled_still_uses_should_search():
     """当 llm_gate_enabled=False 时，仍然使用 should_search() 关键词路径"""
-    from gemini_chat.gemini_api_messages import pre_search
+    from mika_chat_core.gemini_api_messages import pre_search
 
     async def fake_get_context_async(user_id, group_id=None):
         return []
@@ -1182,13 +1182,13 @@ async def test_pre_search_llm_gate_disabled_still_uses_should_search():
     tool_handlers = {"web_search": AsyncMock()}
 
     with patch(
-        "gemini_chat.gemini_api_messages.plugin_config.gemini_search_llm_gate_enabled",
+        "mika_chat_core.gemini_api_messages.plugin_config.gemini_search_llm_gate_enabled",
         False,
     ), patch(
-        "gemini_chat.utils.search_engine.should_search",
+        "mika_chat_core.utils.search_engine.should_search",
         MagicMock(return_value=True),
     ) as mocked_should_search, patch(
-        "gemini_chat.utils.search_engine.serper_search",
+        "mika_chat_core.utils.search_engine.serper_search",
         AsyncMock(return_value="SEARCH_RESULT"),
     ) as mocked_serper:
         search_result = await pre_search(

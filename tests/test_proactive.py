@@ -7,10 +7,10 @@ import time
 from unittest.mock import MagicMock
 
 import pytest
-from gemini_chat.matchers import check_proactive
+from mika_chat_core.matchers import check_proactive
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
-import gemini_chat.matchers as m
+import mika_chat_core.matchers as m
 
 
 def mock_event(text="hello", group_id=123, user_id=456, to_me=False):

@@ -22,7 +22,7 @@
 ## 使用示例
 
 ```python
-from nonebot_plugin_mika_chat.config import plugin_config
+from mika_chat_core.config import plugin_config
 
 # 获取 API 密钥
 api_key = plugin_config.gemini_api_key
@@ -30,7 +30,7 @@ api_key = plugin_config.gemini_api_key
 
 ## API 参考
 
-::: nonebot_plugin_mika_chat.config
+::: mika_chat_core.config
     options:
       show_source: true
       members_order: source

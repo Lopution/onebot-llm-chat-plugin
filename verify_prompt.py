@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 nonebot.logger = MagicMock()
 nonebot.get_driver = MagicMock()
 
-from src.plugins.gemini_chat.utils.prompt_loader import get_system_prompt
+from src.mika_chat_core.utils.prompt_loader import get_system_prompt
 
 try:
     prompt = get_system_prompt(prompt_file="system.yaml")

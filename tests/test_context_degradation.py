@@ -18,8 +18,8 @@ class TestContextDegradation:
     @pytest.fixture
     def mock_gemini_client(self):
         """创建模拟的 GeminiClient"""
-        with patch('gemini_chat.gemini_api.get_context_store') as mock_store:
-            from gemini_chat.gemini_api import GeminiClient
+        with patch('mika_chat_core.gemini_api.get_context_store') as mock_store:
+            from mika_chat_core.gemini_api import GeminiClient
             
             # 模拟上下文存储
             mock_store_instance = AsyncMock()
@@ -107,9 +107,9 @@ class TestEmptyReplyRetry:
     
     async def test_empty_reply_triggers_degradation(self):
         """空回复应触发上下文降级"""
-        with patch('gemini_chat.gemini_api.get_context_store'):
-            with patch('gemini_chat.gemini_api.HAS_SQLITE_STORE', False):
-                from gemini_chat.gemini_api import GeminiClient
+        with patch('mika_chat_core.gemini_api.get_context_store'):
+            with patch('mika_chat_core.gemini_api.HAS_SQLITE_STORE', False):
+                from mika_chat_core.gemini_api import GeminiClient
                 
                 client = GeminiClient(
                     api_key="test-key",
@@ -145,9 +145,9 @@ class TestCleanThinkingMarkers:
     
     @pytest.fixture
     def client(self):
-        with patch('gemini_chat.gemini_api.get_context_store'):
-            with patch('gemini_chat.gemini_api.HAS_SQLITE_STORE', False):
-                from gemini_chat.gemini_api import GeminiClient
+        with patch('mika_chat_core.gemini_api.get_context_store'):
+            with patch('mika_chat_core.gemini_api.HAS_SQLITE_STORE', False):
+                from mika_chat_core.gemini_api import GeminiClient
                 return GeminiClient(api_key="test", use_persistent_storage=False)
     
     def test_clean_thinking_markers(self, client):
@@ -183,9 +183,9 @@ class TestExtractNickname:
     
     @pytest.fixture
     def client(self):
-        with patch('gemini_chat.gemini_api.get_context_store'):
-            with patch('gemini_chat.gemini_api.HAS_SQLITE_STORE', False):
-                from gemini_chat.gemini_api import GeminiClient
+        with patch('mika_chat_core.gemini_api.get_context_store'):
+            with patch('mika_chat_core.gemini_api.HAS_SQLITE_STORE', False):
+                from mika_chat_core.gemini_api import GeminiClient
                 return GeminiClient(api_key="test", use_persistent_storage=False)
     
     def test_extract_standard_format(self, client):

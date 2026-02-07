@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 
 def test_build_event_context_v11_group():
-    from gemini_chat.utils.event_context import build_event_context
+    from mika_chat_core.utils.event_context import build_event_context
 
     bot = SimpleNamespace(type="OneBot V11", self_id="42")
     sender = SimpleNamespace(card="", nickname="Nick")
@@ -36,7 +36,7 @@ def test_build_event_context_v11_group():
 
 
 def test_build_event_context_v12_group_mentions_fallbacks():
-    from gemini_chat.utils.event_context import build_event_context
+    from mika_chat_core.utils.event_context import build_event_context
 
     bot = SimpleNamespace(type="OneBot V12", self_id="10000")
 
@@ -68,7 +68,7 @@ def test_build_event_context_v12_group_mentions_fallbacks():
 
 
 def test_build_event_context_private_session_key():
-    from gemini_chat.utils.event_context import build_event_context
+    from mika_chat_core.utils.event_context import build_event_context
 
     bot = SimpleNamespace(type="OneBot V12", self_id="10000")
 
@@ -89,7 +89,7 @@ def test_build_event_context_private_session_key():
 
 
 def test_build_event_context_parses_from_session_id_when_missing_fields():
-    from gemini_chat.utils.event_context import build_event_context
+    from mika_chat_core.utils.event_context import build_event_context
 
     bot = SimpleNamespace(type="OneBot V11", self_id="42")
 

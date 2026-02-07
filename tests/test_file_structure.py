@@ -5,7 +5,7 @@
 
 from pathlib import Path
 
-from gemini_chat.utils.prompt_loader import load_search_prompt
+from mika_chat_core.utils.prompt_loader import load_search_prompt
 
 def test_search_prompt_loading():
     """验证搜索提示词是否能正确加载"""

@@ -44,13 +44,20 @@ async def get_user_profile_data(bot: BotT, event: EventT) -> Dict[str, Any]:
 async def get_processed_images(bot: BotT, event: EventT) -> List[Dict[str, Any]]:
     """依赖项：获取处理后的图片（Base64 格式）"""
     from .utils.image_processor import resolve_image_urls
-    from .lifecycle import plugin_config
+    from .lifecycle import get_plugin_config
     
     try:
         from .utils.image_processor import get_image_processor
         
+        try:
+            config = get_plugin_config()
+        except Exception:
+            from nonebot import get_plugin_config as nb_get_plugin_config
+            from .config import Config
+
+            config = nb_get_plugin_config(Config)
         urls = await resolve_image_urls(
-            bot, getattr(event, "original_message", None), int(plugin_config.gemini_max_images)
+            bot, getattr(event, "original_message", None), int(config.gemini_max_images)
         )
         if not urls:
             return []
@@ -69,5 +76,12 @@ def get_gemini_client_dep():
 
 def get_config():
     """依赖项：获取插件配置"""
-    from . import plugin_config
-    return plugin_config
+    from .lifecycle import get_plugin_config
+
+    try:
+        return get_plugin_config()
+    except Exception:
+        from nonebot import get_plugin_config as nb_get_plugin_config
+        from .config import Config
+
+        return nb_get_plugin_config(Config)

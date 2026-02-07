@@ -23,7 +23,7 @@
 建议仅同步以下路径（按需）：
 
 - `src/nonebot_plugin_mika_chat/`
-- `src/nonebot_plugin_gemini_chat/`（兼容壳，过渡期）
+- `src/mika_chat_core/`
 - `tests/`
 - `README.md`
 - `README_EN.md`

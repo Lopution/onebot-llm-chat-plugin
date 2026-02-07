@@ -8,7 +8,7 @@ nonebot_mock = MagicMock()
 sys.modules["nonebot"] = nonebot_mock
 
 # Add utils to path
-sys.path.append("/root/bot/src/plugins/gemini_chat/utils")
+sys.path.append("/root/onebot-llm-chat-plugin/src/mika_chat_core/utils")
 
 # Import prompt_loader
 import prompt_loader

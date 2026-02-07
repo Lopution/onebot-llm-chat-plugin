@@ -1,8 +1,8 @@
 # 搜索引擎边界测试
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from gemini_chat.utils import search_engine as search_engine_module
-from gemini_chat.utils import search_classifier as search_classifier_module
+from mika_chat_core.utils import search_engine as search_engine_module
+from mika_chat_core.utils import search_classifier as search_classifier_module
 
 class TestSearchEngineBoundary:
     """搜索功能边界条件测试"""

@@ -298,7 +298,7 @@ from .utils.search_engine import TIME_SENSITIVE_KEYWORDS  # noqa: E402
 def needs_search(message: str) -> bool:
     """兼容旧 tests：基于旧关键词策略判断是否需要外部搜索。
 
-    说明：当前推荐使用 [`should_search()`](bot/src/plugins/gemini_chat/utils/search_engine.py:1)。
+    说明：当前推荐使用 [`should_search()`](mika_chat_core/utils/search_engine.py:1)。
     """
     from .utils.search_engine import should_search
 
@@ -308,7 +308,7 @@ def needs_search(message: str) -> bool:
 def extract_images(message: Any, max_images: int = 10):
     """兼容旧 tests：从消息中提取图片 URL。
 
-    实现委派到 [`utils.image_processor.extract_images()`](bot/src/plugins/gemini_chat/utils/image_processor.py:1)。
+    实现委派到 [`utils.image_processor.extract_images()`](mika_chat_core/utils/image_processor.py:1)。
     """
     from .utils.image_processor import extract_images as _extract
 

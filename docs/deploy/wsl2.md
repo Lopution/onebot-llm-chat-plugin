@@ -1,15 +1,16 @@
-# WSL2 + NapCat 长期运行部署（systemd）
+# WSL2 + 任意 OneBot 实现长期运行部署（systemd 可选）
 
-适用场景：你在 Windows 本机部署，但希望 Bot 与 NapCat 都运行在 WSL2 中，并做到“开机自动拉起 + 异常自动重启”。
+适用场景：你在 Windows 本机部署，但希望 Bot 运行在 WSL2 中，并做到“开机自动拉起 + 异常自动重启”。
+本页以 NapCat 为例，但流程同样适用于其它 OneBot 实现。
 
 ## 关键端口与连接方式（本仓库默认）
 
 - Bot：`0.0.0.0:8080`（见 `bot.py`）
-- NapCat（Docker）WebUI：默认 `6099`（见 `napcat/config/webui.json` 或 `napcat/data/webui.json`）
-- NapCat → Bot：OneBot v11 WebSocket Client  
-  本仓库示例配置为 `ws://172.17.0.1:8080/onebot/v11/ws`（见 `napcat/data/onebot11_*.json`）
+- OneBot 客户端 → Bot（v11）：`ws://<HOST>:8080/onebot/v11/ws`
+- OneBot 客户端 → Bot（v12）：`ws://<HOST>:8080/onebot/v12/ws`
+- NapCat（Docker）WebUI：默认 `6099`（仅在 NapCat + Docker 场景使用）
 
-> `172.17.0.1` 是 Docker 默认 bridge 网络下“容器访问宿主机”的常用网关地址；如果你的 Docker 网络模式不同，需改成可达的地址（例如 `host.docker.internal` 或直接使用宿主机 IP）。
+> 如果你使用 Docker 运行 OneBot 客户端，`<HOST>` 常用 Docker bridge 网关（如 `172.17.0.1`）；若网络模式不同，请改成实际可达地址（如 `host.docker.internal` 或宿主机 IP）。
 
 ## 1) 建议的目录与数据位置
 

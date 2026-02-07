@@ -19,7 +19,7 @@ class TestGeminiAPIExceptions:
     
     def test_gemini_api_error_basic(self):
         """测试基础 API 错误"""
-        from gemini_chat.gemini_api import GeminiAPIError
+        from mika_chat_core.gemini_api import GeminiAPIError
         
         error = GeminiAPIError("Test error", status_code=400, retry_after=0)
         
@@ -30,7 +30,7 @@ class TestGeminiAPIExceptions:
     
     def test_rate_limit_error(self):
         """测试限流错误"""
-        from gemini_chat.gemini_api import RateLimitError
+        from mika_chat_core.gemini_api import RateLimitError
         
         error = RateLimitError("Rate limit exceeded", status_code=429, retry_after=60)
         
@@ -40,7 +40,7 @@ class TestGeminiAPIExceptions:
     
     def test_authentication_error(self):
         """测试认证错误"""
-        from gemini_chat.gemini_api import AuthenticationError
+        from mika_chat_core.gemini_api import AuthenticationError
         
         error = AuthenticationError("Invalid API key", status_code=401)
         
@@ -49,7 +49,7 @@ class TestGeminiAPIExceptions:
     
     def test_server_error(self):
         """测试服务器错误"""
-        from gemini_chat.gemini_api import ServerError
+        from mika_chat_core.gemini_api import ServerError
         
         error = ServerError("Internal server error", status_code=500)
         
@@ -61,9 +61,9 @@ class TestGeminiClientInit:
     
     def test_init_with_defaults(self):
         """测试使用默认参数初始化"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="test-key-123")
             
             assert client.api_key == "test-key-123"
@@ -75,9 +75,9 @@ class TestGeminiClientInit:
     
     def test_init_with_custom_params(self):
         """测试使用自定义参数初始化"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(
                 api_key="custom-key",
                 base_url="https://custom.api.com/v1/",
@@ -94,9 +94,9 @@ class TestGeminiClientInit:
     
     def test_init_with_api_key_list(self):
         """测试使用多个 API Key 初始化"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             key_list = ["key1", "key2", "key3"]
             client = GeminiClient(api_key="default-key", api_key_list=key_list)
             
@@ -105,9 +105,9 @@ class TestGeminiClientInit:
     
     def test_init_with_persistent_storage_disabled(self):
         """测试禁用持久化存储"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", True):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", True):
             client = GeminiClient(api_key="test-key", use_persistent_storage=False)
             
             assert client._use_persistent == False
@@ -115,9 +115,9 @@ class TestGeminiClientInit:
     
     def test_init_with_persistent_storage_unavailable(self):
         """测试持久化存储不可用时自动降级"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="test-key", use_persistent_storage=True)
             
             # 即使要求使用持久化，但因为不可用所以应该是 False
@@ -130,9 +130,9 @@ class TestGeminiClientAPIKeyRotation:
     
     def test_get_api_key_single(self):
         """测试单个 API Key"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="single-key")
             
             # 多次获取应该返回相同的 key
@@ -141,9 +141,9 @@ class TestGeminiClientAPIKeyRotation:
     
     def test_get_api_key_rotation(self):
         """测试 API Key 轮询"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             key_list = ["key1", "key2", "key3"]
             client = GeminiClient(api_key="default", api_key_list=key_list)
             
@@ -161,9 +161,9 @@ class TestGeminiClientContextManagement:
     
     def test_get_context_key_private(self):
         """测试私聊上下文 key 生成"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="test-key")
             
             key = client._get_context_key(user_id="user123")
@@ -172,9 +172,9 @@ class TestGeminiClientContextManagement:
     
     def test_get_context_key_group(self):
         """测试群聊上下文 key 生成"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="test-key")
             
             key = client._get_context_key(user_id="user123", group_id="group456")
@@ -183,9 +183,9 @@ class TestGeminiClientContextManagement:
     
     def test_add_to_context_memory_mode(self):
         """测试添加消息到上下文（内存模式）"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="test-key", max_context=5)
             
             client._add_to_context("user123", "user", "Hello")
@@ -201,9 +201,9 @@ class TestGeminiClientContextManagement:
     
     def test_context_truncation(self):
         """测试上下文超出限制时自动截断"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="test-key", max_context=2)
             
             # 添加超过限制的消息（max_context * 2 = 4）
@@ -219,9 +219,9 @@ class TestGeminiClientContextManagement:
     
     def test_clear_context_memory_mode(self):
         """测试清空上下文（内存模式）"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="test-key")
             
             client._add_to_context("user123", "user", "Hello")
@@ -237,9 +237,9 @@ class TestGeminiClientHTTPClient:
     @pytest.mark.asyncio
     async def test_get_client_creates_new(self):
         """测试首次获取创建新客户端"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="test-key")
             
             http_client = await client._get_client()
@@ -252,9 +252,9 @@ class TestGeminiClientHTTPClient:
     @pytest.mark.asyncio
     async def test_get_client_reuses_existing(self):
         """测试复用已存在的客户端"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="test-key")
             
             http_client1 = await client._get_client()
@@ -268,9 +268,9 @@ class TestGeminiClientHTTPClient:
     @pytest.mark.asyncio
     async def test_close_client(self):
         """测试关闭 HTTP 客户端"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="test-key")
             
             http_client = await client._get_client()
@@ -287,9 +287,9 @@ class TestGeminiClientChat:
     
     async def test_chat_success(self, mock_httpx_client, mock_api_response_success):
         """测试成功的聊天请求"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="test-key")
             
             # Mock httpx client
@@ -307,11 +307,11 @@ class TestGeminiClientChat:
     
     async def test_chat_with_images(self, mock_httpx_client, mock_api_response_success):
         """测试带图片的聊天请求"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
         # 避免在测试里触发真实图片下载（会引入网络/DNS/线程池不确定性，且不影响本用例断言）
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False), patch(
-            "gemini_chat.gemini_api.HAS_IMAGE_PROCESSOR",
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False), patch(
+            "mika_chat_core.gemini_api.HAS_IMAGE_PROCESSOR",
             False,
         ):
             client = GeminiClient(api_key="test-key")
@@ -338,9 +338,9 @@ class TestGeminiClientChat:
     
     async def test_chat_empty_response(self, mock_httpx_client, mock_api_response_empty):
         """测试空回复"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="test-key")
             
             mock_httpx_client.post.return_value.json.return_value = mock_api_response_empty
@@ -353,9 +353,9 @@ class TestGeminiClientChat:
     
     async def test_chat_timeout_error(self, mock_httpx_client):
         """测试超时错误"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="test-key")
             
             # 模拟超时
@@ -369,9 +369,9 @@ class TestGeminiClientChat:
     
     async def test_chat_rate_limit_error(self, mock_httpx_client):
         """测试 429 限流错误"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="test-key")
             
             # 模拟 429 响应
@@ -389,9 +389,9 @@ class TestGeminiClientChat:
     
     async def test_chat_authentication_error(self, mock_httpx_client):
         """测试 401 认证错误"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="invalid-key")
             
             # 模拟 401 响应
@@ -409,9 +409,9 @@ class TestGeminiClientChat:
     
     async def test_chat_server_error_with_retry(self, mock_httpx_client, mock_api_response_success):
         """测试服务器错误自动重试"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="test-key")
             
             # 第一次返回 500，第二次成功
@@ -441,9 +441,9 @@ class TestGeminiClientChat:
     
     async def test_chat_server_error_exhausted_retries(self, mock_httpx_client):
         """测试服务器错误重试耗尽"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="test-key")
             
             # 始终返回 500
@@ -461,9 +461,9 @@ class TestGeminiClientChat:
     
     async def test_chat_content_filter_error(self, mock_httpx_client):
         """测试内容过滤错误"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="test-key")
             
             # 模拟内容过滤错误
@@ -481,9 +481,9 @@ class TestGeminiClientChat:
     
     async def test_chat_unknown_error(self, mock_httpx_client):
         """测试未知错误"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="test-key")
             
             # 模拟未知异常
@@ -497,9 +497,9 @@ class TestGeminiClientChat:
     
     async def test_chat_context_preserved(self, mock_httpx_client, mock_api_response_success):
         """测试上下文被正确保存"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="test-key")
             
             mock_httpx_client.post.return_value.json.return_value = mock_api_response_success
@@ -521,9 +521,9 @@ class TestGeminiClientChat:
     
     async def test_chat_group_vs_private_context(self, mock_httpx_client, mock_api_response_success):
         """测试群聊和私聊上下文隔离"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="test-key")
             
             mock_httpx_client.post.return_value.json.return_value = mock_api_response_success
@@ -551,9 +551,9 @@ class TestGeminiClientAsyncContext:
     
     async def test_get_context_async_memory_mode(self):
         """测试异步获取上下文（内存模式）"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="test-key")
             
             client._add_to_context("user123", "user", "测试消息")
@@ -565,9 +565,9 @@ class TestGeminiClientAsyncContext:
     
     async def test_add_to_context_async_memory_mode(self):
         """测试异步添加上下文（内存模式）"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="test-key")
             
             await client._add_to_context_async("user123", "user", "异步消息")
@@ -579,9 +579,9 @@ class TestGeminiClientAsyncContext:
     
     async def test_clear_context_async_memory_mode(self):
         """测试异步清空上下文（内存模式）"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="test-key")
             
             client._add_to_context("user123", "user", "测试消息")
@@ -598,9 +598,9 @@ class TestGeminiClientToolHandlers:
     
     def test_register_tool_handler(self):
         """测试注册工具处理器"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="test-key")
             
             def mock_search_handler(query: str):
@@ -613,9 +613,9 @@ class TestGeminiClientToolHandlers:
     
     def test_register_multiple_tool_handlers(self):
         """测试注册多个工具处理器"""
-        from gemini_chat.gemini_api import GeminiClient
+        from mika_chat_core.gemini_api import GeminiClient
         
-        with patch("gemini_chat.gemini_api.HAS_SQLITE_STORE", False):
+        with patch("mika_chat_core.gemini_api.HAS_SQLITE_STORE", False):
             client = GeminiClient(api_key="test-key")
             
             client.register_tool_handler("search", lambda q: f"搜索: {q}")

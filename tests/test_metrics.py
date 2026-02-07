@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from gemini_chat.metrics import Metrics
+from mika_chat_core.metrics import Metrics
 
 
 def test_metrics_to_prometheus_basic():

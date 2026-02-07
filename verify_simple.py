@@ -4,7 +4,7 @@ import yaml
 from pathlib import Path
 
 # Adjust path to find module
-sys.path.append("/root/bot/src/plugins/gemini_chat/utils")
+sys.path.append("/root/onebot-llm-chat-plugin/src/mika_chat_core/utils")
 
 # Mock logger
 class Logger:
@@ -22,7 +22,7 @@ import builtins
 
 def check_yaml():
     try:
-        with open("/root/bot/src/plugins/gemini_chat/prompts/system.yaml", 'r') as f:
+        with open("/root/onebot-llm-chat-plugin/src/mika_chat_core/prompts/system.yaml", 'r') as f:
             data = yaml.safe_load(f)
         
         print("YAML Loaded successfully.")

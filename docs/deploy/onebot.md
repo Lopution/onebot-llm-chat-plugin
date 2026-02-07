@@ -3,17 +3,23 @@
 本项目希望尽可能兼容不同的 OneBot 实现（NapCat / go-cqhttp / 其它实现，以及 OneBot v12 适配器）。
 因此在一些**非标准/可选**能力上采用 **best-effort + 自动降级**：能用就用，不能用就回退为更通用的行为，保证 Bot 长期稳定运行。
 
-## 插件模块迁移说明（兼容期）
+## 推荐部署方式
 
-- 新标准模块路径：`nonebot_plugin_mika_chat`
-- 旧模块路径：`nonebot_plugin_gemini_chat`（当前仍保留兼容壳）
+- 方案 A：Linux/Windows 本机 + 任意 OneBot 实现（无 Docker）
+- 方案 B：WSL2 + 任意 OneBot 实现（可选 Docker）
 
-当前版本会优先按新模块名加载；兼容期内旧模块名仍可用。
-计划在 `v0.3.0` 移除旧模块壳，请在宿主中优先使用：
+## 模块说明
+
+- 中立核心模块：`mika_chat_core`
+- 当前 NoneBot 适配层：`nonebot_plugin_mika_chat`
+
+当前版本默认由 NoneBot 加载 `nonebot_plugin_mika_chat`，并调用 `mika_chat_core` 内的核心能力：
 
 ```python
 nonebot.load_plugin("nonebot_plugin_mika_chat")
 ```
+
+> 说明：NoneBot 是当前默认宿主，不是唯一方向。后续可基于 `mika_chat_core` 增加其它宿主适配层。
 
 ## 如何连接到 Bot（反向 WebSocket）
 

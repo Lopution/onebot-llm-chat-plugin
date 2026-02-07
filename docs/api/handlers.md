@@ -13,7 +13,7 @@
 
 ## API 参考
 
-::: nonebot_plugin_mika_chat.handlers
+::: mika_chat_core.handlers
     options:
       show_source: true
       members_order: source

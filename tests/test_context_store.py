@@ -11,7 +11,7 @@ class TestNicknameSanitization:
     
     @pytest.fixture
     def store(self):
-        from gemini_chat.utils.context_store import SQLiteContextStore
+        from mika_chat_core.utils.context_store import SQLiteContextStore
         return SQLiteContextStore()
 
     def test_sanitize_nickname_basic(self, store):
@@ -76,9 +76,9 @@ class TestAnalyzeContextStore:
 
     async def test_init_creates_archive_table(self, temp_db_path: Path):
         """测试初始化数据库会创建 message_archive 表"""
-        from gemini_chat.utils.context_store import init_database, get_db, close_database
+        from mika_chat_core.utils.context_store import init_database, get_db, close_database
         
-        with patch("gemini_chat.utils.context_db.DB_PATH", temp_db_path), patch("gemini_chat.utils.context_store.DB_PATH", temp_db_path):
+        with patch("mika_chat_core.utils.context_db.DB_PATH", temp_db_path), patch("mika_chat_core.utils.context_store.DB_PATH", temp_db_path):
             await init_database()
             db = await get_db()
             
@@ -94,10 +94,10 @@ class TestAnalyzeContextStore:
 
     async def test_add_message_archives_data(self, temp_db_path: Path, temp_database):
         """测试添加消息时会自动归档"""
-        from gemini_chat.utils.context_store import SQLiteContextStore
+        from mika_chat_core.utils.context_store import SQLiteContextStore
         
-        with patch("gemini_chat.utils.context_db.DB_PATH", temp_db_path), patch("gemini_chat.utils.context_store.DB_PATH", temp_db_path):
-            with patch("gemini_chat.utils.context_store.get_db", return_value=temp_database):
+        with patch("mika_chat_core.utils.context_db.DB_PATH", temp_db_path), patch("mika_chat_core.utils.context_store.DB_PATH", temp_db_path):
+            with patch("mika_chat_core.utils.context_store.get_db", return_value=temp_database):
                 store = SQLiteContextStore()
                 
                 # 添加一条消息
@@ -121,10 +121,10 @@ class TestAnalyzeContextStore:
 
     async def test_truncation_logic_pure_fifo(self, temp_db_path: Path, temp_database):
         """测试截断逻辑回归纯 FIFO (无摘要)"""
-        from gemini_chat.utils.context_store import SQLiteContextStore
+        from mika_chat_core.utils.context_store import SQLiteContextStore
         
-        with patch("gemini_chat.utils.context_db.DB_PATH", temp_db_path), patch("gemini_chat.utils.context_store.DB_PATH", temp_db_path):
-            with patch("gemini_chat.utils.context_store.get_db", return_value=temp_database):
+        with patch("mika_chat_core.utils.context_db.DB_PATH", temp_db_path), patch("mika_chat_core.utils.context_store.DB_PATH", temp_db_path):
+            with patch("mika_chat_core.utils.context_store.get_db", return_value=temp_database):
                 max_context = 5
                 store = SQLiteContextStore(max_context=max_context)
                 
@@ -148,10 +148,10 @@ class TestAnalyzeContextStore:
 
     async def test_archive_preserves_truncated_messages(self, temp_db_path: Path, temp_database):
         """测试即使上下文被截断，归档表中仍保留所有消息"""
-        from gemini_chat.utils.context_store import SQLiteContextStore
+        from mika_chat_core.utils.context_store import SQLiteContextStore
         
-        with patch("gemini_chat.utils.context_db.DB_PATH", temp_db_path), patch("gemini_chat.utils.context_store.DB_PATH", temp_db_path):
-            with patch("gemini_chat.utils.context_store.get_db", return_value=temp_database):
+        with patch("mika_chat_core.utils.context_db.DB_PATH", temp_db_path), patch("mika_chat_core.utils.context_store.DB_PATH", temp_db_path):
+            with patch("mika_chat_core.utils.context_store.get_db", return_value=temp_database):
                 store = SQLiteContextStore(max_context=2) # Limit 4 messages
                 
                 # 添加 10 条消息
@@ -169,10 +169,10 @@ class TestAnalyzeContextStore:
 
     async def test_multimodal_content_storage(self, temp_db_path: Path, temp_database):
         """测试多模态消息存储 (JSON 序列化)"""
-        from gemini_chat.utils.context_store import SQLiteContextStore
+        from mika_chat_core.utils.context_store import SQLiteContextStore
         
-        with patch("gemini_chat.utils.context_db.DB_PATH", temp_db_path), patch("gemini_chat.utils.context_store.DB_PATH", temp_db_path):
-            with patch("gemini_chat.utils.context_store.get_db", return_value=temp_database):
+        with patch("mika_chat_core.utils.context_db.DB_PATH", temp_db_path), patch("mika_chat_core.utils.context_store.DB_PATH", temp_db_path):
+            with patch("mika_chat_core.utils.context_store.get_db", return_value=temp_database):
                 store = SQLiteContextStore()
                 
                 complex_content = [{"type": "text", "text": "Hi"}, {"type": "image", "url": "http://img"}]

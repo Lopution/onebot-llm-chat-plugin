@@ -19,6 +19,7 @@ import asyncio
 import httpx
 import uuid
 import time
+import random
 from datetime import datetime
 from typing import Optional, List, Union, Dict, Any, Callable, Tuple
 
@@ -577,7 +578,7 @@ class GeminiClient:
         group_id: Optional[str],
         image_urls: Optional[List[str]],
     ) -> Tuple[str, float]:
-        """为 [`GeminiClient.chat()`](bot/src/plugins/gemini_chat/gemini_api.py:673) 准备请求级上下文。
+        """为 [`GeminiClient.chat()`](mika_chat_core/gemini_api.py:673) 准备请求级上下文。
 
         该方法只做“请求级”初始化：生成 request_id、记录开始时间、计数与起始日志。
         行为需与拆分前保持一致。
@@ -599,13 +600,23 @@ class GeminiClient:
         return request_id, start_time
 
     async def _log_context_diagnostics(self, user_id: str, group_id: Optional[str], request_id: str) -> None:
-        """输出上下文诊断日志（仅日志副作用，不改变行为）。"""
+        """输出上下文诊断日志（采样，可观测）。"""
+        trace_enabled = bool(getattr(plugin_config, "gemini_context_trace_enabled", False))
+        if not trace_enabled:
+            return
+
+        sample_rate = float(getattr(plugin_config, "gemini_context_trace_sample_rate", 1.0) or 1.0)
+        sample_rate = min(1.0, max(0.0, sample_rate))
+        if sample_rate < 1.0 and random.random() > sample_rate:
+            return
+
         history = await self._get_context_async(user_id, group_id)
         total_history_chars = sum(len(str(m.get("content", ""))) for m in history)
-        log.debug(
-            f"[req:{request_id}] 上下文诊断 | "
+        log.info(
+            f"[req:{request_id}] context_trace | phase=context_build | "
             f"history_count={len(history)} | "
-            f"total_chars={total_history_chars}"
+            f"total_chars={total_history_chars} | "
+            f"sample_rate={sample_rate:.2f}"
         )
 
         # 打印最近 N 条历史消息的摘要（用于调试）
@@ -883,6 +894,9 @@ class GeminiClient:
 
             wait_time = EMPTY_REPLY_RETRY_DELAY_SECONDS
             await asyncio.sleep(wait_time)
+            metrics.api_empty_reply_reason_total["context_degrade"] = (
+                int(metrics.api_empty_reply_reason_total.get("context_degrade", 0) or 0) + 1
+            )
             log.warning(
                 f"[req:{request_id}] 触发上下文降级重试 | "
                 f"Level {context_level} -> Level {next_context_level} (max={max_degrade_level})"

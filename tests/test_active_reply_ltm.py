@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-import gemini_chat.matchers as m
+import mika_chat_core.matchers as m
 
 
 def _mock_group_event(text: str = "hello", group_id: int = 123456, user_id: int = 10001):

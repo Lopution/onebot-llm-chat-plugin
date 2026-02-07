@@ -21,56 +21,56 @@ class TestShouldSearch:
     
     def test_should_search_with_time_keyword_latest(self):
         """测试包含'最新'关键词时返回 True"""
-        from gemini_chat.utils.search_engine import should_search
+        from mika_chat_core.utils.search_engine import should_search
         
         assert should_search("最新的iPhone发布了吗") is True
     
     def test_should_search_with_time_keyword_today(self):
         """测试包含'今天'关键词时返回 True"""
-        from gemini_chat.utils.search_engine import should_search
+        from mika_chat_core.utils.search_engine import should_search
         
         assert should_search("今天有什么新闻") is True
     
     def test_should_search_with_time_keyword_now(self):
         """测试包含'现在'关键词时返回 True"""
-        from gemini_chat.utils.search_engine import should_search
+        from mika_chat_core.utils.search_engine import should_search
 
         # 本地时间问题应不触发外部搜索
         assert should_search("现在几点了") is False
     
     def test_should_search_with_time_keyword_recent(self):
         """测试包含'最近'关键词时返回 True"""
-        from gemini_chat.utils.search_engine import should_search
+        from mika_chat_core.utils.search_engine import should_search
         
         assert should_search("最近有什么好看的电影") is True
     
     def test_should_search_with_news_keyword(self):
         """测试包含'新闻'关键词时返回 True"""
-        from gemini_chat.utils.search_engine import should_search
+        from mika_chat_core.utils.search_engine import should_search
         
         assert should_search("科技新闻") is True
     
     def test_should_search_with_match_keyword(self):
         """测试包含'比赛'关键词时返回 True"""
-        from gemini_chat.utils.search_engine import should_search
+        from mika_chat_core.utils.search_engine import should_search
         
         assert should_search("LPL比赛谁赢了") is True
     
     def test_should_search_with_price_keyword(self):
         """测试包含'价格'关键词时返回 True"""
-        from gemini_chat.utils.search_engine import should_search
+        from mika_chat_core.utils.search_engine import should_search
         
         assert should_search("这个产品价格是多少") is True
     
     def test_should_search_with_weather_keyword(self):
         """测试包含'天气'关键词时返回 True"""
-        from gemini_chat.utils.search_engine import should_search
+        from mika_chat_core.utils.search_engine import should_search
         
         assert should_search("北京天气怎么样") is True
     
     def test_should_search_without_keyword(self):
         """测试无时效性关键词不触发搜索"""
-        from gemini_chat.utils.search_engine import should_search
+        from mika_chat_core.utils.search_engine import should_search
         
         assert should_search("你好，我叫小明") is False
         assert should_search("帮我写一首诗") is False
@@ -78,7 +78,7 @@ class TestShouldSearch:
     
     def test_should_search_with_question_mark(self):
         """测试问号本身不触发搜索（需要关键词）"""
-        from gemini_chat.utils.search_engine import should_search
+        from mika_chat_core.utils.search_engine import should_search
         
         # 单纯问号不触发
         assert should_search("你是谁？") is False
@@ -87,19 +87,19 @@ class TestShouldSearch:
 
     def test_should_search_weak_time_keyword_in_chat_should_not_trigger(self):
         """弱时间词出现在闲聊里不应触发搜索"""
-        from gemini_chat.utils.search_engine import should_search
+        from mika_chat_core.utils.search_engine import should_search
 
         assert should_search("我今天好累") is False
 
     def test_should_search_weak_time_keyword_with_question_signal_triggers(self):
         """弱时间词 + 问句信号时可触发搜索（如今天+天气/新闻等已覆盖，这里测试一般问句）"""
-        from gemini_chat.utils.search_engine import should_search
+        from mika_chat_core.utils.search_engine import should_search
 
         assert should_search("今天是什么日子？") is True
     
     def test_should_search_with_ai_keyword_combo(self):
         """测试 AI 关键词 + 最好/最强组合"""
-        from gemini_chat.utils.search_engine import should_search
+        from mika_chat_core.utils.search_engine import should_search
         
         assert should_search("现在最好的AI模型是哪个") is True
         assert should_search("GPT和Claude哪个最强") is True
@@ -107,14 +107,14 @@ class TestShouldSearch:
     
     def test_should_search_with_ai_what_is(self):
         """测试 AI 关键词 + '是什么' 组合"""
-        from gemini_chat.utils.search_engine import should_search
+        from mika_chat_core.utils.search_engine import should_search
         
         assert should_search("claude是什么") is True
         assert should_search("什么是deepseek") is True
     
     def test_should_search_empty_string(self):
         """测试空字符串返回 False"""
-        from gemini_chat.utils.search_engine import should_search
+        from mika_chat_core.utils.search_engine import should_search
         
         assert should_search("") is False
 
@@ -125,7 +125,7 @@ class TestClassifyTopic:
     @pytest.mark.asyncio
     async def test_classify_topic_factual(self):
         """测试事实性问题分类"""
-        from gemini_chat.utils.search_engine import classify_topic_for_search
+        from mika_chat_core.utils.search_engine import classify_topic_for_search
         
         # Arrange
         mock_response = MagicMock()
@@ -166,8 +166,8 @@ class TestClassifyJsonModeAndQuerySanitize:
     @pytest.mark.asyncio
     async def test_classify_topic_query_normalized_and_result_normalized(self):
         """分类器前后都应做 normalize_search_query：去掉 [昵称(QQ)]/@/机器人名等噪声，并截断。"""
-        from gemini_chat.utils.search_engine import classify_topic_for_search
-        from gemini_chat.utils import search_engine
+        from mika_chat_core.utils.search_engine import classify_topic_for_search
+        from mika_chat_core.utils import search_engine
 
         # Arrange: mock LLM 返回包含噪声的 search_query
         mock_response = MagicMock()
@@ -214,7 +214,7 @@ class TestClassifyJsonModeAndQuerySanitize:
     @pytest.mark.asyncio
     async def test_classify_topic_response_format_4xx_downgrade_retry(self):
         """代理不支持 response_format 时，应对分类器做一次无 response_format 的降级重试。"""
-        from gemini_chat.utils.search_engine import classify_topic_for_search
+        from mika_chat_core.utils.search_engine import classify_topic_for_search
 
         # first: 400
         bad = MagicMock()
@@ -259,7 +259,7 @@ class TestClassifyJsonModeAndQuerySanitize:
     @pytest.mark.asyncio
     async def test_classify_topic_opinion(self):
         """测试观点性问题分类"""
-        from gemini_chat.utils.search_engine import classify_topic_for_search
+        from mika_chat_core.utils.search_engine import classify_topic_for_search
         
         # Arrange
         mock_response = MagicMock()
@@ -293,7 +293,7 @@ class TestClassifyJsonModeAndQuerySanitize:
     @pytest.mark.asyncio
     async def test_classify_topic_cache(self):
         """测试分类结果（搜索结果）缓存"""
-        from gemini_chat.utils.search_engine import (
+        from mika_chat_core.utils.search_engine import (
             _get_cache_key, _get_cached_result, _set_cache, clear_search_cache
         )
         
@@ -320,26 +320,26 @@ class TestClassifyFallbackStrongTimeliness:
     """分类失败时强时效回退判定测试"""
 
     def test_strong_timeliness_hits(self):
-        from gemini_chat.utils.search_engine import should_fallback_strong_timeliness
+        from mika_chat_core.utils.search_engine import should_fallback_strong_timeliness
 
         assert should_fallback_strong_timeliness("比赛结果出来了吗") is True
         assert should_fallback_strong_timeliness("发布了什么新模型") is True
 
     def test_weak_time_without_strong_signal_not_hit(self):
-        from gemini_chat.utils.search_engine import should_fallback_strong_timeliness
+        from mika_chat_core.utils.search_engine import should_fallback_strong_timeliness
 
         # 弱时间词本身不应回退
         assert should_fallback_strong_timeliness("我今天好累") is False
 
     def test_local_datetime_not_hit(self):
-        from gemini_chat.utils.search_engine import should_fallback_strong_timeliness
+        from mika_chat_core.utils.search_engine import should_fallback_strong_timeliness
 
         assert should_fallback_strong_timeliness("现在几点了") is False
     
     @pytest.mark.asyncio
     async def test_classify_topic_with_context(self):
         """测试带上下文的分类"""
-        from gemini_chat.utils.search_engine import classify_topic_for_search
+        from mika_chat_core.utils.search_engine import classify_topic_for_search
         
         # Arrange
         mock_response = MagicMock()
@@ -378,7 +378,7 @@ class TestClassifyFallbackStrongTimeliness:
     @pytest.mark.asyncio
     async def test_classify_topic_api_error(self):
         """测试 API 错误处理"""
-        from gemini_chat.utils.search_engine import classify_topic_for_search
+        from mika_chat_core.utils.search_engine import classify_topic_for_search
         
         # Arrange
         mock_response = MagicMock()
@@ -407,7 +407,7 @@ class TestClassifyFallbackStrongTimeliness:
     @pytest.mark.asyncio
     async def test_classify_topic_uses_cache_to_avoid_second_call(self):
         """同一 message+context 在 TTL 内应命中分类缓存，避免重复调用 LLM"""
-        from gemini_chat.utils.search_engine import classify_topic_for_search, clear_classify_cache
+        from mika_chat_core.utils.search_engine import classify_topic_for_search, clear_classify_cache
 
         clear_classify_cache()
 
@@ -424,10 +424,10 @@ class TestClassifyFallbackStrongTimeliness:
         }
 
         with patch("httpx.AsyncClient") as mock_client_class, patch(
-            "gemini_chat.utils.search_engine.plugin_config.gemini_search_classify_cache_ttl_seconds",
+            "mika_chat_core.utils.search_engine.plugin_config.gemini_search_classify_cache_ttl_seconds",
             60,
         ), patch(
-            "gemini_chat.utils.search_engine.plugin_config.gemini_search_classify_cache_max_size",
+            "mika_chat_core.utils.search_engine.plugin_config.gemini_search_classify_cache_max_size",
             200,
         ):
             mock_client = AsyncMock()
@@ -459,7 +459,7 @@ class TestSerperSearch:
     @pytest.mark.asyncio
     async def test_serper_search_success(self):
         """测试成功搜索"""
-        from gemini_chat.utils import search_engine
+        from mika_chat_core.utils import search_engine
         
         # Arrange
         original_key = search_engine.SERPER_API_KEY
@@ -499,7 +499,7 @@ class TestSerperSearch:
     @pytest.mark.asyncio
     async def test_serper_search_api_error(self):
         """测试 API 错误处理"""
-        from gemini_chat.utils import search_engine
+        from mika_chat_core.utils import search_engine
         
         # Arrange
         original_key = search_engine.SERPER_API_KEY
@@ -529,7 +529,7 @@ class TestSerperSearch:
     @pytest.mark.asyncio
     async def test_serper_search_rate_limit(self):
         """测试限流处理"""
-        from gemini_chat.utils import search_engine
+        from mika_chat_core.utils import search_engine
         
         # Arrange
         original_key = search_engine.SERPER_API_KEY
@@ -560,7 +560,7 @@ class TestSerperSearch:
     @pytest.mark.asyncio
     async def test_serper_search_timeout(self):
         """测试超时处理"""
-        from gemini_chat.utils import search_engine
+        from mika_chat_core.utils import search_engine
         
         # Arrange
         original_key = search_engine.SERPER_API_KEY
@@ -585,7 +585,7 @@ class TestSerperSearch:
     @pytest.mark.asyncio
     async def test_serper_search_no_api_key(self):
         """测试无 API Key 时跳过搜索"""
-        from gemini_chat.utils import search_engine
+        from mika_chat_core.utils import search_engine
         
         # Arrange
         original_key = search_engine.SERPER_API_KEY
@@ -603,7 +603,7 @@ class TestSerperSearch:
 
 class TestClassifyCache:
     def test_clear_classify_cache(self):
-        from gemini_chat.utils.search_engine import clear_classify_cache
+        from mika_chat_core.utils.search_engine import clear_classify_cache
 
         # 只验证函数存在且可调用
         clear_classify_cache()
@@ -611,7 +611,7 @@ class TestClassifyCache:
     @pytest.mark.asyncio
     async def test_search_with_empty_query(self):
         """测试空查询处理"""
-        from gemini_chat.utils import search_engine
+        from mika_chat_core.utils import search_engine
         
         # Arrange
         original_key = search_engine.SERPER_API_KEY
@@ -641,7 +641,7 @@ class TestClassifyCache:
     @pytest.mark.asyncio
     async def test_serper_search_local_datetime_query_skipped(self):
         """本地时间/日期问题不应执行外部搜索"""
-        from gemini_chat.utils import search_engine
+        from mika_chat_core.utils import search_engine
 
         original_key = search_engine.SERPER_API_KEY
         search_engine.SERPER_API_KEY = "test-api-key"
@@ -664,7 +664,7 @@ class TestSearchResultRanking:
     
     def test_search_result_ranking(self):
         """测试可信源排序"""
-        from gemini_chat.utils.search_engine import sort_by_relevance, is_trusted_source
+        from mika_chat_core.utils.search_engine import sort_by_relevance, is_trusted_source
         
         # Arrange
         results = [
@@ -687,7 +687,7 @@ class TestSearchResultRanking:
     
     def test_is_trusted_source(self):
         """测试可信来源检测"""
-        from gemini_chat.utils.search_engine import is_trusted_source
+        from mika_chat_core.utils.search_engine import is_trusted_source
         
         # Assert
         assert is_trusted_source("https://wikipedia.org/wiki/AI") is True
@@ -699,7 +699,7 @@ class TestSearchResultRanking:
     
     def test_search_result_truncation(self):
         """测试结果截断"""
-        from gemini_chat.utils.search_engine import sort_by_relevance
+        from mika_chat_core.utils.search_engine import sort_by_relevance
         
         # Arrange - 创建大量结果
         results = [
@@ -721,7 +721,7 @@ class TestSearchCache:
     
     def test_cache_set_and_get(self):
         """测试缓存设置和获取"""
-        from gemini_chat.utils.search_engine import (
+        from mika_chat_core.utils.search_engine import (
             _get_cached_result, _set_cache, clear_search_cache
         )
         
@@ -741,8 +741,8 @@ class TestSearchCache:
     
     def test_cache_expiry(self):
         """测试缓存过期"""
-        from gemini_chat.utils import search_engine
-        from gemini_chat.utils.search_engine import (
+        from mika_chat_core.utils import search_engine
+        from mika_chat_core.utils.search_engine import (
             _get_cached_result, _set_cache, _get_cache_key, clear_search_cache
         )
         
@@ -768,8 +768,8 @@ class TestSearchCache:
     
     def test_cache_max_size(self):
         """测试缓存最大容量"""
-        from gemini_chat.utils import search_engine
-        from gemini_chat.utils.search_engine import (
+        from mika_chat_core.utils import search_engine
+        from mika_chat_core.utils.search_engine import (
             _set_cache, clear_search_cache, MAX_CACHE_SIZE
         )
         
@@ -785,8 +785,8 @@ class TestSearchCache:
     
     def test_clear_cache(self):
         """测试清空缓存"""
-        from gemini_chat.utils import search_engine
-        from gemini_chat.utils.search_engine import (
+        from mika_chat_core.utils import search_engine
+        from mika_chat_core.utils.search_engine import (
             _set_cache, clear_search_cache
         )
         
@@ -806,7 +806,7 @@ class TestJsonExtraction:
     
     def test_extract_json_pure(self):
         """测试纯 JSON 提取"""
-        from gemini_chat.utils.search_engine import _extract_json_object
+        from mika_chat_core.utils.search_engine import _extract_json_object
         
         text = '{"needs_search": true, "topic": "测试", "search_query": "查询"}'
         result = _extract_json_object(text)
@@ -817,7 +817,7 @@ class TestJsonExtraction:
     
     def test_extract_json_markdown(self):
         """测试 Markdown 代码块包裹的 JSON"""
-        from gemini_chat.utils.search_engine import _extract_json_object
+        from mika_chat_core.utils.search_engine import _extract_json_object
         
         text = '''```json
 {"needs_search": false, "topic": "闲聊", "search_query": ""}
@@ -829,7 +829,7 @@ class TestJsonExtraction:
     
     def test_extract_json_with_extra_text(self):
         """测试 JSON 前后有额外文字"""
-        from gemini_chat.utils.search_engine import _extract_json_object
+        from mika_chat_core.utils.search_engine import _extract_json_object
         
         text = '根据分析，结果是：{"needs_search": true, "topic": "新闻", "search_query": "最新新闻"} 以上是分析结果。'
         result = _extract_json_object(text)
@@ -839,14 +839,14 @@ class TestJsonExtraction:
     
     def test_extract_json_empty(self):
         """测试空文本"""
-        from gemini_chat.utils.search_engine import _extract_json_object
+        from mika_chat_core.utils.search_engine import _extract_json_object
         
         assert _extract_json_object("") is None
         assert _extract_json_object(None) is None
     
     def test_extract_json_invalid(self):
         """测试无效 JSON"""
-        from gemini_chat.utils.search_engine import _extract_json_object
+        from mika_chat_core.utils.search_engine import _extract_json_object
         
         text = "这不是 JSON 格式的文本"
         result = _extract_json_object(text)
@@ -859,13 +859,13 @@ class TestTimelinessKeywords:
     
     def test_timeliness_keywords_not_empty(self):
         """测试关键词列表不为空"""
-        from gemini_chat.utils.search_engine import TIMELINESS_KEYWORDS
+        from mika_chat_core.utils.search_engine import TIMELINESS_KEYWORDS
         
         assert len(TIMELINESS_KEYWORDS) > 0
     
     def test_timeliness_keywords_contains_time_words(self):
         """测试关键词列表包含时间相关词汇"""
-        from gemini_chat.utils.search_engine import TIMELINESS_KEYWORDS
+        from mika_chat_core.utils.search_engine import TIMELINESS_KEYWORDS
         
         time_words = ["最新", "现在", "目前", "今天", "最近"]
         for word in time_words:
@@ -873,7 +873,7 @@ class TestTimelinessKeywords:
     
     def test_ai_keywords_not_empty(self):
         """测试 AI 关键词列表不为空"""
-        from gemini_chat.utils.search_engine import AI_KEYWORDS
+        from mika_chat_core.utils.search_engine import AI_KEYWORDS
         
         assert len(AI_KEYWORDS) > 0
         assert "gpt" in AI_KEYWORDS
@@ -886,13 +886,13 @@ class TestTrustedDomains:
     
     def test_trusted_domains_not_empty(self):
         """测试可信域名列表不为空"""
-        from gemini_chat.utils.search_engine import TRUSTED_DOMAINS
+        from mika_chat_core.utils.search_engine import TRUSTED_DOMAINS
         
         assert len(TRUSTED_DOMAINS) > 0
     
     def test_trusted_domains_contains_common_sources(self):
         """测试可信域名列表包含常见来源"""
-        from gemini_chat.utils.search_engine import TRUSTED_DOMAINS
+        from mika_chat_core.utils.search_engine import TRUSTED_DOMAINS
         
         expected_domains = [
             "wikipedia.org",
@@ -910,7 +910,7 @@ class TestHttpClient:
     @pytest.mark.asyncio
     async def test_get_http_client(self):
         """测试获取 HTTP 客户端"""
-        from gemini_chat.utils import search_engine
+        from mika_chat_core.utils import search_engine
         
         # 重置客户端
         if search_engine._http_client:
@@ -931,7 +931,7 @@ class TestHttpClient:
     @pytest.mark.asyncio
     async def test_close_search_engine(self):
         """测试关闭搜索引擎"""
-        from gemini_chat.utils import search_engine
+        from mika_chat_core.utils import search_engine
         
         # 先获取客户端
         client = await search_engine._get_http_client()

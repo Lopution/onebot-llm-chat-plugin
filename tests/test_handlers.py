@@ -21,8 +21,8 @@ class TestHandlePrivate:
     @pytest.mark.asyncio
     async def test_handle_private_normal_message(self):
         """测试正常私聊消息处理"""
-        from gemini_chat.handlers import handle_private
-        from gemini_chat.config import Config
+        from mika_chat_core.handlers import handle_private
+        from mika_chat_core.config import Config
         
         # Arrange
         mock_bot = AsyncMock()
@@ -45,8 +45,8 @@ class TestHandlePrivate:
         mock_gemini_client.chat = AsyncMock(return_value="你好呀~")
         
         # Act
-        with patch("gemini_chat.handlers.get_gemini_client", return_value=mock_gemini_client), \
-             patch("gemini_chat.handlers.extract_images", return_value=[]):
+        with patch("mika_chat_core.handlers.get_gemini_client", return_value=mock_gemini_client), \
+             patch("mika_chat_core.handlers.extract_images", return_value=[]):
             await handle_private(mock_bot, mock_event, mock_config)
         
         # Assert
@@ -58,8 +58,8 @@ class TestHandlePrivate:
     @pytest.mark.asyncio
     async def test_handle_private_with_image(self):
         """测试带图片的私聊消息"""
-        from gemini_chat.handlers import handle_private
-        from gemini_chat.config import Config
+        from mika_chat_core.handlers import handle_private
+        from mika_chat_core.config import Config
         
         # Arrange
         mock_bot = AsyncMock()
@@ -83,8 +83,8 @@ class TestHandlePrivate:
         image_urls = ["https://example.com/image1.jpg", "https://example.com/image2.jpg"]
         
         # Act
-        with patch("gemini_chat.handlers.get_gemini_client", return_value=mock_gemini_client), \
-             patch("gemini_chat.handlers.extract_images", return_value=image_urls):
+        with patch("mika_chat_core.handlers.get_gemini_client", return_value=mock_gemini_client), \
+             patch("mika_chat_core.handlers.extract_images", return_value=image_urls):
             await handle_private(mock_bot, mock_event, mock_config)
         
         # Assert
@@ -95,8 +95,8 @@ class TestHandlePrivate:
     @pytest.mark.asyncio
     async def test_handle_private_empty_message_ignored(self):
         """测试空消息被忽略"""
-        from gemini_chat.handlers import handle_private
-        from gemini_chat.config import Config
+        from mika_chat_core.handlers import handle_private
+        from mika_chat_core.config import Config
         
         # Arrange
         mock_bot = AsyncMock()
@@ -110,7 +110,7 @@ class TestHandlePrivate:
         mock_config.gemini_max_images = 10
         
         # Act
-        with patch("gemini_chat.handlers.extract_images", return_value=[]):
+        with patch("mika_chat_core.handlers.extract_images", return_value=[]):
             await handle_private(mock_bot, mock_event, mock_config)
         
         # Assert
@@ -119,8 +119,8 @@ class TestHandlePrivate:
     @pytest.mark.asyncio
     async def test_handle_private_disabled(self):
         """测试私聊回复被禁用时不处理"""
-        from gemini_chat.handlers import handle_private
-        from gemini_chat.config import Config
+        from mika_chat_core.handlers import handle_private
+        from mika_chat_core.config import Config
         
         # Arrange
         mock_bot = AsyncMock()
@@ -139,8 +139,8 @@ class TestHandlePrivate:
     @pytest.mark.asyncio
     async def test_handle_private_master_tag(self):
         """测试主人发送消息时的特殊标签"""
-        from gemini_chat.handlers import handle_private
-        from gemini_chat.config import Config
+        from mika_chat_core.handlers import handle_private
+        from mika_chat_core.config import Config
         
         # Arrange
         mock_bot = AsyncMock()
@@ -163,8 +163,8 @@ class TestHandlePrivate:
         mock_gemini_client.chat = AsyncMock(return_value="Sensei！你来啦~")
         
         # Act
-        with patch("gemini_chat.handlers.get_gemini_client", return_value=mock_gemini_client), \
-             patch("gemini_chat.handlers.extract_images", return_value=[]):
+        with patch("mika_chat_core.handlers.get_gemini_client", return_value=mock_gemini_client), \
+             patch("mika_chat_core.handlers.extract_images", return_value=[]):
             await handle_private(mock_bot, mock_event, mock_config)
         
         # Assert
@@ -179,8 +179,8 @@ class TestHandleGroup:
     @pytest.mark.asyncio
     async def test_handle_group_normal_message(self):
         """测试正常群聊消息处理"""
-        from gemini_chat.handlers import handle_group
-        from gemini_chat.config import Config
+        from mika_chat_core.handlers import handle_group
+        from mika_chat_core.config import Config
         
         # Arrange
         mock_bot = AsyncMock()
@@ -213,9 +213,9 @@ class TestHandleGroup:
         mock_profile_store.update_from_message = AsyncMock(return_value=False)
         
         # Act
-        with patch("gemini_chat.handlers.get_gemini_client", return_value=mock_gemini_client), \
-             patch("gemini_chat.handlers.extract_images", return_value=[]), \
-             patch("gemini_chat.handlers.get_user_profile_store", return_value=mock_profile_store):
+        with patch("mika_chat_core.handlers.get_gemini_client", return_value=mock_gemini_client), \
+             patch("mika_chat_core.handlers.extract_images", return_value=[]), \
+             patch("mika_chat_core.handlers.get_user_profile_store", return_value=mock_profile_store):
             await handle_group(mock_bot, mock_event, mock_config)
         
         # Assert
@@ -225,8 +225,8 @@ class TestHandleGroup:
     @pytest.mark.asyncio
     async def test_handle_group_at_message(self):
         """测试 @ 机器人的消息"""
-        from gemini_chat.handlers import handle_group
-        from gemini_chat.config import Config
+        from mika_chat_core.handlers import handle_group
+        from mika_chat_core.config import Config
         
         # Arrange
         mock_bot = AsyncMock()
@@ -258,9 +258,9 @@ class TestHandleGroup:
         mock_profile_store.update_from_message = AsyncMock(return_value=False)
         
         # Act
-        with patch("gemini_chat.handlers.get_gemini_client", return_value=mock_gemini_client), \
-             patch("gemini_chat.handlers.extract_images", return_value=[]), \
-             patch("gemini_chat.handlers.get_user_profile_store", return_value=mock_profile_store):
+        with patch("mika_chat_core.handlers.get_gemini_client", return_value=mock_gemini_client), \
+             patch("mika_chat_core.handlers.extract_images", return_value=[]), \
+             patch("mika_chat_core.handlers.get_user_profile_store", return_value=mock_profile_store):
             await handle_group(mock_bot, mock_event, mock_config)
         
         # Assert
@@ -271,8 +271,8 @@ class TestHandleGroup:
     @pytest.mark.asyncio
     async def test_handle_group_whitelist_check(self):
         """测试群白名单检查 - 在白名单内"""
-        from gemini_chat.handlers import handle_group
-        from gemini_chat.config import Config
+        from mika_chat_core.handlers import handle_group
+        from mika_chat_core.config import Config
         
         # Arrange
         mock_bot = AsyncMock()
@@ -304,9 +304,9 @@ class TestHandleGroup:
         mock_profile_store.update_from_message = AsyncMock(return_value=False)
         
         # Act
-        with patch("gemini_chat.handlers.get_gemini_client", return_value=mock_gemini_client), \
-             patch("gemini_chat.handlers.extract_images", return_value=[]), \
-             patch("gemini_chat.handlers.get_user_profile_store", return_value=mock_profile_store):
+        with patch("mika_chat_core.handlers.get_gemini_client", return_value=mock_gemini_client), \
+             patch("mika_chat_core.handlers.extract_images", return_value=[]), \
+             patch("mika_chat_core.handlers.get_user_profile_store", return_value=mock_profile_store):
             await handle_group(mock_bot, mock_event, mock_config)
         
         # Assert - 在白名单内应该处理消息
@@ -315,8 +315,8 @@ class TestHandleGroup:
     @pytest.mark.asyncio
     async def test_handle_group_non_whitelist(self):
         """测试非白名单群消息被忽略"""
-        from gemini_chat.handlers import handle_group
-        from gemini_chat.config import Config
+        from mika_chat_core.handlers import handle_group
+        from mika_chat_core.config import Config
         
         # Arrange
         mock_bot = AsyncMock()
@@ -332,7 +332,7 @@ class TestHandleGroup:
         mock_gemini_client = AsyncMock()
         
         # Act
-        with patch("gemini_chat.handlers.get_gemini_client", return_value=mock_gemini_client):
+        with patch("mika_chat_core.handlers.get_gemini_client", return_value=mock_gemini_client):
             await handle_group(mock_bot, mock_event, mock_config)
         
         # Assert - 不在白名单内不应该处理消息
@@ -346,8 +346,8 @@ class TestUserProfileUpdate:
     @pytest.mark.asyncio
     async def test_user_profile_update(self):
         """测试用户档案更新"""
-        from gemini_chat.handlers import handle_group
-        from gemini_chat.config import Config
+        from mika_chat_core.handlers import handle_group
+        from mika_chat_core.config import Config
         
         # Arrange
         mock_bot = AsyncMock()
@@ -379,9 +379,9 @@ class TestUserProfileUpdate:
         mock_profile_store.update_from_message = AsyncMock(return_value=True)
         
         # Act
-        with patch("gemini_chat.handlers.get_gemini_client", return_value=mock_gemini_client), \
-             patch("gemini_chat.handlers.extract_images", return_value=[]), \
-             patch("gemini_chat.handlers.get_user_profile_store", return_value=mock_profile_store):
+        with patch("mika_chat_core.handlers.get_gemini_client", return_value=mock_gemini_client), \
+             patch("mika_chat_core.handlers.extract_images", return_value=[]), \
+             patch("mika_chat_core.handlers.get_user_profile_store", return_value=mock_profile_store):
             await handle_group(mock_bot, mock_event, mock_config)
         
         # Assert
@@ -397,7 +397,7 @@ class TestMessageSegmentParsing:
     
     def test_message_segment_parsing(self):
         """测试消息段解析"""
-        from gemini_chat.tools import extract_images
+        from mika_chat_core.tools import extract_images
         
         # Arrange
         mock_msg = MagicMock()
@@ -430,7 +430,7 @@ class TestReplyMergeForward:
     @pytest.mark.asyncio
     async def test_reply_merge_forward(self):
         """测试长消息合并转发"""
-        from gemini_chat.handlers import send_forward_msg
+        from mika_chat_core.handlers import send_forward_msg
         from nonebot.adapters.onebot.v11 import GroupMessageEvent
         
         # Arrange
@@ -455,7 +455,7 @@ class TestReplyMergeForward:
     @pytest.mark.asyncio
     async def test_reply_forward_fallback_on_error(self):
         """测试转发失败时返回 False（不在本函数内降级）"""
-        from gemini_chat.handlers import send_forward_msg
+        from mika_chat_core.handlers import send_forward_msg
         from nonebot.adapters.onebot.v11 import GroupMessageEvent
         
         # Arrange
@@ -483,7 +483,7 @@ class TestSendReplyWithPolicy:
     @pytest.mark.asyncio
     async def test_short_reply_quote_success(self):
         """短消息优先引用发送"""
-        from gemini_chat.handlers import send_reply_with_policy
+        from mika_chat_core.handlers import send_reply_with_policy
 
         mock_bot = AsyncMock()
         mock_event = MagicMock()
@@ -492,9 +492,9 @@ class TestSendReplyWithPolicy:
         mock_config.gemini_forward_threshold = 300
         mock_config.gemini_long_reply_image_fallback_enabled = True
 
-        with patch("gemini_chat.handlers.safe_send", new=AsyncMock(return_value=True)) as mock_safe_send, \
-             patch("gemini_chat.handlers.send_forward_msg", new=AsyncMock(return_value=True)) as mock_forward, \
-             patch("gemini_chat.handlers.send_rendered_image_with_quote", new=AsyncMock(return_value=True)) as mock_image:
+        with patch("mika_chat_core.handlers.safe_send", new=AsyncMock(return_value=True)) as mock_safe_send, \
+             patch("mika_chat_core.handlers.send_forward_msg", new=AsyncMock(return_value=True)) as mock_forward, \
+             patch("mika_chat_core.handlers.send_rendered_image_with_quote", new=AsyncMock(return_value=True)) as mock_image:
             await send_reply_with_policy(
                 mock_bot,
                 mock_event,
@@ -510,7 +510,7 @@ class TestSendReplyWithPolicy:
     @pytest.mark.asyncio
     async def test_long_reply_forward_success(self):
         """长消息优先转发"""
-        from gemini_chat.handlers import send_reply_with_policy
+        from mika_chat_core.handlers import send_reply_with_policy
 
         mock_bot = AsyncMock()
         mock_event = MagicMock()
@@ -519,9 +519,9 @@ class TestSendReplyWithPolicy:
         mock_config.gemini_forward_threshold = 10
         mock_config.gemini_long_reply_image_fallback_enabled = True
 
-        with patch("gemini_chat.handlers.safe_send", new=AsyncMock(return_value=True)) as mock_safe_send, \
-             patch("gemini_chat.handlers.send_forward_msg", new=AsyncMock(return_value=True)) as mock_forward, \
-             patch("gemini_chat.handlers.send_rendered_image_with_quote", new=AsyncMock(return_value=True)) as mock_image:
+        with patch("mika_chat_core.handlers.safe_send", new=AsyncMock(return_value=True)) as mock_safe_send, \
+             patch("mika_chat_core.handlers.send_forward_msg", new=AsyncMock(return_value=True)) as mock_forward, \
+             patch("mika_chat_core.handlers.send_rendered_image_with_quote", new=AsyncMock(return_value=True)) as mock_image:
             await send_reply_with_policy(
                 mock_bot,
                 mock_event,
@@ -537,7 +537,7 @@ class TestSendReplyWithPolicy:
     @pytest.mark.asyncio
     async def test_long_reply_forward_fail_then_image_success(self):
         """长消息转发失败后，回退图片发送"""
-        from gemini_chat.handlers import send_reply_with_policy
+        from mika_chat_core.handlers import send_reply_with_policy
 
         mock_bot = AsyncMock()
         mock_event = MagicMock()
@@ -546,9 +546,9 @@ class TestSendReplyWithPolicy:
         mock_config.gemini_forward_threshold = 10
         mock_config.gemini_long_reply_image_fallback_enabled = True
 
-        with patch("gemini_chat.handlers.safe_send", new=AsyncMock(return_value=True)) as mock_safe_send, \
-             patch("gemini_chat.handlers.send_forward_msg", new=AsyncMock(return_value=False)) as mock_forward, \
-             patch("gemini_chat.handlers.send_rendered_image_with_quote", new=AsyncMock(return_value=True)) as mock_image:
+        with patch("mika_chat_core.handlers.safe_send", new=AsyncMock(return_value=True)) as mock_safe_send, \
+             patch("mika_chat_core.handlers.send_forward_msg", new=AsyncMock(return_value=False)) as mock_forward, \
+             patch("mika_chat_core.handlers.send_rendered_image_with_quote", new=AsyncMock(return_value=True)) as mock_image:
             await send_reply_with_policy(
                 mock_bot,
                 mock_event,
@@ -564,7 +564,7 @@ class TestSendReplyWithPolicy:
     @pytest.mark.asyncio
     async def test_long_reply_image_fail_then_text_quote(self):
         """图片失败后回退单条文本引用"""
-        from gemini_chat.handlers import send_reply_with_policy
+        from mika_chat_core.handlers import send_reply_with_policy
 
         mock_bot = AsyncMock()
         mock_event = MagicMock()
@@ -573,9 +573,9 @@ class TestSendReplyWithPolicy:
         mock_config.gemini_forward_threshold = 10
         mock_config.gemini_long_reply_image_fallback_enabled = True
 
-        with patch("gemini_chat.handlers.safe_send", new=AsyncMock(return_value=True)) as mock_safe_send, \
-             patch("gemini_chat.handlers.send_forward_msg", new=AsyncMock(return_value=False)) as mock_forward, \
-             patch("gemini_chat.handlers.send_rendered_image_with_quote", new=AsyncMock(return_value=False)) as mock_image:
+        with patch("mika_chat_core.handlers.safe_send", new=AsyncMock(return_value=True)) as mock_safe_send, \
+             patch("mika_chat_core.handlers.send_forward_msg", new=AsyncMock(return_value=False)) as mock_forward, \
+             patch("mika_chat_core.handlers.send_rendered_image_with_quote", new=AsyncMock(return_value=False)) as mock_image:
             await send_reply_with_policy(
                 mock_bot,
                 mock_event,
@@ -591,7 +591,7 @@ class TestSendReplyWithPolicy:
     @pytest.mark.asyncio
     async def test_proactive_reply_keeps_prefix(self):
         """主动回复保留前缀后再走发送策略"""
-        from gemini_chat.handlers import send_reply_with_policy
+        from mika_chat_core.handlers import send_reply_with_policy
 
         mock_bot = AsyncMock()
         mock_event = MagicMock()
@@ -600,7 +600,7 @@ class TestSendReplyWithPolicy:
         mock_config.gemini_forward_threshold = 300
         mock_config.gemini_long_reply_image_fallback_enabled = True
 
-        with patch("gemini_chat.handlers.safe_send", new=AsyncMock(return_value=True)) as mock_safe_send:
+        with patch("mika_chat_core.handlers.safe_send", new=AsyncMock(return_value=True)) as mock_safe_send:
             await send_reply_with_policy(
                 mock_bot,
                 mock_event,
@@ -619,8 +619,8 @@ class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_error_handling(self):
         """测试错误处理"""
-        from gemini_chat.handlers import handle_private
-        from gemini_chat.config import Config
+        from mika_chat_core.handlers import handle_private
+        from mika_chat_core.config import Config
         
         # Arrange
         mock_bot = AsyncMock()
@@ -641,8 +641,8 @@ class TestErrorHandling:
         mock_gemini_client.chat = AsyncMock(side_effect=Exception("API Error"))
         
         # Act & Assert - 确保异常被正确抛出或处理
-        with patch("gemini_chat.handlers.get_gemini_client", return_value=mock_gemini_client), \
-             patch("gemini_chat.handlers.extract_images", return_value=[]):
+        with patch("mika_chat_core.handlers.get_gemini_client", return_value=mock_gemini_client), \
+             patch("mika_chat_core.handlers.extract_images", return_value=[]):
             # 根据实际代码行为，可能会抛出异常或静默处理
             try:
                 await handle_private(mock_bot, mock_event, mock_config)
@@ -652,8 +652,8 @@ class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_user_profile_update_failure_does_not_block(self):
         """测试用户档案更新失败不会阻塞主流程"""
-        from gemini_chat.handlers import handle_group
-        from gemini_chat.config import Config
+        from mika_chat_core.handlers import handle_group
+        from mika_chat_core.config import Config
         
         # Arrange
         mock_bot = AsyncMock()
@@ -685,9 +685,9 @@ class TestErrorHandling:
         mock_profile_store.update_from_message = AsyncMock(side_effect=Exception("DB Error"))
         
         # Act
-        with patch("gemini_chat.handlers.get_gemini_client", return_value=mock_gemini_client), \
-             patch("gemini_chat.handlers.extract_images", return_value=[]), \
-             patch("gemini_chat.handlers.get_user_profile_store", return_value=mock_profile_store):
+        with patch("mika_chat_core.handlers.get_gemini_client", return_value=mock_gemini_client), \
+             patch("mika_chat_core.handlers.extract_images", return_value=[]), \
+             patch("mika_chat_core.handlers.get_user_profile_store", return_value=mock_profile_store):
             await handle_group(mock_bot, mock_event, mock_config)
         
         # Assert - 即使档案更新失败，消息仍应被处理
@@ -701,8 +701,8 @@ class TestHandleReset:
     @pytest.mark.asyncio
     async def test_handle_reset_private(self):
         """测试私聊重置记忆"""
-        from gemini_chat.handlers import handle_reset
-        from gemini_chat.config import Config
+        from mika_chat_core.handlers import handle_reset
+        from mika_chat_core.config import Config
         from nonebot.adapters.onebot.v11 import PrivateMessageEvent
         
         # Arrange
@@ -718,7 +718,7 @@ class TestHandleReset:
         mock_gemini_client.clear_context_async = AsyncMock()
         
         # Act
-        with patch("gemini_chat.handlers.get_gemini_client", return_value=mock_gemini_client):
+        with patch("mika_chat_core.handlers.get_gemini_client", return_value=mock_gemini_client):
             await handle_reset(mock_bot, mock_event, mock_config)
         
         # Assert
@@ -728,8 +728,8 @@ class TestHandleReset:
     @pytest.mark.asyncio
     async def test_handle_reset_group(self):
         """测试群聊重置记忆"""
-        from gemini_chat.handlers import handle_reset
-        from gemini_chat.config import Config
+        from mika_chat_core.handlers import handle_reset
+        from mika_chat_core.config import Config
         from nonebot.adapters.onebot.v11 import GroupMessageEvent
         
         # Arrange
@@ -746,7 +746,7 @@ class TestHandleReset:
         mock_gemini_client.clear_context_async = AsyncMock()
         
         # Act
-        with patch("gemini_chat.handlers.get_gemini_client", return_value=mock_gemini_client):
+        with patch("mika_chat_core.handlers.get_gemini_client", return_value=mock_gemini_client):
             await handle_reset(mock_bot, mock_event, mock_config)
         
         # Assert

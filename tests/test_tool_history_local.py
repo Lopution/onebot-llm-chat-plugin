@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 @pytest.mark.asyncio
 async def test_search_group_history_uses_local_context_store():
-    from gemini_chat.tools import handle_search_group_history
+    from mika_chat_core.tools import handle_search_group_history
 
     fake_store = AsyncMock()
     fake_store.get_context = AsyncMock(
@@ -21,7 +21,7 @@ async def test_search_group_history_uses_local_context_store():
         ]
     )
 
-    with patch("gemini_chat.utils.context_store.get_context_store", return_value=fake_store):
+    with patch("mika_chat_core.utils.context_store.get_context_store", return_value=fake_store):
         out = await handle_search_group_history({"count": 2}, group_id="987654321")
 
     assert "以下是查找到的历史消息" in out
@@ -31,7 +31,7 @@ async def test_search_group_history_uses_local_context_store():
 
 @pytest.mark.asyncio
 async def test_search_group_history_requires_group_id():
-    from gemini_chat.tools import handle_search_group_history
+    from mika_chat_core.tools import handle_search_group_history
 
     out = await handle_search_group_history({"count": 5}, group_id="")
     assert "仅在群聊可用" in out

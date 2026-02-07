@@ -8,7 +8,7 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_send_policy_short_message_prefers_quote_text():
-    from gemini_chat.handlers import SendStageResult, send_reply_with_policy
+    from mika_chat_core.handlers import SendStageResult, send_reply_with_policy
 
     bot = MagicMock()
     event = MagicMock()
@@ -18,14 +18,14 @@ async def test_send_policy_short_message_prefers_quote_text():
     )
     ctx = SimpleNamespace(session_key="private:10001")
 
-    with patch("gemini_chat.handlers.build_event_context", return_value=ctx), \
+    with patch("mika_chat_core.handlers.build_event_context", return_value=ctx), \
          patch(
-             "gemini_chat.handlers._stage_short_quote_text",
+             "mika_chat_core.handlers._stage_short_quote_text",
              new=AsyncMock(return_value=SendStageResult(ok=True, method="quote_text")),
          ) as short_stage, \
-         patch("gemini_chat.handlers._stage_long_forward", new=AsyncMock()) as long_stage, \
-         patch("gemini_chat.handlers._stage_render_image", new=AsyncMock()) as image_stage, \
-         patch("gemini_chat.handlers._stage_text_fallback", new=AsyncMock()) as fallback_stage:
+         patch("mika_chat_core.handlers._stage_long_forward", new=AsyncMock()) as long_stage, \
+         patch("mika_chat_core.handlers._stage_render_image", new=AsyncMock()) as image_stage, \
+         patch("mika_chat_core.handlers._stage_text_fallback", new=AsyncMock()) as fallback_stage:
         await send_reply_with_policy(
             bot,
             event,
@@ -42,7 +42,7 @@ async def test_send_policy_short_message_prefers_quote_text():
 
 @pytest.mark.asyncio
 async def test_send_policy_long_message_falls_back_to_text_when_forward_and_image_fail():
-    from gemini_chat.handlers import SendStageResult, send_reply_with_policy
+    from mika_chat_core.handlers import SendStageResult, send_reply_with_policy
 
     bot = MagicMock()
     event = MagicMock()
@@ -52,17 +52,17 @@ async def test_send_policy_long_message_falls_back_to_text_when_forward_and_imag
     )
     ctx = SimpleNamespace(session_key="group:20002")
 
-    with patch("gemini_chat.handlers.build_event_context", return_value=ctx), \
+    with patch("mika_chat_core.handlers.build_event_context", return_value=ctx), \
          patch(
-             "gemini_chat.handlers._stage_long_forward",
+             "mika_chat_core.handlers._stage_long_forward",
              new=AsyncMock(return_value=SendStageResult(ok=False, method="forward", error="forward_failed")),
          ) as long_stage, \
          patch(
-             "gemini_chat.handlers._stage_render_image",
+             "mika_chat_core.handlers._stage_render_image",
              new=AsyncMock(return_value=SendStageResult(ok=False, method="quote_image", error="render_failed")),
          ) as image_stage, \
          patch(
-             "gemini_chat.handlers._stage_text_fallback",
+             "mika_chat_core.handlers._stage_text_fallback",
              new=AsyncMock(
                  return_value=SendStageResult(ok=True, method="quote_text_fallback")
              ),

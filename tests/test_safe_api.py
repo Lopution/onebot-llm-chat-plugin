@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 @pytest.mark.asyncio
 async def test_safe_send_falls_back_without_kwargs():
-    from gemini_chat.utils.safe_api import safe_send
+    from mika_chat_core.utils.safe_api import safe_send
 
     bot = MagicMock()
     bot.send = AsyncMock(side_effect=[Exception("no kwargs"), None])
@@ -22,7 +22,7 @@ async def test_safe_send_falls_back_without_kwargs():
 
 @pytest.mark.asyncio
 async def test_safe_call_api_returns_none_on_error():
-    from gemini_chat.utils.safe_api import safe_call_api
+    from mika_chat_core.utils.safe_api import safe_call_api
 
     bot = MagicMock()
     bot.call_api = AsyncMock(side_effect=Exception("boom"))
