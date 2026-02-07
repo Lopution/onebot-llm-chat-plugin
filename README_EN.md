@@ -259,13 +259,11 @@ python3 scripts/doctor.py
 
 ---
 
-## 🧰 WSL2 Long-running Deployment
+## 🧰 WSL2 (Optional)
 
-If you deploy on Windows but want Bot to run long-term in WSL2 (auto-start + auto-restart), see:
+If you run the Bot inside WSL2 on Windows, see:
 
-- 📖 [WSL2 deployment guide](docs/deploy/wsl2.md)
-- 📁 systemd templates: [`deploy/wsl2/systemd/`](deploy/wsl2/systemd/)
-- 📁 Windows scripts: [`deploy/wsl2/windows/`](deploy/wsl2/windows/)
+- 📖 [WSL2 guide](docs/deploy/wsl2.md)
 
 For dual-repo maintenance (open-source dev repo + local deployment repo), see:
 - 📖 [`docs/deploy/repo-sync.md`](docs/deploy/repo-sync.md)

@@ -43,7 +43,7 @@
 
 ### 3) WSL2（可选 Docker）
 
-- 启动方式：`./start.sh` 或 systemd
+- 启动方式：`./start.sh`（或 `python bot.py`）
 - 验收点：
   - WSL2 重启后可恢复
   - 若使用 Docker 客户端，WS 地址可达

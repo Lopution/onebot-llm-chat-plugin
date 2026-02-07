@@ -258,13 +258,11 @@ python3 scripts/doctor.py
 
 ---
 
-## 🧰 WSL2 长期运行部署
+## 🧰 WSL2 部署（可选）
 
-如果你希望在 Windows 本机部署，但 Bot 长期运行在 WSL2（开机自动拉起 + 异常自动重启），请参阅：
+如果你希望在 Windows 环境下把 Bot 跑在 WSL2（更像 Linux 环境），请参阅：
 
-- 📖 [WSL2 部署指南](docs/deploy/wsl2.md)
-- 📁 systemd 模板：[`deploy/wsl2/systemd/`](deploy/wsl2/systemd/)
-- 📁 Windows 脚本：[`deploy/wsl2/windows/`](deploy/wsl2/windows/)
+- 📖 [WSL2 使用指南](docs/deploy/wsl2.md)
 
 维护双仓（开源开发仓 + 本地部署仓）时，请参阅：
 - 📖 [`docs/deploy/repo-sync.md`](docs/deploy/repo-sync.md)

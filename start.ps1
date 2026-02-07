@@ -53,17 +53,33 @@ if (-not (Test-Path ".env") -and -not (Test-Path ".env.prod")) {
     }
 }
 
-# 若 .env 仍是示例默认值，提前提示
-if (Test-Path ".env") {
-    if (Select-String -Path ".env" -Pattern '^GEMINI_MASTER_ID=0$' -Quiet) {
-        Write-Host "⚠️  检测到 .env 中 GEMINI_MASTER_ID 仍为 0（示例值）"
-        Write-Host "💡 请编辑 .env，设置为你的 QQ 号，例如：GEMINI_MASTER_ID=123456789"
+# NoneBot 默认会读取 .env 与 .env.prod；这里根据实际存在的文件做“示例值提醒”。
+# 优先按 .env.prod 检查，避免 .env 与 .env.prod 共存时误判。
+$configCheckFile = $null
+if (Test-Path ".env.prod") {
+    $configCheckFile = ".env.prod"
+    Write-Host "✅ 使用生产环境配置 (.env.prod)"
+    $env:ENVIRONMENT = "prod"
+} elseif (Test-Path ".env") {
+    $configCheckFile = ".env"
+    Write-Host "✅ 使用默认环境配置 (.env)"
+}
+
+if ($configCheckFile) {
+    if (Select-String -Path $configCheckFile -Pattern '^GEMINI_MASTER_ID=0$' -Quiet) {
+        Write-Host "⚠️  检测到 $configCheckFile 中 GEMINI_MASTER_ID 仍为 0（示例值）"
+        Write-Host "💡 请编辑 $configCheckFile，设置为你的 QQ 号，例如：GEMINI_MASTER_ID=123456789"
         exit 0
     }
-    if (Select-String -Path ".env" -Pattern '^GEMINI_API_KEY=\"\"$' -Quiet) {
-        Write-Host "⚠️  检测到 .env 中 GEMINI_API_KEY 仍为空（示例值）"
-        Write-Host "💡 请编辑 .env，填写 GEMINI_API_KEY 或 GEMINI_API_KEY_LIST"
-        exit 0
+
+    if (Select-String -Path $configCheckFile -Pattern '^GEMINI_API_KEY=\"\"$' -Quiet) {
+        $hasKeyList = Select-String -Path $configCheckFile -Pattern '^GEMINI_API_KEY_LIST=' -Quiet
+        $keyListEmpty = Select-String -Path $configCheckFile -Pattern '^GEMINI_API_KEY_LIST=\[\s*\]$' -Quiet
+        if (-not $hasKeyList -or $keyListEmpty) {
+            Write-Host "⚠️  检测到 $configCheckFile 中 GEMINI_API_KEY 仍为空（示例值）"
+            Write-Host "💡 请编辑 $configCheckFile，填写 GEMINI_API_KEY 或 GEMINI_API_KEY_LIST"
+            exit 0
+        }
     }
 }
 
