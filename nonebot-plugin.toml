@@ -1,0 +1,6 @@
+[plugin]
+module_name = "nonebot_plugin_mika_chat"
+project_link = "https://github.com/Lopution/mika-chat-core"
+supported_adapters = ["~onebot.v11", "~onebot.v12"]
+description = "基于 OneBot 协议、通过 OpenAI 兼容接口调用 Gemini 的聊天插件"
+homepage = "https://github.com/Lopution/mika-chat-core"

@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "onebot-llm-chat-plugin"
+name = "nonebot-plugin-mika-chat"
 version = "0.1.0"
 description = "基于 OneBot 协议的 QQ 机器人项目，通过 OpenAI 兼容格式 API 调用 Gemini 模型"
 readme = "README.md"
@@ -79,12 +79,19 @@ semantic = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Lopution/onebot-llm-chat-plugin"
-Repository = "https://github.com/Lopution/onebot-llm-chat-plugin.git"
-Issues = "https://github.com/Lopution/onebot-llm-chat-plugin/issues"
+Homepage = "https://github.com/Lopution/mika-chat-core"
+Repository = "https://github.com/Lopution/mika-chat-core.git"
+Issues = "https://github.com/Lopution/mika-chat-core/issues"
+
+[project.entry-points."nonebot.plugin"]
+mika_chat = "nonebot_plugin_mika_chat"
+gemini_chat = "nonebot_plugin_gemini_chat"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
+packages = [
+    "src/nonebot_plugin_mika_chat",
+    "src/nonebot_plugin_gemini_chat",
+]
 
 [tool.ruff]
 target-version = "py310"

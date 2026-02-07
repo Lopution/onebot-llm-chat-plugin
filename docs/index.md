@@ -50,7 +50,7 @@ python bot.py
 ## 架构设计
 
 ```
-src/plugins/gemini_chat/
+src/nonebot_plugin_mika_chat/
 ├── __init__.py          # 插件入口
 ├── config.py            # 配置管理
 ├── gemini_api.py        # API 客户端

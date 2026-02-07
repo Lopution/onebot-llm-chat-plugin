@@ -6,10 +6,18 @@
 """
 
 import os
+import sys
+from pathlib import Path
 
 import nonebot
 
 nonebot.init()
+
+src_dir = Path(__file__).resolve().parent / "src"
+if src_dir.exists():
+    src_dir_str = str(src_dir)
+    if src_dir_str not in sys.path:
+        sys.path.insert(0, src_dir_str)
 
 driver = nonebot.get_driver()
 STRICT_STARTUP = os.getenv("MIKA_STRICT_STARTUP", "0").strip().lower() in {"1", "true", "yes", "on"}
@@ -52,7 +60,18 @@ if registered_adapters == 0:
         raise RuntimeError(message)
     nonebot.logger.warning(f"[startup] {message}")
 
-nonebot.load_plugins("src/plugins")
+plugin = None
+try:
+    plugin = nonebot.load_plugin("nonebot_plugin_mika_chat")
+except Exception as exc:
+    _handle_optional_error("加载 nonebot_plugin_mika_chat", exc)
+
+if plugin is None:
+    nonebot.logger.warning("[startup] 新插件名加载失败，回退旧插件名 nonebot_plugin_gemini_chat")
+    try:
+        plugin = nonebot.load_plugin("nonebot_plugin_gemini_chat")
+    except Exception as exc:
+        _handle_optional_error("加载 nonebot_plugin_gemini_chat", exc)
 
 if __name__ == "__main__":
     # HOST/PORT 由 NoneBot 配置加载（默认读取 .env / .env.prod）
