@@ -31,147 +31,37 @@ if [ ! -f ".env" ] && [ ! -f ".env.prod" ]; then
     fi
 fi
 
-# 若 .env 存在但仍是示例默认值，提前提示，避免用户一上来看到一堆报错堆栈
-if [ -f ".env" ]; then
-    if grep -q '^GEMINI_MASTER_ID=0' ".env"; then
-        echo -e "${YELLOW}⚠️  检测到 .env 中 GEMINI_MASTER_ID 仍为 0（示例值）${NC}"
-        echo -e "${CYAN}💡 请编辑 .env，设置为你的 QQ 号，例如：GEMINI_MASTER_ID=123456789${NC}"
+# 优先按实际运行环境做配置检查：.env.prod > .env
+CONFIG_CHECK_FILE=""
+CONFIG_CHECK_NAME=""
+if [ -f ".env.prod" ]; then
+    CONFIG_CHECK_FILE=".env.prod"
+    CONFIG_CHECK_NAME=".env.prod"
+elif [ -f ".env" ]; then
+    CONFIG_CHECK_FILE=".env"
+    CONFIG_CHECK_NAME=".env"
+fi
+
+# 若配置仍是示例默认值，提前提示，避免用户一上来看到一堆报错堆栈
+if [ -n "$CONFIG_CHECK_FILE" ]; then
+    if grep -q '^GEMINI_MASTER_ID=0' "$CONFIG_CHECK_FILE"; then
+        echo -e "${YELLOW}⚠️  检测到 ${CONFIG_CHECK_NAME} 中 GEMINI_MASTER_ID 仍为 0（示例值）${NC}"
+        echo -e "${CYAN}💡 请编辑 ${CONFIG_CHECK_NAME}，设置为你的 QQ 号，例如：GEMINI_MASTER_ID=123456789${NC}"
         exit 0
     fi
 
-    if grep -q '^GEMINI_API_KEY=\"\"' ".env"; then
+    if grep -q '^GEMINI_API_KEY=\"\"' "$CONFIG_CHECK_FILE"; then
         # 若用户未配置 key_list（或仍为空），提示先填写
-        if ! grep -q '^GEMINI_API_KEY_LIST=' ".env" || grep -q '^GEMINI_API_KEY_LIST=\\[\\s*\\]' ".env"; then
-            echo -e "${YELLOW}⚠️  检测到 .env 中 GEMINI_API_KEY 仍为空（示例值）${NC}"
-            echo -e "${CYAN}💡 请编辑 .env，填写 GEMINI_API_KEY 或 GEMINI_API_KEY_LIST${NC}"
+        if ! grep -q '^GEMINI_API_KEY_LIST=' "$CONFIG_CHECK_FILE" || grep -q '^GEMINI_API_KEY_LIST=\[[[:space:]]*\]$' "$CONFIG_CHECK_FILE"; then
+            echo -e "${YELLOW}⚠️  检测到 ${CONFIG_CHECK_NAME} 中 GEMINI_API_KEY 仍为空（示例值）${NC}"
+            echo -e "${CYAN}💡 请编辑 ${CONFIG_CHECK_NAME}，填写 GEMINI_API_KEY 或 GEMINI_API_KEY_LIST${NC}"
             exit 0
         fi
     fi
 fi
 
-# ========== 1. 启动/检查 NapCat Docker ==========
-echo -e "${YELLOW}[1/3] 检查 NapCat QQ 客户端...${NC}"
-
-if command -v docker &> /dev/null; then
-    # 检查 NapCat 容器状态
-    NAPCAT_STATUS=$(docker inspect -f '{{.State.Running}}' napcat 2>/dev/null)
-    
-    if [ "$NAPCAT_STATUS" != "true" ]; then
-        echo -e "${YELLOW}🔄 启动 NapCat 容器...${NC}"
-        docker start napcat 2>/dev/null || true
-        sleep 3
-    fi
-
-    # 再次确认容器是否可用；不可用则跳过 NapCat 检查，继续启动 Bot
-    NAPCAT_STATUS=$(docker inspect -f '{{.State.Running}}' napcat 2>/dev/null)
-    if [ "$NAPCAT_STATUS" != "true" ]; then
-        echo -e "${YELLOW}⚠️  未检测到可运行的 napcat 容器，跳过 NapCat 检查（仍可先启动 Bot）${NC}"
-        echo -e "${CYAN}💡 你可以稍后自行部署/启动 NapCat，再配置 OneBot 反向 WS 连接到 Bot${NC}"
-        echo
-        LOGIN_SUCCESS=false
-    else
-    
-        # 检查 NapCat 登录状态（带二维码过期自动刷新功能）
-        echo -e "${CYAN}📱 检查 NapCat 登录状态...${NC}"
-    
-        # 配置参数
-        MAX_RETRIES=3          # 最大重试次数
-        QR_TIMEOUT=120         # 每个二维码等待时间（秒）
-    
-        retry_count=0
-        LOGIN_SUCCESS=false
-    
-        while [ $retry_count -lt $MAX_RETRIES ]; do
-            # 如果不是第一次尝试，需要重启容器刷新二维码
-            if [ $retry_count -gt 0 ]; then
-                echo ""
-                echo -e "${YELLOW}🔄 重启 NapCat 容器获取新二维码... (尝试 $((retry_count + 1))/$MAX_RETRIES)${NC}"
-                docker restart napcat >/dev/null 2>&1 || true
-                sleep 5
-            fi
-        
-            QR_SHOWN=false
-            START_TIME=$(date +%s)
-        
-            while true; do
-                CURRENT_TIME=$(date +%s)
-                ELAPSED=$((CURRENT_TIME - START_TIME))
-                REMAINING=$((QR_TIMEOUT - ELAPSED))
-            
-                # 超时检查
-                if [ $ELAPSED -ge $QR_TIMEOUT ]; then
-                    echo ""
-                    echo -e "${YELLOW}⏰ 二维码等待超时 (${QR_TIMEOUT}秒)${NC}"
-                    break
-                fi
-            
-                NAPCAT_LOGS=$(docker logs napcat --tail 100 2>&1)
-            
-                # 检查是否已登录成功（检测 WebSocket 启动 或 接收消息）
-                if echo "$NAPCAT_LOGS" | grep -qE "已启动|接收 <-|OneBot11.*启动|login success|登录成功"; then
-                    echo ""
-                    echo -e "${GREEN}✅ NapCat 已登录成功${NC}"
-                    LOGIN_SUCCESS=true
-                    break 2  # 跳出两层循环
-                fi
-            
-                # 检查二维码是否过期
-                if echo "$NAPCAT_LOGS" | grep -qEi "过期|expired|timeout|超时|二维码.*失效|QRCode.*invalid"; then
-                    echo ""
-                    echo -e "${YELLOW}⚠️  二维码已过期！${NC}"
-                    break  # 跳出内层循环，进入下一次重试
-                fi
-            
-                # 检查是否需要扫码
-                if echo "$NAPCAT_LOGS" | grep -q "二维码"; then
-                    if [ "$QR_SHOWN" = false ]; then
-                        echo ""
-                        echo -e "${YELLOW}⚠️  NapCat 需要扫码登录！${NC}"
-                        if [ $retry_count -gt 0 ]; then
-                            echo -e "${CYAN}   (第 $((retry_count + 1)) 次尝试，共 $MAX_RETRIES 次)${NC}"
-                        fi
-                        echo ""
-                        echo -e "${CYAN}📱 请用手机 QQ 扫描以下二维码：${NC}"
-                        echo ""
-                        # 直接显示 docker 日志中的二维码
-                        docker logs napcat --tail 50 2>&1 | grep -A 20 "请扫描下面的二维码" | head -25
-                        echo ""
-                        echo -e "${CYAN}⏳ 等待扫码登录中... (剩余 ${REMAINING} 秒)${NC}"
-                        echo ""
-                        QR_SHOWN=true
-                    else
-                        # 更新剩余时间显示（每10秒更新一次）
-                        if [ $((ELAPSED % 10)) -eq 0 ] && [ $ELAPSED -gt 0 ]; then
-                            echo -e "${CYAN}⏳ 等待中... 剩余 ${REMAINING} 秒${NC}"
-                        fi
-                    fi
-                    sleep 5
-                else
-                    # 可能还在初始化
-                    echo -e "${CYAN}⏳ NapCat 正在初始化...${NC}"
-                    sleep 2
-                fi
-            done
-        
-            retry_count=$((retry_count + 1))
-        done
-    
-        # 检查最终登录状态
-        if [ "$LOGIN_SUCCESS" != "true" ]; then
-            echo ""
-            echo -e "${YELLOW}⚠️  NapCat 登录未完成（已达到最大重试次数 $MAX_RETRIES 次）${NC}"
-            echo -e "${CYAN}💡 不影响 Bot 启动，你可以稍后手动登录 NapCat：${NC}"
-            echo -e "${CYAN}   docker restart napcat && docker logs -f napcat${NC}"
-        fi
-    fi
-else
-    echo -e "${YELLOW}⚠️ Docker 未安装，跳过 NapCat 检查（仍可先启动 Bot）${NC}"
-fi
-
-echo
-
-# ========== 2. 激活虚拟环境 ==========
-echo -e "${YELLOW}[2/3] 准备 Python 环境...${NC}"
+# ========== 1. 激活虚拟环境 ==========
+echo -e "${YELLOW}[1/2] 准备 Python 环境...${NC}"
 
 if [ -d ".venv" ]; then
     echo -e "${GREEN}✅ 激活虚拟环境${NC}"
@@ -190,8 +80,8 @@ fi
 
 echo
 
-# ========== 3. 启动 Bot ==========
-echo -e "${YELLOW}[3/3] 启动 Mika Bot...${NC}"
+# ========== 2. 启动 Bot ==========
+echo -e "${YELLOW}[2/2] 启动 Mika Bot...${NC}"
 echo "================================"
 echo
 
@@ -216,128 +106,106 @@ if [ -n "$PORT_FILE" ]; then
     fi
 fi
 
-# 防止重复启动：若端口已占用，则优先重启 systemd 服务；否则尝试停止旧进程后再启动
-PORT_IN_USE=false
-if command -v ss &> /dev/null; then
-    if ss -ltn 2>/dev/null | grep -q ":${BOT_PORT} "; then
-        PORT_IN_USE=true
+# 端口占用处理：优先自动清理“残留 Bot 进程”，避免重复启动失败
+is_port_in_use() {
+    if command -v lsof >/dev/null 2>&1; then
+        lsof -nP -iTCP:"$BOT_PORT" -sTCP:LISTEN >/dev/null 2>&1
+        return $?
     fi
-elif command -v lsof &> /dev/null; then
-    if lsof -nP -iTCP:${BOT_PORT} -sTCP:LISTEN >/dev/null 2>&1; then
-        PORT_IN_USE=true
+    if command -v ss >/dev/null 2>&1; then
+        ss -ltn 2>/dev/null | grep -q ":${BOT_PORT} "
+        return $?
     fi
-fi
+    return 1
+}
 
-if [ "$PORT_IN_USE" = true ]; then
-    echo -e "${YELLOW}⚠️  端口 ${BOT_PORT} 已被占用，尝试停止/重启现有实例...${NC}"
-
-    # 1) 若已启用 systemd 服务，直接重启服务（更符合长期运行场景）
-    if command -v systemctl &> /dev/null; then
-        if systemctl is-active --quiet mika-bot.service 2>/dev/null; then
-            echo -e "${CYAN}🔄 检测到 mika-bot.service 正在运行，重启服务...${NC}"
-            systemctl restart mika-bot.service 2>/dev/null || {
-                echo -e "${RED}❌ systemd 重启失败，将尝试手动停止占用端口的进程${NC}"
+collect_listener_pids() {
+    if command -v lsof >/dev/null 2>&1; then
+        lsof -t -nP -iTCP:"$BOT_PORT" -sTCP:LISTEN 2>/dev/null | sort -u
+        return
+    fi
+    if command -v fuser >/dev/null 2>&1; then
+        fuser -n tcp "$BOT_PORT" 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9]+$' | sort -u
+        return
+    fi
+    if command -v ss >/dev/null 2>&1; then
+        ss -ltnp 2>/dev/null | awk -v p=":${BOT_PORT}" '
+            index($4, p) {
+                if (match($0, /pid=[0-9]+/)) {
+                    pid = substr($0, RSTART + 4, RLENGTH - 4)
+                    print pid
+                }
             }
-            # 重启成功则进入日志跟踪模式，避免再启动一个前台实例
-            if systemctl is-active --quiet mika-bot.service 2>/dev/null; then
-                echo -e "${GREEN}✅ 已重启 mika-bot.service${NC}"
-                echo -e "${CYAN}📋 进入日志跟踪模式（按 Ctrl+C 退出）: journalctl -u mika-bot.service -f -o cat${NC}"
-                echo
-                if command -v journalctl &> /dev/null; then
-                    # journalctl 输出通常不带颜色，这里做简单的基于关键字的高亮，便于观察
-                    journalctl -u mika-bot.service -f -o cat | awk -v RED="$RED" -v GREEN="$GREEN" -v YELLOW="$YELLOW" -v CYAN="$CYAN" -v NC="$NC" '
-                        {
-                            line = $0
-                            if (line ~ /\[ERROR\]/) { print RED line NC; fflush(); next }
-                            if (line ~ /\[WARNING\]/) { print YELLOW line NC; fflush(); next }
-                            if (line ~ /\[SUCCESS\]/) { print GREEN line NC; fflush(); next }
-                            if (line ~ /\[INFO\]/) { print CYAN line NC; fflush(); next }
-                            print line
-                            fflush()
-                        }
-                    '
-                else
-                    echo -e "${YELLOW}⚠️ journalctl 不可用，无法跟踪 systemd 日志${NC}"
-                fi
-                exit 0
-            fi
+        ' | sort -u
+    fi
+}
+
+is_bot_process_pid() {
+    local pid="$1"
+    local cmd
+    cmd="$(ps -p "$pid" -o args= 2>/dev/null || true)"
+    echo "$cmd" | grep -Eiq '(bot\.py|nonebot|mika[_-]chat|gemini_chat)'
+}
+
+if is_port_in_use; then
+    echo -e "${YELLOW}⚠️  检测到端口 ${BOT_PORT} 已被占用，尝试清理残留 Bot 进程...${NC}"
+
+    mapfile -t LISTENER_PIDS < <(collect_listener_pids)
+    if [ "${#LISTENER_PIDS[@]}" -eq 0 ]; then
+        echo -e "${RED}❌ 端口 ${BOT_PORT} 被占用，但无法识别占用进程 PID${NC}"
+        echo -e "${CYAN}💡 请手动释放端口后重试${NC}"
+        exit 1
+    fi
+
+    BOT_PIDS=()
+    NON_BOT_PIDS=()
+    for pid in "${LISTENER_PIDS[@]}"; do
+        if is_bot_process_pid "$pid"; then
+            BOT_PIDS+=("$pid")
+        else
+            NON_BOT_PIDS+=("$pid")
         fi
-    fi
+    done
 
-    # 2) 兜底：尝试停止占用端口的旧进程（仅在确认是本项目进程时才会停止）
-    PIDS=""
-    if command -v lsof &> /dev/null; then
-        PIDS="$(lsof -t -nP -iTCP:${BOT_PORT} -sTCP:LISTEN 2>/dev/null || true)"
-    fi
-    if [ -z "$PIDS" ] && command -v ss &> /dev/null; then
-        PIDS="$(ss -ltnp 2>/dev/null | awk -v port=":${BOT_PORT} " '$0 ~ port {match($0, /pid=([0-9]+)/, m); if (m[1]) print m[1]}' | sort -u)"
-    fi
-
-    if [ -n "$PIDS" ]; then
-        for pid in $PIDS; do
+    if [ "${#NON_BOT_PIDS[@]}" -gt 0 ]; then
+        echo -e "${RED}❌ 端口 ${BOT_PORT} 被非 Bot 进程占用，为避免误杀已停止启动${NC}"
+        for pid in "${NON_BOT_PIDS[@]}"; do
             cmd="$(ps -p "$pid" -o args= 2>/dev/null || true)"
-            cwd="$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)"
+            echo -e "${CYAN}   - PID ${pid}: ${cmd:-<unknown>}${NC}"
+        done
+        echo -e "${CYAN}💡 请先手动停止以上进程，或修改 ${PORT_FILE:-.env/.env.prod} 中的 PORT${NC}"
+        exit 1
+    fi
 
-            # 仅停止“看起来就是 Mika Bot”的进程：在项目目录启动，或命令行包含 bot.py
-            if [ "$cwd" = "$SCRIPT_DIR" ] || echo "$cmd" | grep -q "bot.py"; then
-                echo -e "${CYAN}🛑 停止旧进程 PID=$pid${NC}"
-                kill "$pid" 2>/dev/null || true
-                sleep 1
+    if [ "${#BOT_PIDS[@]}" -gt 0 ]; then
+        echo -e "${YELLOW}🔄 发现残留 Bot 进程：${BOT_PIDS[*]}，先尝试优雅退出...${NC}"
+        kill -TERM "${BOT_PIDS[@]}" 2>/dev/null || true
+        sleep 2
+    fi
 
-                # 若仍未退出，强制 kill
-                if ps -p "$pid" >/dev/null 2>&1; then
-                    echo -e "${YELLOW}⚠️  旧进程仍在运行，强制结束 PID=$pid${NC}"
-                    kill -9 "$pid" 2>/dev/null || true
-                fi
-            else
-                echo -e "${RED}❌ 端口 ${BOT_PORT} 被未知进程占用，脚本不会自动终止它${NC}"
-                echo -e "${YELLOW}   PID: $pid${NC}"
-                echo -e "${YELLOW}   CMD: $cmd${NC}"
-                echo -e "${YELLOW}   CWD: ${cwd:-unknown}${NC}"
-                echo -e "${CYAN}💡 请你手动释放端口后再运行该脚本${NC}"
-                exit 1
+    if is_port_in_use; then
+        mapfile -t REMAINING_PIDS < <(collect_listener_pids)
+        FORCE_PIDS=()
+        for pid in "${REMAINING_PIDS[@]}"; do
+            if is_bot_process_pid "$pid"; then
+                FORCE_PIDS+=("$pid")
             fi
         done
-    fi
-fi
 
-# 优先使用 systemd 服务启动（长期运行 + 自动重启 + 统一环境），并进入日志跟踪模式
-if command -v systemctl &> /dev/null; then
-    if systemctl status mika-bot.service >/dev/null 2>&1; then
-        if systemctl is-active --quiet mika-bot.service 2>/dev/null; then
-            echo -e "${CYAN}🔄 重启 mika-bot.service...${NC}"
-            systemctl restart mika-bot.service 2>/dev/null || {
-                echo -e "${RED}❌ systemd 重启失败，将改为前台启动 bot.py${NC}"
-            }
-        else
-            echo -e "${CYAN}🚀 启动 mika-bot.service...${NC}"
-            systemctl start mika-bot.service 2>/dev/null || {
-                echo -e "${RED}❌ systemd 启动失败，将改为前台启动 bot.py${NC}"
-            }
-        fi
-
-        if systemctl is-active --quiet mika-bot.service 2>/dev/null; then
-            echo -e "${GREEN}✅ mika-bot.service 已运行${NC}"
-            echo -e "${CYAN}📋 进入日志跟踪模式（按 Ctrl+C 退出）: journalctl -u mika-bot.service -f -o cat${NC}"
-            echo
-            if command -v journalctl &> /dev/null; then
-                journalctl -u mika-bot.service -f -o cat | awk -v RED="$RED" -v GREEN="$GREEN" -v YELLOW="$YELLOW" -v CYAN="$CYAN" -v NC="$NC" '
-                    {
-                        line = $0
-                        if (line ~ /\[ERROR\]/) { print RED line NC; fflush(); next }
-                        if (line ~ /\[WARNING\]/) { print YELLOW line NC; fflush(); next }
-                        if (line ~ /\[SUCCESS\]/) { print GREEN line NC; fflush(); next }
-                        if (line ~ /\[INFO\]/) { print CYAN line NC; fflush(); next }
-                        print line
-                        fflush()
-                    }
-                '
-            else
-                echo -e "${YELLOW}⚠️ journalctl 不可用，无法跟踪 systemd 日志${NC}"
-            fi
-            exit 0
+        if [ "${#FORCE_PIDS[@]}" -gt 0 ]; then
+            echo -e "${YELLOW}⚠️ 端口仍占用，强制结束残留 Bot 进程：${FORCE_PIDS[*]}${NC}"
+            kill -KILL "${FORCE_PIDS[@]}" 2>/dev/null || true
+            sleep 1
         fi
     fi
+
+    if is_port_in_use; then
+        echo -e "${RED}❌ 自动清理后端口 ${BOT_PORT} 仍被占用，无法启动 Bot${NC}"
+        echo -e "${CYAN}💡 请手动检查端口占用后重试${NC}"
+        exit 1
+    fi
+
+    echo -e "${GREEN}✅ 已释放端口 ${BOT_PORT}，继续启动${NC}"
 fi
 
 python3 bot.py
