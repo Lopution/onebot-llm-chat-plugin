@@ -58,30 +58,31 @@ OneBot v11/v12 support with best-effort auto-degradation
 
 ## 🚀 Quick Start
 
-### Minimal Setup
+### Beginner 3-Step Setup (Recommended)
 
 ```bash
-# 1. Clone and install
+# 1. Clone
 git clone https://github.com/Lopution/mika-chat-core.git
 cd mika-chat-core
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
 
-# 2. Configure env
-cp .env.example .env
-# Edit .env and at least fill:
-#   GEMINI_API_KEY=your-api-key
-#   GEMINI_MASTER_ID=your-qq-number
+# 2. One-click bootstrap
+# (create .venv, install deps, generate .env, and fill minimum required config)
+python3 scripts/bootstrap.py
 
-# 3. Start
-./start.sh
+# 3. Doctor check then start
+python3 scripts/doctor.py
+python3 bot.py
 ```
 
-For Windows, run:
+For Windows, use the same flow:
 
 ```powershell
-.\start.ps1
+python scripts\bootstrap.py
+python scripts\doctor.py
+python bot.py
 ```
+
+If you prefer script launch, `./start.sh` and `.\start.ps1` are still available.
 
 ### Standard NoneBot Plugin Installation (Migration in Progress)
 
@@ -171,6 +172,12 @@ Copy `.env.example` to `.env`:
 cp .env.example .env
 ```
 
+You can also run the interactive wizard to fill the minimum config automatically:
+
+```bash
+python3 scripts/config_wizard.py
+```
+
 #### Config Reference
 
 | Key | Description | Required | Default |
@@ -242,6 +249,12 @@ If prompt structure is incomplete or invalid, the plugin falls back gracefully i
 
 ```bash
 python3 bot.py
+```
+
+Recommended before startup:
+
+```bash
+python3 scripts/doctor.py
 ```
 
 ---

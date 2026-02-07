@@ -8,6 +8,26 @@
 - 方案 A：Linux/Windows 本机 + 任意 OneBot 实现（无 Docker）
 - 方案 B：WSL2 + 任意 OneBot 实现（可选 Docker）
 
+## 最短启动路径（开箱即用）
+
+如果你是第一次部署，推荐先用项目自带脚本完成环境准备：
+
+```bash
+python3 scripts/bootstrap.py
+python3 scripts/doctor.py
+python3 bot.py
+```
+
+Windows 等价命令：
+
+```powershell
+python scripts\bootstrap.py
+python scripts\doctor.py
+python bot.py
+```
+
+> 如果你已经有稳定的运行方式（如 `start.sh` / `start.ps1`），可以继续沿用。
+
 ## 模块说明
 
 - 中立核心模块：`mika_chat_core`
@@ -21,6 +41,20 @@ nonebot.load_plugin("nonebot_plugin_mika_chat")
 
 > 说明：NoneBot 是当前默认宿主，不是唯一方向。后续可基于 `mika_chat_core` 增加其它宿主适配层。
 
+### 已有 NoneBot 宿主时（最短接入）
+
+如果你已经有自己的 NoneBot2 项目，不需要使用本仓库的 `bot.py`：
+
+```bash
+pip install -e .
+```
+
+然后在宿主入口加载：
+
+```python
+nonebot.load_plugin("nonebot_plugin_mika_chat")
+```
+
 ## 如何连接到 Bot（反向 WebSocket）
 
 Bot 启动后，需要在你的 OneBot 实现/客户端侧配置“反向 WebSocket（WS Client）”，连接到 Bot 的 WS 地址：
@@ -28,7 +62,7 @@ Bot 启动后，需要在你的 OneBot 实现/客户端侧配置“反向 WebSoc
 - **OneBot v11**：`ws://<HOST>:<PORT>/onebot/v11/ws`
 - **OneBot v12**：`ws://<HOST>:<PORT>/onebot/v12/ws`
 
-其中 `<HOST>/<PORT>` 对应你的 `.env` / `.env.prod` 配置（默认 `0.0.0.0:8080`）。
+其中 `<HOST>/<PORT>` 对应你的 `.env` 配置（默认 `0.0.0.0:8080`）。
 
 ### NapCat（OneBot v11）最小配置示例
 

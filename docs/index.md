@@ -16,13 +16,21 @@ Mika Bot 是一个基于 OneBot 协议的 QQ 聊天机器人，通过 OpenAI 兼
 
 ## 快速开始
 
-### 安装依赖
+### 方案一：新手一键流程（推荐）
+
+```bash
+python3 scripts/bootstrap.py
+python3 scripts/doctor.py
+python3 bot.py
+```
+
+### 方案二：手动流程
 
 ```bash
 pip install -e .
 ```
 
-### 配置环境变量
+### 配置环境变量（手动流程）
 
 复制 `.env.example` 为 `.env` 并填写配置：
 

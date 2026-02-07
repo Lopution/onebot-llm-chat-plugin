@@ -10,11 +10,16 @@
 ## 通用前置检查
 
 1. 安装 Python 3.10+
-2. 配置 `.env`（至少填写 `GEMINI_API_KEY`、`GEMINI_MASTER_ID`）
-3. 启动 Bot：
-   - Linux/WSL：`./start.sh` 或 `python bot.py`
-   - Windows：`start.ps1` 或 `python bot.py`
-4. 在 OneBot 实现侧配置反向 WS：
+2. 初始化项目（推荐）：
+   - Linux/WSL：`python3 scripts/bootstrap.py`
+   - Windows：`python scripts\bootstrap.py`
+3. 启动前自检（推荐）：
+   - Linux/WSL：`python3 scripts/doctor.py`
+   - Windows：`python scripts\doctor.py`
+4. 启动 Bot：
+   - Linux/WSL：`python bot.py`（或 `./start.sh`）
+   - Windows：`python bot.py`（或 `start.ps1`）
+5. 在 OneBot 实现侧配置反向 WS：
    - v11：`ws://<HOST>:<PORT>/onebot/v11/ws`
    - v12：`ws://<HOST>:<PORT>/onebot/v12/ws`
 

@@ -58,30 +58,30 @@
 
 ## 🚀 快速开始
 
-### 最小配置示例
+### 新手 3 步（推荐）
 
 ```bash
-# 1. 克隆并安装
+# 1. 克隆项目
 git clone https://github.com/Lopution/mika-chat-core.git
 cd mika-chat-core
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
 
-# 2. 配置环境变量
-cp .env.example .env
-# 编辑 .env，填写必要配置：
-#   GEMINI_API_KEY=your-api-key
-#   GEMINI_MASTER_ID=your-qq-number
+# 2. 一键初始化（自动创建 .venv / 安装依赖 / 生成 .env / 补齐最小配置）
+python3 scripts/bootstrap.py
 
-# 3. 启动
-./start.sh
+# 3. 自检并启动
+python3 scripts/doctor.py
+python3 bot.py
 ```
 
-Windows 用户可直接运行（首次会自动创建虚拟环境并安装依赖）：
+Windows 用户可用同样流程：
 
 ```powershell
-.\start.ps1
+python scripts\bootstrap.py
+python scripts\doctor.py
+python bot.py
 ```
+
+如果你更喜欢脚本启动方式，仍可使用 `./start.sh` 或 `.\start.ps1`。
 
 ### 标准 NoneBot 插件安装（迁移中）
 
@@ -171,6 +171,12 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
+你也可以直接运行交互式向导自动补齐最小配置：
+
+```bash
+python3 scripts/config_wizard.py
+```
+
 #### 配置项说明
 
 | 配置项 | 说明 | 必填 | 默认值 |
@@ -242,6 +248,12 @@ system_prompt: |
 
 ```bash
 python3 bot.py
+```
+
+启动前可先运行自检（推荐）：
+
+```bash
+python3 scripts/doctor.py
 ```
 
 ---
