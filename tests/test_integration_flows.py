@@ -1014,7 +1014,10 @@ async def test_proactive_handler_triggers_group_reply():
     mock_client.context_store = mock_context_store
     mock_client.judge_proactive_intent = AsyncMock(return_value={"should_reply": True})
 
-    with patch("mika_chat_core.deps.get_gemini_client_dep", return_value=mock_client), patch(
+    with patch(
+        "mika_chat_core.matchers.parse_message_with_mentions",
+        AsyncMock(return_value=("", [])),
+    ), patch("mika_chat_core.deps.get_gemini_client_dep", return_value=mock_client), patch(
         "mika_chat_core.matchers.handle_group", AsyncMock()
     ) as mocked_handle_group:
         await matchers._handle_proactive(mock_bot, mock_event)
@@ -1022,7 +1025,8 @@ async def test_proactive_handler_triggers_group_reply():
     mocked_handle_group.assert_called_once()
     call_kwargs = mocked_handle_group.call_args.kwargs
     assert call_kwargs.get("is_proactive") is True
-    assert "主动发言模式" in call_kwargs.get("proactive_reason", "")
+    # 新行为：不再注入 proactive_reason 系统提示，只标记 is_proactive
+    assert "proactive_reason" not in call_kwargs
 
 
 @pytest.mark.asyncio
@@ -1055,6 +1059,131 @@ async def test_proactive_handler_skips_when_judge_rejects():
         await matchers._handle_proactive(mock_bot, mock_event)
 
     mocked_handle_group.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_proactive_handler_prefers_parsed_text_for_judge_context():
+    from mika_chat_core import matchers
+
+    mock_event = MagicMock()
+    mock_event.group_id = 1001
+    mock_event.user_id = 2002
+    mock_event.message_id = 3003
+    mock_event.get_plaintext.return_value = "原始文本"
+
+    mock_sender = MagicMock()
+    mock_sender.card = "群友"
+    mock_sender.nickname = "User"
+    mock_event.sender = mock_sender
+
+    mock_bot = AsyncMock()
+
+    mock_context_store = AsyncMock()
+    mock_context_store.get_context = AsyncMock(return_value=[])
+
+    mock_client = AsyncMock()
+    mock_client.context_store = mock_context_store
+    mock_client.judge_proactive_intent = AsyncMock(return_value={"should_reply": False})
+
+    parsed_text = "@星鱼 你现在是啥专业"
+    with patch(
+        "mika_chat_core.matchers.parse_message_with_mentions",
+        AsyncMock(return_value=(parsed_text, [])),
+    ), patch("mika_chat_core.deps.get_gemini_client_dep", return_value=mock_client), patch(
+        "mika_chat_core.matchers.handle_group", AsyncMock()
+    ):
+        await matchers._handle_proactive(mock_bot, mock_event)
+
+    judge_args, _ = mock_client.judge_proactive_intent.await_args
+    temp_context = judge_args[0]
+    assert temp_context[-1]["content"] == parsed_text
+
+
+@pytest.mark.asyncio
+async def test_proactive_handler_fallbacks_to_plaintext_when_parse_fails():
+    from mika_chat_core import matchers
+
+    mock_event = MagicMock()
+    mock_event.group_id = 1001
+    mock_event.user_id = 2002
+    mock_event.message_id = 3003
+    mock_event.get_plaintext.return_value = "回退文本"
+
+    mock_sender = MagicMock()
+    mock_sender.card = "群友"
+    mock_sender.nickname = "User"
+    mock_event.sender = mock_sender
+
+    mock_bot = AsyncMock()
+
+    mock_context_store = AsyncMock()
+    mock_context_store.get_context = AsyncMock(return_value=[])
+
+    mock_client = AsyncMock()
+    mock_client.context_store = mock_context_store
+    mock_client.judge_proactive_intent = AsyncMock(return_value={"should_reply": False})
+
+    with patch(
+        "mika_chat_core.matchers.parse_message_with_mentions",
+        AsyncMock(side_effect=RuntimeError("boom")),
+    ), patch("mika_chat_core.deps.get_gemini_client_dep", return_value=mock_client), patch(
+        "mika_chat_core.matchers.handle_group", AsyncMock()
+    ):
+        await matchers._handle_proactive(mock_bot, mock_event)
+
+    judge_args, _ = mock_client.judge_proactive_intent.await_args
+    temp_context = judge_args[0]
+    assert temp_context[-1]["content"] == "回退文本"
+
+
+@pytest.mark.asyncio
+async def test_proactive_handler_resets_cooldown_and_message_count_before_judge():
+    from mika_chat_core import matchers
+    import time
+
+    mock_event = MagicMock()
+    mock_event.group_id = 1001
+    mock_event.user_id = 2002
+    mock_event.message_id = 3003
+    mock_event.get_plaintext.return_value = "测试文本"
+
+    mock_sender = MagicMock()
+    mock_sender.card = "群友"
+    mock_sender.nickname = "User"
+    mock_event.sender = mock_sender
+
+    mock_bot = AsyncMock()
+
+    mock_context_store = AsyncMock()
+    mock_context_store.get_context = AsyncMock(return_value=[])
+
+    mock_client = AsyncMock()
+    mock_client.context_store = mock_context_store
+    mock_client.judge_proactive_intent = AsyncMock(return_value={"should_reply": False})
+
+    group_key = str(mock_event.group_id)
+    old_cooldowns = dict(matchers._proactive_cooldowns)
+    old_counts = dict(matchers._proactive_message_counts)
+    try:
+        matchers._proactive_cooldowns[group_key] = 0.0
+        matchers._proactive_message_counts[group_key] = 9
+        t0 = time.time()
+
+        with patch(
+            "mika_chat_core.matchers.parse_message_with_mentions",
+            AsyncMock(return_value=("测试文本", [])),
+        ), patch("mika_chat_core.deps.get_gemini_client_dep", return_value=mock_client), patch(
+            "mika_chat_core.matchers.handle_group", AsyncMock()
+        ):
+            await matchers._handle_proactive(mock_bot, mock_event)
+
+        assert matchers._proactive_message_counts[group_key] == 0
+        assert matchers._proactive_cooldowns[group_key] >= t0
+    finally:
+        matchers._proactive_cooldowns.clear()
+        matchers._proactive_cooldowns.update(old_cooldowns)
+        matchers._proactive_message_counts.clear()
+        matchers._proactive_message_counts.update(old_counts)
 
 
 @pytest.mark.asyncio
