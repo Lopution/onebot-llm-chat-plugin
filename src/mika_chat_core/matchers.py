@@ -362,29 +362,8 @@ async def _handle_proactive(bot: BotT, event: EventT):
     log.success(f"[主动发言] 判决通过")
     
     # 3. 将生成权交给主 Handler (Actor)
-    # 传递 extra_prompt 让 Mika 知道为什么要插嘴
-    # [修复] 明确指出需要回复的目标消息，避免"已读乱回"历史消息
-    trigger_message = trigger_text
-    # 截取前 150 字符，避免过长
-    trigger_preview = trigger_message[:150] + "..." if len(trigger_message) > 150 else trigger_message
-    
-    # 获取发送者昵称
-    sender_name = ctx.sender_name or "某位同学"
-    
-    extra_prompt = (
-        f"[System Instruction - 主动发言模式]\n"
-        f"你并没有被@，但你决定主动加入对话。\n"
-        f"【重要】你需要回应 {sender_name} 刚刚发送的这条消息：\n"
-        f"「{trigger_preview}」\n"
-        f"【风格要求】\n"
-        f"- 请根据群聊上下文，自然地回应触发消息\n"
-        f"- 可以适当结合正在讨论的话题\n"
-        f"- 如果是闲聊/吐槽/分享：像朋友随口接话，1-2句话即可，可以用表情、语气词\n"
-        f"- 如果是问题/求助：正常回答，但也不用太长篇大论\n"
-        f"- 不要提及'我决定插嘴'或'主动发言'"
-    )
-    
-    await handle_group(bot, event, plugin_config, is_proactive=True, proactive_reason=extra_prompt)
+    # 不再注入额外主动发言系统提示：让模型基于真实上下文自然回应触发消息
+    await handle_group(bot, event, plugin_config, is_proactive=True)
 
 
 
@@ -420,75 +399,117 @@ async def _cache_images(bot: BotT, event: EventT):
             return
     
     # 提取图片
+    original_message = getattr(event, "original_message", None) or []
     image_urls = await resolve_image_urls(
-        bot, getattr(event, "original_message", None), int(plugin_config.gemini_max_images)
+        bot, original_message, int(plugin_config.gemini_max_images)
     )
-    
-    if not image_urls:
-        # 如果没有图片，记录这条消息用于计数
-        image_cache = get_image_cache()
+
+    def _segment_type(seg: object) -> str:
+        if isinstance(seg, dict):
+            return str(seg.get("type") or "")
+        return str(getattr(seg, "type", "") or "")
+
+    def _segment_data(seg: object) -> dict:
+        if isinstance(seg, dict):
+            data = seg.get("data", {})
+        else:
+            data = getattr(seg, "data", {})
+        return data if isinstance(data, dict) else {}
+
+    has_reply_segment = False
+    has_mention_segment = False
+    mention_tokens: list[str] = []
+    current_image_count = 0
+
+    for seg in original_message:
+        seg_type = _segment_type(seg)
+        seg_data = _segment_data(seg)
+        if seg_type == "reply":
+            has_reply_segment = True
+            continue
+        if seg_type == "at":
+            has_mention_segment = True
+            qq = str(seg_data.get("qq", "")).strip()
+            mention_tokens.append("@全体成员" if qq == "all" else (f"@{qq}" if qq else "@someone"))
+            continue
+        if seg_type == "mention":
+            has_mention_segment = True
+            uid = str(seg_data.get("user_id", "")).strip()
+            mention_tokens.append(f"@{uid}" if uid else "@someone")
+            continue
+        if seg_type == "image":
+            current_image_count += 1
+
+    message_id_str = str(ctx.message_id or "")
+    image_cache = get_image_cache()
+    if image_urls:
+        # 缓存本条消息中的图片
+        nickname = ctx.sender_name or str(ctx.user_id)
+        image_cache.cache_images(
+            group_id=str(ctx.group_id),
+            user_id=str(ctx.user_id),
+            image_urls=image_urls,
+            sender_name=nickname,
+            message_id=message_id_str,
+        )
+    else:
+        # 无图消息仍记录消息轨迹，供 gap/候选策略使用
         image_cache.record_message(
             group_id=str(ctx.group_id),
             user_id=str(ctx.user_id),
-            message_id=str(ctx.message_id or "")
+            message_id=message_id_str,
         )
-        
-        # [Context Recorder] 记录纯文本消息到上下文
-        # 赋予 Bot "听觉"，即使不回复也能记住上下文
-        from .deps import get_gemini_client_dep
-        try:
-            client = get_gemini_client_dep()
-            # [改进] 增强去重：使用 Set 检查最近 20 条消息
-            # 使用 Set 替代列表遍历，提高查找效率
-            history = await client.get_context(str(ctx.user_id), str(ctx.group_id))
-            recent_ids = {m.get("message_id") for m in history[-20:] if m.get("message_id")}
-            
-            if str(ctx.message_id or "") and str(ctx.message_id) not in recent_ids:
-                nickname = getattr(event, "sender", None)
-                nickname = ctx.sender_name or "User"
-                tag = f"{nickname}({ctx.user_id})"
-                text = ctx.plaintext
-                
-                if not text:
-                    # 如果是纯图片消息，保存占位符
-                    has_image_seg = False
-                    for seg in getattr(event, "message", []) or []:
-                        try:
-                            if isinstance(seg, dict):
-                                seg_type = seg.get("type")
-                            else:
-                                seg_type = getattr(seg, "type", None)
-                            if str(seg_type or "") == "image":
-                                has_image_seg = True
-                                break
-                        except Exception:
-                            continue
-                    if has_image_seg:
-                        text = "[图片]"
-                
-                if text:
-                    await client.add_message(
-                        user_id=str(ctx.user_id),
-                        role="user",
-                        content=f"[{tag}]: {text}",
-                        group_id=str(ctx.group_id),
-                        message_id=str(ctx.message_id or "")
-                    )
-        except Exception as e:
-            log.warning(f"上下文记录失败: {e}")
-            
+
+    # [Context Recorder] 记录语义化文本上下文（引用/@/图片占位）
+    # 赋予 Bot "听觉"，即使不回复也能记住对话关系
+    from .deps import get_gemini_client_dep
+
+    try:
+        client = get_gemini_client_dep()
+        history = await client.get_context(str(ctx.user_id), str(ctx.group_id))
+        recent_ids = {m.get("message_id") for m in history[-20:] if m.get("message_id")}
+
+        if not message_id_str or message_id_str in recent_ids:
+            return
+
+        nickname = ctx.sender_name or "User"
+        tag = f"{nickname}({ctx.user_id})"
+        record_text = ""
+        needs_rich_parse = has_reply_segment or has_mention_segment
+
+        if needs_rich_parse:
+            try:
+                parsed_text, _ = await parse_message_with_mentions(bot, event)
+                record_text = (parsed_text or "").strip()
+            except Exception as e:
+                log.warning(f"[上下文记录] 富文本解析失败，使用降级占位: {e}")
+                fallback_parts: list[str] = []
+                if has_reply_segment:
+                    fallback_parts.append("[引用消息]")
+                if mention_tokens:
+                    fallback_parts.append(" ".join(mention_tokens))
+                plain = (ctx.plaintext or "").strip()
+                if plain:
+                    fallback_parts.append(plain)
+                record_text = " ".join(part for part in fallback_parts if part).strip()
+        else:
+            record_text = (ctx.plaintext or "").strip()
+
+        if current_image_count > 0:
+            image_placeholder = "[图片]" if current_image_count == 1 else f"[图片×{current_image_count}]"
+            record_text = f"{record_text} {image_placeholder}".strip() if record_text else image_placeholder
+
+        if record_text:
+            await client.add_message(
+                user_id=str(ctx.user_id),
+                role="user",
+                content=f"[{tag}]: {record_text}",
+                group_id=str(ctx.group_id),
+                message_id=message_id_str,
+            )
+    except Exception as e:
+        log.warning(f"上下文记录失败: {e}")
         return
-    
-    # 缓存图片
-    nickname = ctx.sender_name or str(ctx.user_id)
-    image_cache = get_image_cache()
-    cached_count = image_cache.cache_images(
-        group_id=str(ctx.group_id),
-        user_id=str(ctx.user_id),
-        image_urls=image_urls,
-        sender_name=nickname,
-        message_id=str(ctx.message_id or "")
-    )
     
     # 日志记录（可选，生产环境可以移除或降级为 debug）
     # from .logger import matchers_logger as log
