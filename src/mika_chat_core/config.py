@@ -123,7 +123,12 @@ class Config(BaseModel):
             raise ValueError("gemini_health_check_api_probe_ttl_seconds 必须大于等于 1")
         return v
 
-    @field_validator("gemini_active_reply_probability", "gemini_context_trace_sample_rate")
+    @field_validator(
+        "gemini_active_reply_probability",
+        "gemini_context_trace_sample_rate",
+        "gemini_history_inline_threshold",
+        "gemini_history_two_stage_threshold",
+    )
     @classmethod
     def validate_probability_ratio(cls, v: float) -> float:
         if v < 0 or v > 1:
@@ -479,12 +484,20 @@ class Config(BaseModel):
     # ==================== 历史图片上下文增强配置 ====================
     # 模式: off=关闭, inline=仅回注原图, two_stage=仅两阶段, hybrid=混合(推荐)
     gemini_history_image_mode: str = "hybrid"
+    # 历史上下文快照是否保存多模态图片 part（默认关闭，改为文本占位）
+    gemini_history_store_multimodal: bool = False
     # 单次请求直接回注的历史原图数量上限
     gemini_history_image_inline_max: int = 1
+    # hybrid 模式下触发 inline 的最低置信度阈值
+    gemini_history_inline_threshold: float = 0.85
     # 两阶段补图工具最多补几张
     gemini_history_image_two_stage_max: int = 2
+    # 触发 two-stage 的最低置信度阈值
+    gemini_history_two_stage_threshold: float = 0.5
     # 是否启用连续图片拼图
     gemini_history_image_enable_collage: bool = True
+    # 新版开关：是否启用拼图（优先于 gemini_history_image_enable_collage）
+    gemini_history_collage_enabled: bool = False
     # 拼图最多合成几张图片
     gemini_history_image_collage_max: int = 4
     # 拼图目标最大边长(px)，用于控制 token 成本
@@ -493,7 +506,7 @@ class Config(BaseModel):
     gemini_history_image_trigger_keywords: List[str] = []
 
     # ==================== 工具调用安全控制 ====================
-    gemini_tool_allowlist: List[str] = ["web_search", "search_group_history"]
+    gemini_tool_allowlist: List[str] = ["web_search", "search_group_history", "fetch_history_images"]
     gemini_tool_result_max_chars: int = 4000
 
     # ==================== 工具调用 Loop 配置 ====================

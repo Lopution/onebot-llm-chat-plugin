@@ -256,6 +256,9 @@ class GeminiClient:
                 summary_enabled=bool(
                     getattr(plugin_config, "gemini_context_summary_enabled", False)
                 ),
+                history_store_multimodal=bool(
+                    getattr(plugin_config, "gemini_history_store_multimodal", False)
+                ),
             )
             log.info("使用 SQLite 持久化上下文存储")
         else:

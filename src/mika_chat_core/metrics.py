@@ -46,7 +46,11 @@ class Metrics:
     history_image_inline_used_total: int = 0
     history_image_two_stage_triggered_total: int = 0
     history_image_collage_used_total: int = 0
+    history_image_fetch_tool_success_total: int = 0
     history_image_fetch_tool_fail_total: int = 0
+    history_image_fetch_tool_source_cache_total: int = 0
+    history_image_fetch_tool_source_archive_total: int = 0
+    history_image_fetch_tool_source_get_msg_total: int = 0
     history_image_images_injected_total: int = 0
     api_empty_reply_total: int = 0
     api_empty_reply_reason_total: Dict[str, int] = field(default_factory=dict)
@@ -67,7 +71,11 @@ class Metrics:
             "history_image_inline_used_total": self.history_image_inline_used_total,
             "history_image_two_stage_triggered_total": self.history_image_two_stage_triggered_total,
             "history_image_collage_used_total": self.history_image_collage_used_total,
+            "history_image_fetch_tool_success_total": self.history_image_fetch_tool_success_total,
             "history_image_fetch_tool_fail_total": self.history_image_fetch_tool_fail_total,
+            "history_image_fetch_tool_source_cache_total": self.history_image_fetch_tool_source_cache_total,
+            "history_image_fetch_tool_source_archive_total": self.history_image_fetch_tool_source_archive_total,
+            "history_image_fetch_tool_source_get_msg_total": self.history_image_fetch_tool_source_get_msg_total,
             "history_image_images_injected_total": self.history_image_images_injected_total,
             "api_empty_reply_total": self.api_empty_reply_total,
             "api_empty_reply_reason_total": dict(self.api_empty_reply_reason_total),
@@ -97,7 +105,11 @@ class Metrics:
             "history_image_inline_used_total": self.history_image_inline_used_total,
             "history_image_two_stage_triggered_total": self.history_image_two_stage_triggered_total,
             "history_image_collage_used_total": self.history_image_collage_used_total,
+            "history_image_fetch_tool_success_total": self.history_image_fetch_tool_success_total,
             "history_image_fetch_tool_fail_total": self.history_image_fetch_tool_fail_total,
+            "history_image_fetch_tool_source_cache_total": self.history_image_fetch_tool_source_cache_total,
+            "history_image_fetch_tool_source_archive_total": self.history_image_fetch_tool_source_archive_total,
+            "history_image_fetch_tool_source_get_msg_total": self.history_image_fetch_tool_source_get_msg_total,
             "history_image_images_injected_total": self.history_image_images_injected_total,
             "api_empty_reply_total": self.api_empty_reply_total,
         }

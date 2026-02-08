@@ -378,6 +378,7 @@ class TestObservabilityValidation:
         config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
 
         assert "web_search" in config.gemini_tool_allowlist
+        assert "fetch_history_images" in config.gemini_tool_allowlist
         assert config.gemini_tool_result_max_chars == 4000
 
     def test_default_image_performance_settings(self, valid_api_key: str):

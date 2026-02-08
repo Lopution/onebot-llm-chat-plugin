@@ -136,6 +136,11 @@ async def init_database() -> None:
         CREATE INDEX IF NOT EXISTS idx_archive_key_time ON message_archive(context_key, timestamp)
         """
     )
+    await db.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_archive_key_msgid ON message_archive(context_key, message_id)
+        """
+    )
 
     await db.commit()
     log.success("数据库初始化完成")

@@ -74,6 +74,13 @@ def _cfg(plugin_config: Config, key: str, default: Any) -> Any:
     return default if value is None else value
 
 
+def _history_collage_enabled(plugin_config: Config) -> bool:
+    """历史拼图开关（新配置优先，旧配置兼容）。"""
+    if hasattr(plugin_config, "gemini_history_collage_enabled"):
+        return bool(_cfg(plugin_config, "gemini_history_collage_enabled", False))
+    return bool(_cfg(plugin_config, "gemini_history_image_enable_collage", True))
+
+
 async def _resolve_onebot_v12_image_urls(
     bot: BotT,
     event: Any,
@@ -535,7 +542,9 @@ async def _handle_private_locked(
             inline_max=int(_cfg(plugin_config, "gemini_history_image_inline_max", 1)),
             two_stage_max=int(_cfg(plugin_config, "gemini_history_image_two_stage_max", 2)),
             collage_max=int(_cfg(plugin_config, "gemini_history_image_collage_max", 4)),
-            enable_collage=bool(_cfg(plugin_config, "gemini_history_image_enable_collage", True)),
+            enable_collage=_history_collage_enabled(plugin_config),
+            inline_threshold=float(_cfg(plugin_config, "gemini_history_inline_threshold", 0.85)),
+            two_stage_threshold=float(_cfg(plugin_config, "gemini_history_two_stage_threshold", 0.5)),
             custom_keywords=_cfg(plugin_config, "gemini_history_image_trigger_keywords", []) or None,
         )
         
@@ -576,7 +585,10 @@ async def _handle_private_locked(
                 
         elif decision.action == HistoryImageAction.TWO_STAGE:
             # 两阶段模式：只提供候选 msg_id 列表提示
-            cached_hint = build_candidate_hint(decision.candidate_msg_ids)
+            if ctx.is_group:
+                cached_hint = build_candidate_hint(decision.candidate_msg_ids)
+            else:
+                cached_hint = "[System Note: 历史图片按需提取仅支持群聊场景；如需识别图片，请重新发送图片。]"
             metrics.history_image_two_stage_triggered_total += 1
             log.info(f"[历史图片] TWO_STAGE | user={user_id} | candidates={len(decision.candidate_msg_ids)} | reason={decision.reason}")
     
@@ -953,7 +965,9 @@ async def _handle_group_locked(
             inline_max=int(_cfg(plugin_config, "gemini_history_image_inline_max", 1)),
             two_stage_max=int(_cfg(plugin_config, "gemini_history_image_two_stage_max", 2)),
             collage_max=int(_cfg(plugin_config, "gemini_history_image_collage_max", 4)),
-            enable_collage=bool(_cfg(plugin_config, "gemini_history_image_enable_collage", True)),
+            enable_collage=_history_collage_enabled(plugin_config),
+            inline_threshold=float(_cfg(plugin_config, "gemini_history_inline_threshold", 0.85)),
+            two_stage_threshold=float(_cfg(plugin_config, "gemini_history_two_stage_threshold", 0.5)),
             custom_keywords=_cfg(plugin_config, "gemini_history_image_trigger_keywords", []) or None,
         )
         

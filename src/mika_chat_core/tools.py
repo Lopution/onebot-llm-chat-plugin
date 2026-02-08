@@ -142,6 +142,9 @@ async def handle_fetch_history_images(args: dict, group_id: str = "") -> str:
     import json
     from nonebot import get_bot, get_plugin_config
     from .config import Config
+    from .metrics import metrics
+    from .utils.context_db import get_db
+    from .utils.context_schema import normalize_content
     from .utils.recent_images import get_image_cache
     from .utils.image_processor import get_image_processor
     
@@ -153,12 +156,14 @@ async def handle_fetch_history_images(args: dict, group_id: str = "") -> str:
         group_id_str = str(group_id) if group_id else ""
         if not group_id_str:
             logger.warning("fetch_history_images: group_id 为空，拒绝")
+            metrics.history_image_fetch_tool_fail_total += 1
             return json.dumps({"error": "group_id is required", "images": []})
 
         msg_ids = args.get("msg_ids", []) if isinstance(args, dict) else []
         max_images = min(args.get("max_images", 2), max_allowed) if isinstance(args, dict) else min(2, max_allowed)
         
         if not msg_ids:
+            metrics.history_image_fetch_tool_fail_total += 1
             return json.dumps({"error": "No msg_ids provided", "images": []})
         
         # 限制请求数量
@@ -168,7 +173,36 @@ async def handle_fetch_history_images(args: dict, group_id: str = "") -> str:
         processor = get_image_processor()
         
         result_images = []
-        
+
+        async def _append_data_url(
+            *,
+            msg_id: str,
+            sender_name: str,
+            image_url: str,
+            source: str,
+        ) -> None:
+            if len(result_images) >= max_images:
+                return
+            try:
+                base64_data, mime_type = await processor.download_and_encode(image_url)
+                result_images.append(
+                    {
+                        "msg_id": msg_id,
+                        "sender_name": sender_name,
+                        "data_url": f"data:{mime_type};base64,{base64_data}",
+                    }
+                )
+                if source == "cache":
+                    metrics.history_image_fetch_tool_source_cache_total += 1
+                elif source == "archive":
+                    metrics.history_image_fetch_tool_source_archive_total += 1
+                elif source == "get_msg":
+                    metrics.history_image_fetch_tool_source_get_msg_total += 1
+            except Exception as e:
+                logger.warning(
+                    f"fetch_history_images: 下载图片失败 | msg_id={msg_id} | source={source} | error={e}"
+                )
+
         for msg_id in msg_ids:
             if len(result_images) >= max_images:
                 break
@@ -184,20 +218,73 @@ async def handle_fetch_history_images(args: dict, group_id: str = "") -> str:
                 for img in cached_images:
                     if len(result_images) >= max_images:
                         break
-                    try:
-                        # 下载并编码图片
-                        base64_data, mime_type = await processor.download_and_encode(img.url)
-                        result_images.append({
-                            "msg_id": msg_id,
-                            "sender_name": img.sender_name,
-                            "data_url": f"data:{mime_type};base64,{base64_data}"
-                        })
-                    except Exception as e:
-                        logger.warning(f"fetch_history_images: 下载图片失败 | msg_id={msg_id} | error={e}")
+                    await _append_data_url(
+                        msg_id=str(msg_id),
+                        sender_name=str(img.sender_name or "某人"),
+                        image_url=str(img.url),
+                        source="cache",
+                    )
+                if len(result_images) >= max_images:
+                    continue
+
+            # 2. 缓存未命中：先尝试从 message_archive 回查（支持重启后按需取图）
+            archive_hit = False
+            try:
+                db = await get_db()
+                async with db.execute(
+                    """
+                    SELECT content
+                    FROM message_archive
+                    WHERE context_key = ? AND message_id = ?
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (f"group:{group_id_str}", str(msg_id)),
+                ) as cursor:
+                    row = await cursor.fetchone()
+
+                archive_urls = []
+                if row and row[0]:
+                    raw_content = row[0]
+                    parsed_content: Any = raw_content
+                    if isinstance(raw_content, str):
+                        try:
+                            parsed_content = json.loads(raw_content)
+                        except Exception:
+                            parsed_content = raw_content
+                    normalized = normalize_content(parsed_content)
+                    if isinstance(normalized, list):
+                        for part in normalized:
+                            if not isinstance(part, dict):
+                                continue
+                            if str(part.get("type") or "").lower() != "image_url":
+                                continue
+                            image_url = part.get("image_url")
+                            if isinstance(image_url, dict):
+                                url = str(image_url.get("url") or "").strip()
+                            else:
+                                url = str(image_url or "").strip()
+                            if url:
+                                archive_urls.append(url)
+
+                if archive_urls:
+                    archive_hit = True
+                    for img_url in archive_urls:
+                        if len(result_images) >= max_images:
+                            break
+                        await _append_data_url(
+                            msg_id=str(msg_id),
+                            sender_name="某人",
+                            image_url=img_url,
+                            source="archive",
+                        )
+            except Exception as e:
+                logger.warning(f"fetch_history_images: archive 回查失败 | msg_id={msg_id} | error={e}")
+
+            if archive_hit and len(result_images) >= max_images:
                 continue
             
-            # 2. 缓存未命中，尝试从 OneBot 获取
-            # 2. 缓存未命中：谨慎尝试从 OneBot 获取（必须做归属校验）
+            # 3. 缓存/归档未命中：谨慎尝试从 OneBot 获取（必须做归属校验）
             try:
                 bot = get_bot()
                 msg_data = await bot.get_msg(message_id=int(msg_id))
@@ -247,21 +334,17 @@ async def handle_fetch_history_images(args: dict, group_id: str = "") -> str:
                         if seg_type == "image":
                             img_url = seg_data.get("url") or seg_data.get("file")
                             if img_url:
-                                try:
-                                    base64_data, mime_type = await processor.download_and_encode(img_url)
-                                    result_images.append({
-                                        "msg_id": msg_id,
-                                        "sender_name": sender_name,
-                                        "data_url": f"data:{mime_type};base64,{base64_data}"
-                                    })
-                                except Exception as e:
-                                    logger.warning(
-                                        f"fetch_history_images: 下载图片失败 | url={str(img_url)[:50]} | error={e}"
-                                    )
+                                await _append_data_url(
+                                    msg_id=str(msg_id),
+                                    sender_name=str(sender_name),
+                                    image_url=str(img_url),
+                                    source="get_msg",
+                                )
             except Exception as e:
                 logger.warning(f"fetch_history_images: 获取消息失败 | msg_id={msg_id} | error={e}")
         
         if not result_images:
+            metrics.history_image_fetch_tool_fail_total += 1
             return json.dumps({
                 "error": "No images found for the requested msg_ids",
                 "images": [],
@@ -272,6 +355,7 @@ async def handle_fetch_history_images(args: dict, group_id: str = "") -> str:
         mapping_parts = [f"Image {i+1} from <msg_id:{img['msg_id']}> (sent by {img['sender_name']})"
                          for i, img in enumerate(result_images)]
         
+        metrics.history_image_fetch_tool_success_total += 1
         return json.dumps({
             "success": True,
             "count": len(result_images),
@@ -281,6 +365,7 @@ async def handle_fetch_history_images(args: dict, group_id: str = "") -> str:
         
     except Exception as e:
         logger.error(f"fetch_history_images: 工具执行失败 | error={e}", exc_info=True)
+        metrics.history_image_fetch_tool_fail_total += 1
         return json.dumps({"error": str(e), "images": []})
 
 

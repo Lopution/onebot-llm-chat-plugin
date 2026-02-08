@@ -95,6 +95,7 @@ class SQLiteContextStore:
         max_turns: int = 30,
         max_tokens_soft: int = 12000,
         summary_enabled: bool = False,
+        history_store_multimodal: bool = False,
     ):
         self.max_context = max_context
         # 使用 LRU 缓存替代普通字典，限制缓存大小防止内存溢出
@@ -107,6 +108,7 @@ class SQLiteContextStore:
             summary_enabled=summary_enabled,
             hard_max_messages=max_context * CONTEXT_MESSAGE_MULTIPLIER,
         )
+        self._history_store_multimodal = bool(history_store_multimodal)
         # 关键信息缓存（用户 QQ 号 -> 提取的信息）
         self._key_info_cache: Dict[str, Dict[str, str]] = {}
         # 会话级写锁池（按 context_key 串行，避免全局锁造成跨会话阻塞）
@@ -383,10 +385,12 @@ class SQLiteContextStore:
             # 获取当前上下文
             messages = await self.get_context(user_id, group_id)
             
+            normalized_content = normalize_content(content)
+
             # 构建消息对象
             new_msg: MessageDict = {
                 "role": role,
-                "content": normalize_content(content),
+                "content": normalized_content,
             }
             if message_id:
                 new_msg["message_id"] = str(message_id)
@@ -406,9 +410,11 @@ class SQLiteContextStore:
             messages = self._context_manager.process(messages)
             if len(messages) > self.max_context * CONTEXT_MESSAGE_MULTIPLIER:
                 messages = await self._compress_context(messages, key)
+
+            snapshot_messages = self._prepare_snapshot_messages(messages)
             
             # 更新缓存（使用 LRU 策略）
-            self._cache.set(key, messages)
+            self._cache.set(key, snapshot_messages)
             
             # 异步写入数据库（使用显式事务确保原子性）
             db = None
@@ -426,11 +432,10 @@ class SQLiteContextStore:
                         ON CONFLICT(context_key) DO UPDATE SET
                             messages = excluded.messages,
                             updated_at = CURRENT_TIMESTAMP
-                    """, (key, json.dumps(messages, ensure_ascii=False)))
+                    """, (key, json.dumps(snapshot_messages, ensure_ascii=False)))
                     
                     # 2. 插入归档记录 (全量历史)
                     # 处理 content，如果是列表(多模态)则转JSON字符串，如果是字符串则直接存
-                    normalized_content = normalize_content(content)
                     if isinstance(normalized_content, (list, dict)):
                         archive_content = json.dumps(normalized_content, ensure_ascii=False)
                     else:
@@ -442,13 +447,50 @@ class SQLiteContextStore:
                     """, (key, user_id, role, archive_content, message_id, timestamp))
                     
                     await db.commit()
-                    log.debug(f"上下文已保存: {key} | 消息数={len(messages)}")
+                    log.debug(f"上下文已保存: {key} | 消息数={len(snapshot_messages)}")
                 except Exception as e:
                     # 事务内部发生错误，回滚
                     await db.rollback()
                     raise
             except Exception as e:
                 log.error(f"保存上下文失败: {e}", exc_info=True)
+
+    def _textify_content_for_snapshot(
+        self, content: Union[str, List[Dict[str, Any]]]
+    ) -> str:
+        """将多模态 content 压缩为文本，降低历史上下文 token 与网络成本。"""
+        normalized = normalize_content(content)
+        if isinstance(normalized, str):
+            return normalized
+
+        text_parts: List[str] = []
+        for item in normalized:
+            if not isinstance(item, dict):
+                continue
+            item_type = str(item.get("type") or "").lower()
+            if item_type == "text":
+                text = str(item.get("text") or "").strip()
+                if text:
+                    text_parts.append(text)
+            elif item_type == "image_url":
+                text_parts.append("[图片]")
+        return " ".join(text_parts).strip()
+
+    def _prepare_snapshot_messages(
+        self, messages: List[MessageDict]
+    ) -> List[MessageDict]:
+        """准备持久化快照；默认将历史图片 part 文本化为 [图片]。"""
+        if self._history_store_multimodal:
+            return messages
+
+        prepared: List[MessageDict] = []
+        for message in messages:
+            item: MessageDict = dict(message)
+            item["content"] = self._textify_content_for_snapshot(
+                message.get("content", "")
+            )
+            prepared.append(item)
+        return prepared
     
     async def clear_context(self, user_id: str, group_id: Optional[str] = None) -> None:
         """清空上下文"""
@@ -515,6 +557,7 @@ def get_context_store(
     max_turns: int = 30,
     max_tokens_soft: int = 12000,
     summary_enabled: bool = False,
+    history_store_multimodal: bool = False,
 ) -> SQLiteContextStore:
     """获取全局上下文存储实例"""
     global context_store
@@ -526,6 +569,7 @@ def get_context_store(
             max_turns=max_turns,
             max_tokens_soft=max_tokens_soft,
             summary_enabled=summary_enabled,
+            history_store_multimodal=history_store_multimodal,
         )
     return context_store
 

@@ -83,10 +83,11 @@ def _has_any_keyword(text: str, keywords: List[str]) -> bool:
 def _count_image_placeholders_in_context(context_messages: List[Dict[str, Any]], lookback: int = 5) -> int:
     """统计最近上下文中图片占位符数量"""
     count = 0
+    pattern = re.compile(r"\[(?:图片|image)(?::[^\]]*)?\]", re.IGNORECASE)
     for msg in context_messages[-lookback:]:
         content = msg.get("content", "")
         if isinstance(content, str):
-            count += content.count("[图片")
+            count += len(pattern.findall(content))
     return count
 
 
@@ -99,6 +100,8 @@ def determine_history_image_action(
     two_stage_max: int = 2,
     collage_max: int = 4,
     enable_collage: bool = True,
+    inline_threshold: float = 0.85,
+    two_stage_threshold: float = 0.5,
     custom_keywords: Optional[List[str]] = None,
 ) -> HistoryImageDecision:
     """判定历史图片处理策略
@@ -168,41 +171,54 @@ def determine_history_image_action(
     # 根据 mode 和候选情况决定动作
     num_candidates = len(candidate_images)
     
-    # 连续表情包拼图判定
-    if (enable_collage and 
-        mode in ("hybrid", "inline") and 
-        has_comparison and 
-        num_candidates >= 2 and 
-        num_candidates <= collage_max):
-        # 检查是否是连续发送（时间窗口内，这里简化为存在多张候选就算）
+    inline_threshold = max(0.0, min(1.0, float(inline_threshold)))
+    two_stage_threshold = max(0.0, min(1.0, float(two_stage_threshold)))
+
+    # 连续表情包拼图判定（仅在明确比较语义时触发）
+    if (
+        enable_collage
+        and mode in ("hybrid", "inline")
+        and has_comparison
+        and num_candidates >= 2
+        and num_candidates <= collage_max
+    ):
         return HistoryImageDecision(
             action=HistoryImageAction.COLLAGE,
             images_to_inject=candidate_images[:collage_max],
             reason=f"collage_triggered:comparison+{num_candidates}_images",
             confidence=confidence
         )
-    
-    # inline 模式或 hybrid 高置信
-    if mode in ("inline", "hybrid") and confidence >= 0.6:
+
+    # inline：仅强指代可触发，避免“泛关键词”误注入历史图片
+    if mode in ("inline", "hybrid") and has_strong_ref and confidence >= inline_threshold:
         images_to_inject = candidate_images[:inline_max]
         return HistoryImageDecision(
             action=HistoryImageAction.INLINE,
             images_to_inject=images_to_inject,
-            reason=f"inline:confidence={confidence:.2f}",
-            confidence=confidence
+            reason=f"inline:strong_ref@{confidence:.2f}",
+            confidence=confidence,
         )
-    
-    # two-stage 模式或 hybrid 中等置信
-    if mode in ("two_stage", "hybrid") and confidence >= 0.3:
-        # 收集候选 msg_ids
-        msg_ids = list({img.message_id for img in candidate_images[:two_stage_max + 2]})
-        return HistoryImageDecision(
-            action=HistoryImageAction.TWO_STAGE,
-            candidate_msg_ids=msg_ids,
-            reason=f"two_stage:confidence={confidence:.2f}",
-            confidence=confidence
-        )
-    
+
+    # two-stage：允许中等置信（包括 general/comparison/context）按需取图
+    if mode in ("two_stage", "hybrid") and confidence >= two_stage_threshold:
+        msg_ids: List[str] = []
+        for image in candidate_images:
+            message_id = str(image.message_id or "").strip()
+            if not message_id:
+                continue
+            if message_id in msg_ids:
+                continue
+            msg_ids.append(message_id)
+            if len(msg_ids) >= max(1, two_stage_max):
+                break
+        if msg_ids:
+            return HistoryImageDecision(
+                action=HistoryImageAction.TWO_STAGE,
+                candidate_msg_ids=msg_ids,
+                reason=f"two_stage:confidence={confidence:.2f}",
+                confidence=confidence,
+            )
+
     return HistoryImageDecision(
         action=HistoryImageAction.NONE,
         reason="fallback_none",
