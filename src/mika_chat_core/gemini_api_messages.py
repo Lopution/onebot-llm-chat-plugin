@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Any, Dict, List, Optional, Union
 
 from nonebot import logger as log
@@ -19,6 +20,61 @@ class MessageBuildResult:
     original_content: Union[str, List[Dict[str, Any]]]
     api_content: Union[str, List[Dict[str, Any]]]
     request_body: Dict[str, Any]
+
+
+@dataclass
+class PreSearchResult:
+    """预搜索结构化结果。"""
+
+    search_result: str
+    normalized_query: str
+    presearch_hit: bool
+    allow_tool_refine: bool
+    result_count: int
+    refine_rounds_used: int = 0
+    blocked_duplicate_total: int = 0
+    decision: str = "unknown"
+
+
+def _estimate_injected_result_count(search_result: str) -> int:
+    """估算注入文本中可用结果条数。"""
+    if not search_result:
+        return 0
+    return len(re.findall(r"(?m)^\s*\d+\.\s+", search_result))
+
+
+def _is_presearch_result_insufficient(search_result: str) -> bool:
+    """固定规则：预搜索结果是否不足。"""
+    if not search_result:
+        return False
+    result_count = _estimate_injected_result_count(search_result)
+    if result_count < 2:
+        return True
+    return len(search_result.strip()) < 360
+
+
+def _build_pre_search_result(
+    *,
+    search_result: str,
+    normalized_query: str,
+    decision: str,
+) -> PreSearchResult:
+    presearch_hit = bool((search_result or "").strip())
+    result_count = _estimate_injected_result_count(search_result)
+    insufficient = _is_presearch_result_insufficient(search_result)
+    allow_tool_refine = bool(
+        presearch_hit
+        and insufficient
+        and bool(getattr(plugin_config, "gemini_search_allow_tool_refine", True))
+    )
+    return PreSearchResult(
+        search_result=search_result or "",
+        normalized_query=normalized_query or "",
+        presearch_hit=presearch_hit,
+        allow_tool_refine=allow_tool_refine,
+        result_count=result_count,
+        decision=decision,
+    )
 
 
 def _sanitize_content_for_request(content: Any, *, allow_images: bool) -> Union[str, List[Dict[str, Any]]]:
@@ -132,7 +188,7 @@ def _normalize_image_inputs(
     return normalized
 
 
-async def pre_search(
+async def _pre_search_raw(
     message: str,
     *,
     enable_tools: bool,
@@ -362,6 +418,58 @@ async def pre_search(
             log.warning(f"[req:{request_id}] 智能搜索分类失败，降级处理: {e}")
 
     return ""
+
+
+async def pre_search(
+    message: str,
+    *,
+    enable_tools: bool,
+    request_id: str,
+    tool_handlers: Dict[str, Any],
+    enable_smart_search: bool,
+    get_context_async,
+    get_api_key,
+    base_url: str,
+    user_id: Optional[str] = None,
+    group_id: Optional[str] = None,
+    return_meta: bool = False,
+) -> Union[str, PreSearchResult]:
+    """预执行搜索。
+
+    - `return_meta=False`：保持兼容，仅返回搜索注入文本（str）。
+    - `return_meta=True`：返回结构化结果，用于搜索链路收敛编排。
+    """
+    search_result = await _pre_search_raw(
+        message,
+        enable_tools=enable_tools,
+        request_id=request_id,
+        tool_handlers=tool_handlers,
+        enable_smart_search=enable_smart_search,
+        get_context_async=get_context_async,
+        get_api_key=get_api_key,
+        base_url=base_url,
+        user_id=user_id,
+        group_id=group_id,
+    )
+
+    if not return_meta:
+        return search_result
+
+    from .utils.search_engine import normalize_search_query
+
+    clean_message = re.sub(r"^\[.*?\]:\s*", "", message).strip()
+    clean_message = re.sub(r"@\S+\s*", "", clean_message).strip() or message
+    bot_names = [
+        getattr(plugin_config, "gemini_bot_display_name", "") or "",
+        getattr(plugin_config, "gemini_master_name", "") or "",
+    ]
+    normalized_query = normalize_search_query(clean_message, bot_names=bot_names)
+
+    return _build_pre_search_result(
+        search_result=search_result,
+        normalized_query=normalized_query,
+        decision="presearch_hit" if search_result else "presearch_miss",
+    )
 
 
 async def build_messages(
@@ -639,6 +747,12 @@ async def build_messages(
     # ===== 4. 工具暴露面收敛：仅将 allowlist 中的 tools 发送给模型 =====
     # 说明：执行侧仍会在 handle_tool_calls() 中做 allowlist 校验。
     # 这里的过滤是为了避免模型“看到”未放行工具，从源头减少越权尝试。
+    presearch_hit = bool((search_result or "").strip())
+    allow_refine = bool(
+        presearch_hit
+        and _is_presearch_result_insufficient(search_result)
+        and bool(getattr(plugin_config, "gemini_search_allow_tool_refine", True))
+    )
     filtered_tools: List[Dict[str, Any]] = []
     try:
         allowlist = set(getattr(plugin_config, "gemini_tool_allowlist", []) or [])
@@ -650,6 +764,12 @@ async def build_messages(
                 if t.get("type") == "function":
                     fn = t.get("function") or {}
                     name = fn.get("name") if isinstance(fn, dict) else None
+                    if (
+                        name == "web_search"
+                        and presearch_hit
+                        and not allow_refine
+                    ):
+                        continue
                     if name in allowlist:
                         filtered_tools.append(t)
                 else:
@@ -664,6 +784,14 @@ async def build_messages(
         # 过滤失败时回退到原列表，避免影响稳定性。
         log.warning(f"tools allowlist 过滤失败，回退原工具列表: {e}")
         filtered_tools = list(available_tools) if available_tools else []
+
+    if presearch_hit:
+        log.info(
+            "search_decision "
+            f"presearch_hit=1 allow_refine={1 if allow_refine else 0} "
+            f"result_count={_estimate_injected_result_count(search_result)} "
+            f"tool_web_search_exposed={1 if any((t.get('function') or {}).get('name') == 'web_search' for t in filtered_tools if isinstance(t, dict) and t.get('type') == 'function') else 0}"
+        )
 
     request_body: Dict[str, Any] = {
         "model": model,

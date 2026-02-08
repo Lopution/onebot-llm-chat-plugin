@@ -39,7 +39,7 @@ from .utils.prompt_loader import load_judge_prompt
 from .config import plugin_config
 from .gemini_api_sanitize import clean_thinking_markers
 from .gemini_api_proactive import extract_json_object
-from .gemini_api_messages import pre_search, build_messages
+from .gemini_api_messages import PreSearchResult, pre_search, build_messages
 from .gemini_api_tools import ToolLoopResult, handle_tool_calls
 from .gemini_api_transport import send_api_request
 from .metrics import metrics
@@ -645,6 +645,60 @@ class GeminiClient:
         else:
             log.debug(f"[req:{request_id}] 无搜索结果注入")
 
+    def _coerce_pre_search_result(
+        self,
+        raw_result: Any,
+        *,
+        message: str,
+        decision: str = "compat",
+    ) -> PreSearchResult:
+        """兼容旧返回值：将 str/dict 统一收敛为 PreSearchResult。"""
+        from .utils.search_engine import normalize_search_query
+
+        bot_names = [
+            getattr(plugin_config, "gemini_bot_display_name", "") or "",
+            getattr(plugin_config, "gemini_master_name", "") or "",
+        ]
+        normalized_query = normalize_search_query(str(message or ""), bot_names=bot_names)
+
+        if isinstance(raw_result, PreSearchResult):
+            if not raw_result.normalized_query and normalized_query:
+                raw_result.normalized_query = normalized_query
+            return raw_result
+
+        if isinstance(raw_result, dict):
+            return PreSearchResult(
+                search_result=str(raw_result.get("search_result") or ""),
+                normalized_query=str(raw_result.get("normalized_query") or normalized_query),
+                presearch_hit=bool(raw_result.get("presearch_hit")),
+                allow_tool_refine=bool(raw_result.get("allow_tool_refine")),
+                result_count=int(raw_result.get("result_count") or 0),
+                refine_rounds_used=int(raw_result.get("refine_rounds_used") or 0),
+                blocked_duplicate_total=int(raw_result.get("blocked_duplicate_total") or 0),
+                decision=str(raw_result.get("decision") or decision),
+            )
+
+        search_result = str(raw_result or "")
+        return PreSearchResult(
+            search_result=search_result,
+            normalized_query=normalized_query,
+            presearch_hit=bool(search_result.strip()),
+            allow_tool_refine=False,
+            result_count=0,
+            decision=decision,
+        )
+
+    def _log_search_decision(self, request_id: str, search_state: PreSearchResult, *, phase: str) -> None:
+        """统一搜索编排日志。"""
+        log.info(
+            f"[req:{request_id}] search_decision phase={phase} "
+            f"presearch_hit={1 if search_state.presearch_hit else 0} "
+            f"allow_refine={1 if search_state.allow_tool_refine else 0} "
+            f"refine_used={search_state.refine_rounds_used} "
+            f"blocked_duplicate={search_state.blocked_duplicate_total} "
+            f"result_count={search_state.result_count}"
+        )
+
     def _log_request_messages(self, messages: List[Dict[str, Any]], api_content: Any, request_id: str) -> None:
         """输出将发送给模型的消息摘要日志（DEBUG）。"""
         log.debug(f"[req:{request_id}] 发送消息数量: {len(messages)}")
@@ -706,6 +760,7 @@ class GeminiClient:
         request_id: str,
         enable_tools: bool,
         tools: Optional[List[Dict[str, Any]]] = None,
+        search_state: Optional[PreSearchResult] = None,
     ) -> Tuple[str, List[Dict[str, Any]]]:
         """根据是否存在工具调用，解析最终回复文本。"""
         if tool_calls and enable_tools:
@@ -717,6 +772,7 @@ class GeminiClient:
                 group_id,
                 request_id,
                 tools,
+                search_state=search_state,
                 return_trace=True,
             )
             if isinstance(result, ToolLoopResult):
@@ -936,9 +992,9 @@ class GeminiClient:
         request_id: str,
         user_id: str = None,
         group_id: str = None
-    ) -> str:
+    ) -> PreSearchResult:
         """预执行搜索（委派到独立模块，保持行为不变）。"""
-        return await pre_search(
+        raw_result = await pre_search(
             message,
             enable_tools=enable_tools,
             request_id=request_id,
@@ -949,7 +1005,9 @@ class GeminiClient:
             base_url=self.base_url,
             user_id=user_id,
             group_id=group_id,
+            return_meta=True,
         )
+        return self._coerce_pre_search_result(raw_result, message=message, decision="presearch")
     
     async def _build_messages(
         self,
@@ -1030,6 +1088,7 @@ class GeminiClient:
         group_id: Optional[str],
         request_id: str,
         tools: Optional[List[Dict[str, Any]]] = None,
+        search_state: Optional[PreSearchResult] = None,
         return_trace: bool = False,
     ) -> str | ToolLoopResult:
         """处理工具调用（委派到独立模块，保持行为不变）。"""
@@ -1046,6 +1105,7 @@ class GeminiClient:
             base_url=self.base_url,
             http_client=client,
             tools=tools,
+            search_state=search_state,
             return_trace=return_trace,
         )
     
@@ -1234,12 +1294,22 @@ class GeminiClient:
             
             # 1. 预处理：搜索增强（重试时可复用首轮结果，避免重复触发分类器/搜索）
             if search_result_override is None:
-                search_result = await self._pre_search(
-                    message, enable_tools, request_id,
-                    user_id=user_id, group_id=group_id
+                search_state = self._coerce_pre_search_result(
+                    await self._pre_search(
+                        message, enable_tools, request_id,
+                        user_id=user_id, group_id=group_id
+                    ),
+                    message=message,
+                    decision="presearch",
                 )
+                search_result = search_state.search_result
             else:
-                search_result = search_result_override
+                search_state = self._coerce_pre_search_result(
+                    search_result_override,
+                    message=message,
+                    decision="override",
+                )
+                search_result = search_state.search_result
                 log.info(
                     f"[req:{request_id}] 复用首轮搜索判定结果，跳过重复分类/搜索 | "
                     f"search_injected={'yes' if bool(search_result) else 'no'}"
@@ -1247,7 +1317,8 @@ class GeminiClient:
 
             # 输出搜索结果状态
             self._log_search_result_status(search_result, request_id)
-            
+            self._log_search_decision(request_id, search_state, phase="pre_send")
+
             # 2. 构建请求（注意：现在返回 4 个值）
             # - messages: 完整消息列表
             # - original_content: 原始用户消息（用于保存历史）
@@ -1304,7 +1375,9 @@ class GeminiClient:
                 request_id=request_id,
                 enable_tools=enable_tools,
                 tools=request_body.get("tools"),
+                search_state=search_state,
             )
+            self._log_search_decision(request_id, search_state, phase="post_reply")
             
 
             # 输出模型原始回复（调试用）

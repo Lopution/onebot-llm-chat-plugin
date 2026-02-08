@@ -276,6 +276,8 @@ class Config(BaseModel):
             "classify_cache_max_size": self.gemini_search_classify_cache_max_size,
             "llm_gate_enabled": self.gemini_search_llm_gate_enabled,
             "llm_gate_fallback_mode": self.gemini_search_llm_gate_fallback_mode,
+            "allow_tool_refine": self.gemini_search_allow_tool_refine,
+            "tool_refine_max_rounds": self.gemini_search_tool_refine_max_rounds,
         }
 
     def get_image_config(self) -> dict:
@@ -472,6 +474,10 @@ class Config(BaseModel):
     # 分类判定缓存（避免短时间内重复调用 LLM）
     gemini_search_classify_cache_ttl_seconds: int = 60
     gemini_search_classify_cache_max_size: int = 200
+    # 预搜索命中后，是否允许模型再发起一次工具补搜
+    gemini_search_allow_tool_refine: bool = True
+    # 单轮对话最多允许补搜几次（仅对 web_search 生效）
+    gemini_search_tool_refine_max_rounds: int = 1
 
     # ==================== 内置搜索配置 ====================
     gemini_enable_builtin_search: bool = False
