@@ -210,6 +210,44 @@ class TestClassifyJsonModeAndQuerySanitize:
         # 且有长度上限（默认 64）
         assert len(query) <= 64
 
+    @pytest.mark.asyncio
+    async def test_classify_topic_overcompressed_query_fallback_to_message(self):
+        """当分类器把复杂问题压缩成单词时，应回退到规范化后的原问题。"""
+        from mika_chat_core.utils.search_engine import classify_topic_for_search
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "content": '{"needs_search": true, "topic": "科技资讯", "search_query": "iOS"}'
+                    }
+                }
+            ]
+        }
+
+        message = "苹果的ios26.3系统什么时候推送，现在内测都有什么功能"
+
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_client_class.return_value = mock_client
+
+            needs_search, topic, query = await classify_topic_for_search(
+                message,
+                api_key="test-key",
+                base_url="https://api.example.com/v1",
+            )
+
+        assert needs_search is True
+        assert topic == "科技资讯"
+        assert query != "iOS"
+        assert "ios26.3" in query.lower()
+        assert "推送" in query
+
 
     @pytest.mark.asyncio
     async def test_classify_topic_response_format_4xx_downgrade_retry(self):

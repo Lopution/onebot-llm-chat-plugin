@@ -558,6 +558,39 @@ def is_low_signal_query(message: str) -> bool:
     return False
 
 
+def _is_overcompressed_query(query: str, normalized_message: str) -> bool:
+    """检测分类器 query 是否被压缩过头（例如仅剩 'iOS'）。"""
+
+    compact_query = (query or "").strip()
+    compact_message = (normalized_message or "").strip()
+    if not compact_query or not compact_message:
+        return False
+
+    min_query_len = _get_min_query_length()
+
+    if len(compact_query) < min_query_len and len(compact_message) >= min_query_len:
+        return True
+
+    has_message_constraint = bool(
+        re.search(r"\d", compact_message)
+        or any(
+            kw in compact_message.lower()
+            for kw in ("什么时候", "何时", "推送", "版本", "内测", "功能", "beta", "release")
+        )
+    )
+    has_query_constraint = bool(
+        re.search(r"\d", compact_query)
+        or any(
+            kw in compact_query.lower()
+            for kw in ("什么时候", "何时", "推送", "版本", "内测", "功能", "beta", "release")
+        )
+    )
+    if len(compact_message) >= 12 and len(compact_query) <= 4 and has_message_constraint and not has_query_constraint:
+        return True
+
+    return False
+
+
 def should_search(message: str) -> bool:
     """检测消息是否需要触发搜索（基于关键词快速匹配）。"""
 
@@ -1031,6 +1064,14 @@ async def classify_topic_for_search(
                         log.debug("search_query 为空或清洗后无效，回退到 normalized_message")
                         clean_search_query = (normalized_message or "")[:max_query_len]
 
+                    if needs_search and _is_overcompressed_query(clean_search_query, normalized_message):
+                        log.info(
+                            "search_query 过度压缩，回退到原问题 | raw_query='%s' | fallback='%s'",
+                            clean_search_query,
+                            (normalized_message or "")[:80],
+                        )
+                        clean_search_query = (normalized_message or "")[:max_query_len]
+
                     if not needs_search:
                         clean_search_query = ""
 
@@ -1070,6 +1111,14 @@ async def classify_topic_for_search(
                     extracted_query = extracted_query[:max_query_len]
 
                     if len(extracted_query) < 2:
+                        extracted_query = (normalized_message or "")[:max_query_len]
+
+                    if needs_search_val and _is_overcompressed_query(extracted_query, normalized_message):
+                        log.info(
+                            "正则兜底 query 过度压缩，回退到原问题 | raw_query='%s' | fallback='%s'",
+                            extracted_query,
+                            (normalized_message or "")[:80],
+                        )
                         extracted_query = (normalized_message or "")[:max_query_len]
 
                     extracted_query = _resolve_pronoun_query(extracted_query, context, max_query_len)
