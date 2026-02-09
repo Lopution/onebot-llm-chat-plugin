@@ -40,7 +40,7 @@ from mika_chat_core.utils.user_profile import init_user_profile_store, get_user_
 from mika_chat_core.utils.prompt_loader import get_system_prompt, load_error_messages, get_character_name
 from mika_chat_core.utils.semantic_matcher import init_semantic_matcher
 from mika_chat_core.utils.recent_images import init_image_cache
-from mika_chat_core.utils.nb_types import BotT
+from nonebot.adapters import Bot
 from nonebot import logger as log
 from mika_chat_core.metrics import metrics
 
@@ -216,7 +216,7 @@ async def _get_cached_api_probe(config: Config) -> Dict[str, Any]:
 
 
 @driver.on_bot_connect
-async def on_bot_connect(bot: BotT):
+async def on_bot_connect(bot: Bot):
     """Bot 连接成功时触发"""
     log.success(f"Bot {bot.self_id} 已上线")
     config = runtime_state.config or get_runtime_config()

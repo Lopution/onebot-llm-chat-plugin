@@ -25,10 +25,10 @@ from mika_chat_core.utils.recent_images import get_image_cache
 from mika_chat_core.group_state import heat_monitor, get_proactive_cooldowns, get_proactive_message_counts
 from mika_chat_core.metrics import metrics
 from mika_chat_core.utils.event_context import build_event_context, build_event_context_from_event
-from mika_chat_core.utils.nb_types import BotT, EventT
+from nonebot.adapters import Bot, Event
 
 
-async def check_at_me_anywhere(bot: BotT, event: EventT) -> bool:
+async def check_at_me_anywhere(bot: Bot, event: Event) -> bool:
     """检查消息是否 @ 了机器人
     
     OneBot V11 Adapter 的 _check_at_me() 会在消息到达 matcher 之前
@@ -89,14 +89,14 @@ reset_cmd = on_command("清空记忆", aliases={"reset", "重置记忆"}, priori
 
 
 @reset_cmd.handle()
-async def _handle_reset(bot: BotT, event: EventT):
+async def _handle_reset(bot: Bot, event: Event):
     """清空记忆指令处理"""
     await handle_reset(bot, event, plugin_config)
 
 
 # ==================== 消息匹配器 ====================
 
-async def _is_private_message(bot: BotT, event: EventT) -> bool:
+async def _is_private_message(bot: Bot, event: Event) -> bool:
     ctx = build_event_context(bot, event)
     return bool(ctx.user_id) and not ctx.is_group
 
@@ -106,7 +106,7 @@ private_chat = on_message(rule=_is_private_message, priority=10, block=False)
 
 
 @private_chat.handle()
-async def _handle_private(bot: BotT, event: EventT):
+async def _handle_private(bot: Bot, event: Event):
     """私聊消息处理"""
     await handle_private(bot, event, plugin_config)
 
@@ -116,7 +116,7 @@ group_chat = on_message(rule=check_at_me_anywhere, priority=10, block=False)
 
 
 @group_chat.handle()
-async def _handle_group(bot: BotT, event: EventT):
+async def _handle_group(bot: Bot, event: Event):
     """群聊消息处理（@机器人时触发）"""
     await handle_group(bot, event, plugin_config)
 
@@ -126,7 +126,7 @@ async def _handle_group(bot: BotT, event: EventT):
 _proactive_cooldowns = get_proactive_cooldowns()
 _proactive_message_counts = get_proactive_message_counts()
 
-async def check_proactive(event: EventT) -> bool:
+async def check_proactive(event: Event) -> bool:
     """检查是否触发主动发言 (二级触发：感知层)"""
     # rule 阶段没有 bot 参数，统一通过 event-only 上下文提取，避免适配器字段差异。
     ctx = build_event_context_from_event(event, platform="onebot")
@@ -292,7 +292,7 @@ async def check_proactive(event: EventT) -> bool:
 proactive_chat = on_message(rule=check_proactive, priority=98, block=False)
 
 @proactive_chat.handle()
-async def _handle_proactive(bot: BotT, event: EventT):
+async def _handle_proactive(bot: Bot, event: Event):
     """主动发言处理 (二级触发：认知层)"""
     from mika_chat_core.deps import get_gemini_client_dep
     from mika_chat_core import matchers as core_matchers
@@ -383,7 +383,7 @@ image_cache_matcher = on_message(priority=99, block=False)
 
 
 @image_cache_matcher.handle()
-async def _cache_images(bot: BotT, event: EventT):
+async def _cache_images(bot: Bot, event: Event):
     """缓存群聊中的图片消息 & 记录热度
     
     这个 matcher 优先级很低（99），能看到几乎所有群消息。

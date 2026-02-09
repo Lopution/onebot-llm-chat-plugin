@@ -13,16 +13,16 @@
 from typing import Any, Dict, List
 from nonebot.params import Depends
 from nonebot import get_plugin_config as nb_get_plugin_config
+from nonebot.adapters import Bot, Event
 
 from mika_chat_core.runtime import get_config as get_runtime_config
 from mika_chat_core.settings import Config
 from mika_chat_core.utils.event_context import build_event_context
-from mika_chat_core.utils.nb_types import BotT, EventT
 
 
 async def get_chat_history(
-    bot: BotT,
-    event: EventT,
+    bot: Bot,
+    event: Event,
 ) -> List[Dict[str, Any]]:
     """依赖项：获取用户聊天历史"""
     from mika_chat_core.utils.context_store import get_context_store
@@ -33,7 +33,7 @@ async def get_chat_history(
     return await store.get_context(ctx.user_id, ctx.group_id)
 
 
-async def get_user_profile_data(bot: BotT, event: EventT) -> Dict[str, Any]:
+async def get_user_profile_data(bot: Bot, event: Event) -> Dict[str, Any]:
     """依赖项：获取用户档案"""
     from mika_chat_core.utils.user_profile import get_user_profile_store
     
@@ -45,7 +45,7 @@ async def get_user_profile_data(bot: BotT, event: EventT) -> Dict[str, Any]:
         return {}
 
 
-async def get_processed_images(bot: BotT, event: EventT) -> List[Dict[str, Any]]:
+async def get_processed_images(bot: Bot, event: Event) -> List[Dict[str, Any]]:
     """依赖项：获取处理后的图片（Base64 格式）"""
     from mika_chat_core.utils.image_processor import resolve_image_urls
     
