@@ -1,27 +1,13 @@
-"""NoneBot 运行时类型别名。
+"""Host-agnostic runtime type aliases.
 
-目的：
-- 避免在 matcher / driver hook 注解中使用 `typing.Any`，触发 NoneBot 依赖解析告警。
-- 提供稳定导入路径，兼容不同 NoneBot 版本的类型暴露位置。
+核心层不依赖宿主框架类型，统一在运行时使用 `Any` 占位。
+具体宿主（NoneBot/Koishi 等）在适配层处理静态类型与运行时约束。
 """
 
 from __future__ import annotations
 
-# 优先使用公开导出；失败时按“旧路径 -> 测试 stub -> 最终兜底”回退。
-try:  # pragma: no cover - 运行时分支
-    from nonebot.adapters import Bot as BotT  # type: ignore
-    from nonebot.adapters import Event as EventT  # type: ignore
-except Exception:  # pragma: no cover - 版本兼容分支
-    try:
-        from nonebot.internal.adapter import Bot as BotT  # type: ignore
-        from nonebot.internal.adapter import Event as EventT  # type: ignore
-    except Exception:  # pragma: no cover - tests/stubs 分支
-        try:
-            from nonebot.adapters.onebot.v11 import Bot as BotT  # type: ignore
-            from nonebot.adapters.onebot.v11 import GroupMessageEvent as EventT  # type: ignore
-        except Exception:  # pragma: no cover - 极端兜底，避免导入期崩溃
-            class BotT:  # type: ignore[no-redef]
-                pass
+from typing import Any, TypeAlias
 
-            class EventT:  # type: ignore[no-redef]
-                pass
+
+BotT: TypeAlias = Any
+EventT: TypeAlias = Any

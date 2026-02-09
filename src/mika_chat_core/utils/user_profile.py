@@ -29,7 +29,7 @@ from .context_cache import LRUCache
 
 # 数据库文件路径（与 context_store 共用同一数据库）
 # 注意：必须与 context_db.DB_PATH 保持一致，支持通过环境变量覆盖部署路径。
-from .context_db import DB_PATH
+from .context_db import get_db_path
 
 SQLITE_CONNECT_TIMEOUT_SECONDS = 30.0
 SQLITE_BUSY_TIMEOUT_MS = 5000
@@ -38,8 +38,9 @@ SQLITE_BUSY_TIMEOUT_MS = 5000
 @asynccontextmanager
 async def _open_db(*, row_factory: Optional[object] = None):
     """以与 context_db 一致的 SQLite 参数打开连接，降低锁冲突概率。"""
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    db = await aiosqlite.connect(str(DB_PATH), timeout=SQLITE_CONNECT_TIMEOUT_SECONDS)
+    db_path = get_db_path()
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    db = await aiosqlite.connect(str(db_path), timeout=SQLITE_CONNECT_TIMEOUT_SECONDS)
     try:
         await db.execute("PRAGMA journal_mode=WAL")
         await db.execute("PRAGMA synchronous=NORMAL")

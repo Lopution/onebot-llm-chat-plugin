@@ -23,7 +23,8 @@ from .context_compress import compress_context_for_safety as _compress_context_f
 from .context_compress import compress_message_content as _compress_message_content
 from .context_compress import sanitize_text_for_safety as _sanitize_text_for_safety
 from .context_schema import normalize_content
-from .context_db import DB_PATH, get_db, init_database, close_database
+from .context_db import DB_PATH as _CONTEXT_DB_PATH
+from .context_db import get_db, get_db_path, init_database, close_database
 from .session_lock import SessionLockManager
 
 # 内存缓存最大条目数（越小越省内存）
@@ -44,6 +45,10 @@ KEY_INFO_EXTRACTED_VALUE_MAX_CHARS = 20
 
 # 上下文压缩：保留最近 max_context * 2 条（与原逻辑一致）
 CONTEXT_MESSAGE_MULTIPLIER = 2
+
+# 兼容旧测试/外部补丁入口：context_store.DB_PATH
+# 实际数据库路径解析与覆盖由 context_db 统一管理。
+DB_PATH = _CONTEXT_DB_PATH
 
 
 class MessageDict(TypedDict, total=False):
@@ -536,7 +541,7 @@ class SQLiteContextStore:
                 "total_contexts": total_contexts,
                 "cached_contexts": len(self._cache),
                 "max_cache_size": self._max_cache_size,
-                "db_path": str(DB_PATH)
+                "db_path": str(get_db_path())
             }
             log.debug(f"存储统计: {stats}")
             return stats

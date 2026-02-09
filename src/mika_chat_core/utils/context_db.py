@@ -52,34 +52,56 @@ def _get_db_path() -> Path:
     return get_data_root("gemini_chat") / "contexts.db"
 
 
-# 数据库文件路径（可通过环境变量覆盖）
-DB_PATH: Path = _get_db_path()
+# 数据库文件路径覆盖（可通过测试 patch 或 set_db_path 注入）
+# 默认 None，运行时按环境变量/路径端口动态解析。
+DB_PATH: Optional[Path] = None
 
 # 全局数据库连接
 _db_connection: Optional[aiosqlite.Connection] = None
+_db_connection_path: Optional[Path] = None
 
 # 数据库连接锁（防止并发创建多个连接）
 _db_lock: asyncio.Lock = asyncio.Lock()
 
 
+def set_db_path(path: Optional[Path]) -> None:
+    """设置数据库路径覆盖（None 表示使用动态解析路径）。"""
+    global DB_PATH
+    DB_PATH = path
+
+
+def get_db_path() -> Path:
+    """获取当前数据库路径（支持动态解析与覆盖）。"""
+    if DB_PATH is not None:
+        return Path(DB_PATH)
+    return _get_db_path()
+
+
 async def get_db() -> aiosqlite.Connection:
     """获取或创建数据库连接（线程安全）"""
-    global _db_connection
+    global _db_connection, _db_connection_path
     log.debug("context_db.get_db: acquire lock")
     async with _db_lock:
+        path = get_db_path()
+        if _db_connection is not None and _db_connection_path != path:
+            await _db_connection.close()
+            _db_connection = None
+            _db_connection_path = None
+
         if _db_connection is None:
-            DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+            path.parent.mkdir(parents=True, exist_ok=True)
             log.debug("context_db.get_db: create new connection")
-            _db_connection = await aiosqlite.connect(str(DB_PATH))
+            _db_connection = await aiosqlite.connect(str(path))
             await _db_connection.execute("PRAGMA journal_mode=WAL")
             await _db_connection.execute("PRAGMA synchronous=NORMAL")
             await _db_connection.execute("PRAGMA busy_timeout=5000")
+            _db_connection_path = path
     return _db_connection
 
 
 async def init_database() -> None:
     """初始化数据库表结构"""
-    log.debug(f"初始化数据库: {DB_PATH}")
+    log.debug(f"初始化数据库: {get_db_path()}")
     db = await get_db()
 
     await db.execute(
@@ -132,8 +154,9 @@ async def init_database() -> None:
 
 async def close_database() -> None:
     """关闭数据库连接"""
-    global _db_connection
+    global _db_connection, _db_connection_path
     if _db_connection is not None:
         await _db_connection.close()
         _db_connection = None
+        _db_connection_path = None
         log.info("数据库连接已关闭")

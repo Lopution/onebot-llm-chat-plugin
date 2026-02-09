@@ -9,7 +9,10 @@ from nonebot import logger as log
 
 from mika_chat_core.runtime import (
     set_config as set_runtime_config,
+    set_dep_hook as set_runtime_dep_hook,
+    set_logger_port as set_runtime_logger_port,
     set_paths_port as set_runtime_paths_port,
+    set_tool_override as set_runtime_tool_override,
 )
 from mika_chat_core.settings import Config
 
@@ -40,6 +43,27 @@ if PluginMetadata is not None:
 
 plugin_config = get_plugin_config(Config)
 set_runtime_config(plugin_config)
+set_runtime_logger_port(log)
+
+try:
+    from . import deps_nb
+
+    set_runtime_dep_hook("get_chat_history", deps_nb.get_chat_history)
+    set_runtime_dep_hook("get_user_profile_data", deps_nb.get_user_profile_data)
+    set_runtime_dep_hook("get_processed_images", deps_nb.get_processed_images)
+    set_runtime_dep_hook("get_gemini_client_dep", deps_nb.get_gemini_client_dep)
+    set_runtime_dep_hook("get_config", deps_nb.get_config)
+except Exception as exc:
+    log.warning(f"mika_chat: deps hook 注入失败，使用核心回退实现 | error={exc}")
+
+try:
+    from . import tools_nb
+
+    set_runtime_tool_override("search_group_history", tools_nb.handle_search_group_history)
+    set_runtime_tool_override("fetch_history_images", tools_nb.handle_fetch_history_images)
+except Exception as exc:
+    log.warning(f"mika_chat: tool override 注入失败，使用核心回退实现 | error={exc}")
+
 try:
     from .paths_nb import LocalstorePathsPort
 

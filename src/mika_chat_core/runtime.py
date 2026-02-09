@@ -11,12 +11,16 @@ from typing import Any, Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from .config import Config
     from .gemini_api import GeminiClient
+    from .ports.logging import LoggerPort
     from .ports.paths import PathsPort
 
 
 _config: Optional[Any] = None
 _client: Optional[Any] = None
 _paths_port: Optional[Any] = None
+_logger_port: Optional[Any] = None
+_deps_hooks: dict[str, Any] = {}
+_tool_overrides: dict[str, Any] = {}
 
 
 class _ConfigProxy:
@@ -74,3 +78,34 @@ def set_paths_port(paths_port: Optional["PathsPort"]) -> None:
 
 def get_paths_port() -> Optional["PathsPort"]:
     return _paths_port
+
+
+def set_logger_port(logger_port: Optional["LoggerPort"]) -> None:
+    global _logger_port
+    _logger_port = logger_port
+
+
+def get_logger_port() -> Optional["LoggerPort"]:
+    return _logger_port
+
+
+def set_dep_hook(name: str, hook: Optional[Any]) -> None:
+    if hook is None:
+        _deps_hooks.pop(name, None)
+        return
+    _deps_hooks[name] = hook
+
+
+def get_dep_hook(name: str) -> Optional[Any]:
+    return _deps_hooks.get(name)
+
+
+def set_tool_override(name: str, handler: Optional[Any]) -> None:
+    if handler is None:
+        _tool_overrides.pop(name, None)
+        return
+    _tool_overrides[name] = handler
+
+
+def get_tool_override(name: str) -> Optional[Any]:
+    return _tool_overrides.get(name)
