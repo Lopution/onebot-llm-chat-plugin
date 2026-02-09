@@ -8,10 +8,11 @@ import copy
 from typing import Any, Dict, Optional, Tuple
 
 import httpx
-from nonebot import logger as log
+from .infra.logging import logger as log
 
 from .config import plugin_config
 from .errors import GeminiAPIError, RateLimitError, AuthenticationError, ServerError
+from .llm.providers import build_provider_request, parse_provider_response
 from .metrics import metrics
 
 
@@ -44,25 +45,29 @@ async def send_api_request(
     log.info(f"[req:{request_id}] 发送主对话请求 | 使用模型: {model}")
     log.debug(f"[req:{request_id}] 发送 API 请求 | model={model}")
 
-    final_request_body = request_body.copy()
+    llm_cfg = plugin_config.get_llm_config()
+    provider_name = str(llm_cfg.get("provider") or "openai_compat")
+    extra_headers = dict(llm_cfg.get("extra_headers") or {})
+
+    final_request_body = copy.deepcopy(request_body)
     if "temperature" not in final_request_body:
         final_request_body["temperature"] = plugin_config.gemini_temperature
 
-    final_request_body["safetySettings"] = [
-        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-    ]
-
     async def _post_once(body: Dict[str, Any]) -> httpx.Response:
+        prepared = build_provider_request(
+            provider=provider_name,
+            base_url=base_url,
+            model=model,
+            api_key=api_key,
+            request_body=body,
+            extra_headers=extra_headers,
+            default_temperature=float(plugin_config.gemini_temperature),
+        )
         return await http_client.post(
-            f"{base_url}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json=body,
+            prepared.url,
+            headers=prepared.headers,
+            params=prepared.params,
+            json=prepared.json_body,
         )
 
     def _bump_dict_counter(bucket: Dict[str, int], key: str) -> None:
@@ -154,6 +159,36 @@ async def send_api_request(
         except Exception:
             return {}
 
+    def _normalize_provider_usage(parsed: Dict[str, Any]) -> Dict[str, Any]:
+        usage = parsed.get("usage")
+        if isinstance(usage, dict):
+            return usage
+
+        if provider_name == "anthropic":
+            raw_usage = parsed.get("usage") or {}
+            if isinstance(raw_usage, dict):
+                prompt_tokens = int(raw_usage.get("input_tokens") or 0)
+                completion_tokens = int(raw_usage.get("output_tokens") or 0)
+                return {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": prompt_tokens + completion_tokens,
+                }
+
+        if provider_name == "google_genai":
+            raw_usage = parsed.get("usageMetadata") or {}
+            if isinstance(raw_usage, dict):
+                prompt_tokens = int(raw_usage.get("promptTokenCount") or 0)
+                completion_tokens = int(raw_usage.get("candidatesTokenCount") or 0)
+                total_tokens = int(raw_usage.get("totalTokenCount") or (prompt_tokens + completion_tokens))
+                return {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": total_tokens,
+                }
+
+        return {}
+
     def _log_empty_reply_diagnostics(
         *,
         phase: str,
@@ -185,10 +220,15 @@ async def send_api_request(
         log.warning(f"[req:{request_id}] Full Choice Data: {choice}")
 
     def _raise_mapped_http_error(response: httpx.Response, *, phase: str) -> None:
-        status_code = response.status_code
+        raw_status = getattr(response, "status_code", 200)
+        try:
+            status_code = int(raw_status)
+        except (TypeError, ValueError):
+            status_code = 200
 
         if status_code == 429:
-            retry_after = int(response.headers.get("Retry-After", RETRY_AFTER_DEFAULT_SECONDS))
+            headers = getattr(response, "headers", {}) or {}
+            retry_after = int(headers.get("Retry-After", RETRY_AFTER_DEFAULT_SECONDS))
             log.warning(f"[req:{request_id}] {phase} 限流! Retry-After: {retry_after}s")
             _record_transport_error("http_429")
             raise RateLimitError(
@@ -198,9 +238,8 @@ async def send_api_request(
             )
 
         if status_code in [401, 403]:
-            error_detail = (
-                response.text[:AUTH_ERROR_DETAIL_PREVIEW_CHARS] if response.text else "No details"
-            )
+            text = str(getattr(response, "text", "") or "")
+            error_detail = text[:AUTH_ERROR_DETAIL_PREVIEW_CHARS] if text else "No details"
             log.error(f"[req:{request_id}] {phase} 认证失败: {error_detail}")
             _record_transport_error(f"http_{status_code}")
             raise AuthenticationError(
@@ -221,7 +260,8 @@ async def send_api_request(
             raise ServerError("Server error after retries", status_code=status_code)
 
         if status_code >= 400:
-            error_body = response.text[:API_ERROR_BODY_PREVIEW_CHARS] if response.text else "Unknown error"
+            text = str(getattr(response, "text", "") or "")
+            error_body = text[:API_ERROR_BODY_PREVIEW_CHARS] if text else "Unknown error"
             log.error(f"[req:{request_id}] {phase} API 错误 {status_code}: {error_body}")
             _record_transport_error(f"http_{status_code}")
 
@@ -241,27 +281,54 @@ async def send_api_request(
         response = await _post_with_timeout_retry(body, phase=phase)
         _raise_mapped_http_error(response, phase=phase)
         response.raise_for_status()
-        parsed_data = response.json()
-        choice = _extract_choice(parsed_data)
-        assistant_message = (choice.get("message") or {})
-        tool_calls = assistant_message.get("tool_calls")
-        content = assistant_message.get("content")
-        finish_reason = choice.get("finish_reason")
-        reasoning_content = assistant_message.get("reasoning_content") or assistant_message.get("reasoning")
-        return assistant_message, tool_calls, content, finish_reason, reasoning_content, choice, parsed_data
+        raw_data = response.json()
 
-    response = await _post_with_timeout_retry(final_request_body, phase="主请求")
+        if provider_name == "openai_compat":
+            parsed_data = raw_data
+            choice = _extract_choice(parsed_data)
+            assistant_message = (choice.get("message") or {})
+            tool_calls = assistant_message.get("tool_calls")
+            content = assistant_message.get("content")
+            finish_reason = choice.get("finish_reason")
+            reasoning_content = assistant_message.get("reasoning_content") or assistant_message.get("reasoning")
+            return assistant_message, tool_calls, content, finish_reason, reasoning_content, choice, parsed_data
+
+        assistant_message, tool_calls, content, finish_reason = parse_provider_response(
+            provider=provider_name,
+            data=raw_data,
+        )
+        reasoning_content = assistant_message.get("reasoning_content") or assistant_message.get("reasoning")
+        synthetic_choice: Dict[str, Any] = {
+            "message": assistant_message,
+            "finish_reason": finish_reason,
+        }
+        synthetic_data: Dict[str, Any] = {
+            "id": str(raw_data.get("id") or raw_data.get("responseId") or ""),
+            "choices": [synthetic_choice],
+            "usage": _normalize_provider_usage(raw_data),
+            "raw": raw_data,
+        }
+        return (
+            assistant_message,
+            tool_calls,
+            content,
+            finish_reason,
+            reasoning_content,
+            synthetic_choice,
+            synthetic_data,
+        )
+
+    (
+        assistant_message,
+        tool_calls,
+        content,
+        finish_reason,
+        reasoning_content,
+        choice,
+        data,
+    ) = await _post_and_parse(final_request_body, phase="主请求")
     api_elapsed = time.time() - api_start
-    log.debug(f"[req:{request_id}] API 响应 | status={response.status_code} | api_time={api_elapsed:.2f}s")
-    _raise_mapped_http_error(response, phase="主请求")
-    response.raise_for_status()
-    data = response.json()
-    choice = _extract_choice(data)
-    assistant_message = (choice.get("message") or {})
-    tool_calls = assistant_message.get("tool_calls")
-    content = assistant_message.get("content")
-    finish_reason = choice.get("finish_reason")
-    reasoning_content = assistant_message.get("reasoning_content") or assistant_message.get("reasoning")
+    log.debug(f"[req:{request_id}] API 响应 | api_time={api_elapsed:.2f}s | provider={provider_name}")
 
     async def _completion_request() -> Tuple[Dict[str, Any], Optional[list], Any]:
         completion_body = copy.deepcopy(final_request_body)

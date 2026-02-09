@@ -11,7 +11,7 @@
 import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional, List
-from nonebot import logger
+from ..infra.logging import logger
 
 # 默认提示词目录
 

@@ -19,7 +19,7 @@ import base64
 import io
 from typing import List, Optional, Tuple
 
-from nonebot import logger as log
+from ..infra.logging import logger as log
 
 # 尝试导入 Pillow
 try:

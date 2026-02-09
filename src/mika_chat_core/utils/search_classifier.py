@@ -27,9 +27,10 @@ import hashlib
 import re
 import time
 
-from nonebot import logger as log
+from ..infra.logging import logger as log
 
 from ..config import plugin_config
+from ..llm.providers import build_provider_request, detect_provider_name, parse_provider_response
 from .prompt_loader import load_search_prompt
 
 
@@ -175,7 +176,7 @@ def _get_cached_classify_result(key: str, ttl_seconds: int) -> Optional[Tuple[bo
     if not item:
         return None
     value, ts = item
-    if time.time() - ts <= ttl_seconds:
+    if time.monotonic() - ts <= ttl_seconds:
         return value
     try:
         del _classify_cache[key]
@@ -193,7 +194,7 @@ def _set_classify_cache(key: str, value: Tuple[bool, str, str], max_size: int) -
     if len(_classify_cache) >= max_size:
         oldest_key = min(_classify_cache.keys(), key=lambda k: _classify_cache[k][1])
         del _classify_cache[oldest_key]
-    _classify_cache[key] = (value, time.time())
+    _classify_cache[key] = (value, time.monotonic())
 
 
 def _get_classify_cache_ttl_seconds() -> int:
@@ -900,9 +901,13 @@ async def classify_topic_for_search(
     try:
         classify_max_tokens = _get_classify_max_tokens()
         classify_temperature = _get_classify_temperature()
+        provider_name = detect_provider_name(
+            configured_provider=str(getattr(plugin_config, "llm_provider", "openai_compat")),
+            base_url=base_url,
+        )
         log.debug(
             f"[诊断] 分类器参数 | max_tokens={classify_max_tokens} | "
-            f"temperature={classify_temperature} | model={model}"
+            f"temperature={classify_temperature} | model={model} | provider={provider_name}"
         )
 
         async with httpx.AsyncClient(timeout=CLASSIFY_HTTP_TIMEOUT_SECONDS) as client:
@@ -962,13 +967,20 @@ async def classify_topic_for_search(
                 )
 
             async def _post_classify(body: dict) -> httpx.Response:
+                prepared = build_provider_request(
+                    provider=provider_name,
+                    base_url=base_url,
+                    model=model,
+                    api_key=api_key,
+                    request_body=body,
+                    extra_headers=dict(plugin_config.get_llm_config().get("extra_headers") or {}),
+                    default_temperature=float(classify_temperature),
+                )
                 return await client.post(
-                    f"{base_url}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json=body,
+                    prepared.url,
+                    headers=prepared.headers,
+                    params=prepared.params,
+                    json=prepared.json_body,
                 )
 
             used_response_format = "response_format" in request_body
@@ -999,9 +1011,17 @@ async def classify_topic_for_search(
 
             if response.status_code == 200:
                 data = response.json()
-                choice = data.get("choices", [{}])[0]
-                finish_reason = choice.get("finish_reason", "unknown")
-                content = choice.get("message", {}).get("content")
+                if provider_name == "openai_compat":
+                    choice = data.get("choices", [{}])[0]
+                    finish_reason = choice.get("finish_reason", "unknown")
+                    content = choice.get("message", {}).get("content")
+                else:
+                    assistant_message, _tool_calls, parsed_content, parsed_finish_reason = parse_provider_response(
+                        provider=provider_name,
+                        data=data,
+                    )
+                    finish_reason = parsed_finish_reason or "unknown"
+                    content = parsed_content if parsed_content is not None else assistant_message.get("content")
                 raw_content = (content or "").strip()
 
                 log.info(
@@ -1039,7 +1059,18 @@ async def classify_topic_for_search(
                     if response2.status_code == 200:
                         try:
                             data2 = response2.json()
-                            content2 = data2.get("choices", [{}])[0].get("message", {}).get("content")
+                            if provider_name == "openai_compat":
+                                content2 = data2.get("choices", [{}])[0].get("message", {}).get("content")
+                            else:
+                                assistant_message2, _tool_calls2, parsed_content2, _parsed_finish2 = parse_provider_response(
+                                    provider=provider_name,
+                                    data=data2,
+                                )
+                                content2 = (
+                                    parsed_content2
+                                    if parsed_content2 is not None
+                                    else assistant_message2.get("content")
+                                )
                             raw_content = (content2 or "").strip()
                             log_content2 = (
                                 raw_content[:CLASSIFY_LOG_RAW_CONTENT_LONG_PREVIEW_CHARS] + "..."

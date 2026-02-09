@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Union
 
-from nonebot import logger as log
+from ..infra.logging import logger as log
 
 
 # ==================== Magic-number constants ====================

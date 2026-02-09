@@ -21,7 +21,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from nonebot import logger as log
+from ..infra.logging import logger as log
 
 # 配置（用于限制缓存大小，避免长期运行内存增长）
 from ..config import plugin_config

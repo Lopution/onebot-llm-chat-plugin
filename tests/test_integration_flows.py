@@ -1167,7 +1167,7 @@ async def test_proactive_handler_resets_cooldown_and_message_count_before_judge(
     try:
         matchers._proactive_cooldowns[group_key] = 0.0
         matchers._proactive_message_counts[group_key] = 9
-        t0 = time.time()
+        t0 = time.monotonic()
 
         with patch(
             "mika_chat_core.matchers.parse_message_with_mentions",
@@ -1204,7 +1204,7 @@ async def test_check_proactive_respects_cooldown():
     matchers.plugin_config.gemini_proactive_rate = 1.0
     matchers.plugin_config.gemini_proactive_ignore_len = 0
 
-    matchers._proactive_cooldowns[str(event.group_id)] = __import__("time").time()
+    matchers._proactive_cooldowns[str(event.group_id)] = __import__("time").monotonic()
 
     result = await matchers.check_proactive(event)
     assert result is False

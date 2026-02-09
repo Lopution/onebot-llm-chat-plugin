@@ -24,7 +24,7 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Any, Deque, Dict, List, Optional
 
-from nonebot import logger as log
+from ..infra.logging import logger as log
 
 from ..config import plugin_config
 from .session_lock import SessionLockManager

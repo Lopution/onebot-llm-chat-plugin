@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional, Dict, Any
 
-from nonebot import logger as log
+from ..infra.logging import logger as log
 
 from .image_cache_core import CachedImage
 

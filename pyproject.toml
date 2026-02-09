@@ -49,9 +49,6 @@ dependencies = [
     "pydantic>=2.12.5",
     "python-dotenv>=1.2.1",
     
-    # 日志
-    "loguru>=0.7.3",
-    
     # YAML 解析（提示词加载）
     "PyYAML>=6.0",
     

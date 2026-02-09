@@ -24,8 +24,7 @@ import httpx
 import os
 import time
 
-from nonebot import get_driver
-from nonebot import logger as log
+from ..infra.logging import logger as log
 
 from ..metrics import metrics
 from ..config import plugin_config
@@ -137,6 +136,9 @@ TIME_SENSITIVE_KEYWORDS = TIMELINESS_KEYWORDS
 
 # Serper API Key（从 NoneBot 配置获取）
 SERPER_API_KEY: Optional[str] = None
+TAVILY_API_KEY: Optional[str] = None
+SEARCH_PROVIDER_NAME: str = "serper"
+SEARCH_EXTRA_HEADERS: Dict[str, str] = {}
 
 # 全局 HTTP 客户端（复用连接池，提高性能）
 _http_client: Optional[httpx.AsyncClient] = None
@@ -257,14 +259,29 @@ async def _get_http_client() -> httpx.AsyncClient:
 async def init_search_engine() -> None:
     """启动时初始化搜索引擎（加载配置和创建 HTTP 客户端）。"""
 
-    global SERPER_API_KEY
-    driver = get_driver()
-    SERPER_API_KEY = getattr(driver.config, "serper_api_key", "") or os.getenv("SERPER_API_KEY", "")
+    global SERPER_API_KEY, TAVILY_API_KEY, SEARCH_PROVIDER_NAME, SEARCH_EXTRA_HEADERS, _search_provider
+    cfg = plugin_config.get_search_provider_config()
+    SEARCH_PROVIDER_NAME = str(cfg.get("provider") or "serper").strip().lower()
+    SEARCH_EXTRA_HEADERS = dict(cfg.get("extra_headers") or {})
+    _search_provider = None
 
-    if SERPER_API_KEY:
-        log.success("Serper API Key 加载成功")
+    configured_key = str(cfg.get("api_key") or "").strip()
+    SERPER_API_KEY = ""
+    TAVILY_API_KEY = ""
+    if SEARCH_PROVIDER_NAME == "tavily":
+        TAVILY_API_KEY = configured_key or os.getenv("TAVILY_API_KEY", "")
+        if TAVILY_API_KEY:
+            log.success("Tavily API Key 加载成功")
+        else:
+            log.warning("未找到 TAVILY_API_KEY，搜索功能将被禁用")
     else:
-        log.warning("未找到 SERPER_API_KEY，搜索功能将被禁用")
+        legacy_serper_key = str(getattr(plugin_config, "serper_api_key", "") or "").strip()
+        SERPER_API_KEY = configured_key or legacy_serper_key or os.getenv("SERPER_API_KEY", "")
+        SEARCH_PROVIDER_NAME = "serper"
+        if SERPER_API_KEY:
+            log.success("Serper API Key 加载成功")
+        else:
+            log.warning("未找到 SERPER_API_KEY，搜索功能将被禁用")
 
     await _get_http_client()
     log.success("HTTP 客户端初始化完成")
@@ -326,9 +343,9 @@ def _get_max_injection_results() -> int:
 
 async def serper_search(query: str, max_results: int = 8) -> str:
     """使用 Serper.dev API 执行 Google 搜索并返回格式化结果。"""
-
-    if not SERPER_API_KEY:
-        log.warning("Serper API Key 未配置，跳过搜索")
+    provider = get_search_provider()
+    if provider is None:
+        log.warning("搜索 provider 未配置，跳过搜索")
         return ""
 
     clean_query = normalize_search_query(query)
@@ -352,31 +369,23 @@ async def serper_search(query: str, max_results: int = 8) -> str:
     metrics.search_cache_miss_total += 1
 
     metrics.search_requests_total += 1
-    log.info(f"执行 Serper 搜索: '{query}'")
+    log.info(f"执行 {type(provider).__name__} 搜索: '{query}'")
 
     try:
-        client = await _get_http_client()
-        response = await client.post(
-            "https://google.serper.dev/search",
-            headers={
-                "X-API-KEY": SERPER_API_KEY,
-                "Content-Type": "application/json",
-            },
-            json={
-                "q": enhanced_query,
-                "gl": "cn",
-                "hl": "zh-cn",
-                "num": max_results,
-            },
-        )
-        response.raise_for_status()
-        data = response.json()
-
-        organic_results = data.get("organic", [])
-        log.debug(f"原始结果数量: {len(organic_results)}")
-        if not organic_results:
+        provider_results = await provider.search(enhanced_query, num_results=max_results)
+        if not provider_results:
             log.warning(f"未找到搜索结果: {query}")
             return ""
+
+        organic_results: List[Dict[str, str]] = []
+        for item in provider_results:
+            organic_results.append(
+                {
+                    "title": item.title,
+                    "link": item.url,
+                    "snippet": item.snippet,
+                }
+            )
 
         limit = max(1, min(_get_max_injection_results(), max_results))
         filtered_results = _filter_search_results(organic_results, limit)
@@ -445,14 +454,8 @@ async def serper_search(query: str, max_results: int = 8) -> str:
         _set_cache(enhanced_query, injection_content)
         return injection_content
 
-    except httpx.TimeoutException:
-        log.warning("Serper API 请求超时")
-        return ""
-    except httpx.ConnectError as e:
-        log.warning(f"Serper API 连接失败: {e}")
-        return ""
     except Exception as e:
-        log.error(f"Serper 搜索错误: {str(e)}", exc_info=True)
+        log.error(f"搜索请求错误: {str(e)}", exc_info=True)
         return ""
 
 
@@ -470,8 +473,9 @@ async def google_search(query: str, api_key: str = "", cx: str = "") -> str:
 class SerperProvider:
     """Serper API 搜索提供者。"""
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, extra_headers: Optional[Dict[str, str]] = None):
         self.api_key = api_key
+        self.extra_headers = dict(extra_headers or {})
 
     async def search(self, query: str, num_results: int = 5) -> List[SearchResult]:
         if not self.api_key:
@@ -484,7 +488,6 @@ class SerperProvider:
             return []
 
         log.debug(f"SerperProvider 搜索: '{clean_query}' (num={num_results})")
-
         try:
             client = await _get_http_client()
             response = await client.post(
@@ -492,6 +495,7 @@ class SerperProvider:
                 headers={
                     "X-API-KEY": self.api_key,
                     "Content-Type": "application/json",
+                    **self.extra_headers,
                 },
                 json={
                     "q": clean_query,
@@ -502,7 +506,6 @@ class SerperProvider:
             )
             response.raise_for_status()
             data = response.json()
-
             organic_results = data.get("organic", [])
             if not organic_results:
                 log.debug(f"SerperProvider: 无结果 for '{query}'")
@@ -514,27 +517,85 @@ class SerperProvider:
                 return []
 
             results: List[SearchResult] = []
-            for res in filtered_results:
+            for item in filtered_results:
                 results.append(
                     SearchResult(
-                        title=res.get("title", ""),
-                        url=res.get("link", ""),
-                        snippet=res.get("snippet", ""),
+                        title=str(item.get("title", "")),
+                        url=str(item.get("link", "")),
+                        snippet=str(item.get("snippet", "")),
                         source="serper",
                     )
                 )
-
-            log.debug(f"SerperProvider: 返回 {len(results)} 条结果")
             return results
-
         except httpx.TimeoutException:
             log.warning("SerperProvider: 请求超时")
             return []
-        except httpx.ConnectError as e:
-            log.warning(f"SerperProvider: 连接失败: {e}")
+        except httpx.ConnectError as exc:
+            log.warning(f"SerperProvider: 连接失败: {exc}")
             return []
-        except Exception as e:
-            log.error(f"SerperProvider: 搜索错误: {e}", exc_info=True)
+        except Exception as exc:
+            log.error(f"SerperProvider: 搜索错误: {exc}", exc_info=True)
+            return []
+
+
+class TavilyProvider:
+    """Tavily 搜索提供者。"""
+
+    def __init__(self, api_key: str, extra_headers: Optional[Dict[str, str]] = None):
+        self.api_key = api_key
+        self.extra_headers = dict(extra_headers or {})
+
+    async def search(self, query: str, num_results: int = 5) -> List[SearchResult]:
+        if not self.api_key:
+            log.warning("TavilyProvider: API Key 未配置")
+            return []
+
+        clean_query = normalize_search_query(query)
+        if is_low_signal_query(clean_query):
+            log.debug(f"TavilyProvider 低信号过滤: '{query[:QUERY_PREVIEW_CHARS]}'")
+            return []
+
+        try:
+            client = await _get_http_client()
+            response = await client.post(
+                "https://api.tavily.com/search",
+                headers={"Content-Type": "application/json", **self.extra_headers},
+                json={
+                    "api_key": self.api_key,
+                    "query": clean_query,
+                    "max_results": num_results,
+                    "search_depth": "basic",
+                    "include_answer": False,
+                    "include_raw_content": False,
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            raw_results = data.get("results", [])
+            if not isinstance(raw_results, list) or not raw_results:
+                return []
+
+            results: List[SearchResult] = []
+            for item in raw_results:
+                if not isinstance(item, dict):
+                    continue
+                results.append(
+                    SearchResult(
+                        title=str(item.get("title") or ""),
+                        url=str(item.get("url") or ""),
+                        snippet=str(item.get("content") or item.get("snippet") or ""),
+                        source="tavily",
+                    )
+                )
+            return results
+        except httpx.TimeoutException:
+            log.warning("TavilyProvider: 请求超时")
+            return []
+        except httpx.ConnectError as exc:
+            log.warning(f"TavilyProvider: 连接失败: {exc}")
+            return []
+        except Exception as exc:
+            log.error(f"TavilyProvider: 搜索错误: {exc}", exc_info=True)
             return []
 
 
@@ -549,12 +610,20 @@ def get_search_provider() -> Optional[SearchProvider]:
     if _search_provider is not None:
         return _search_provider
 
+    if SEARCH_PROVIDER_NAME == "tavily":
+        if TAVILY_API_KEY:
+            _search_provider = TavilyProvider(api_key=TAVILY_API_KEY, extra_headers=SEARCH_EXTRA_HEADERS)
+            log.info("搜索提供者: TavilyProvider")
+            return _search_provider
+        log.warning("TavilyProvider 未启用：缺少 API Key")
+        return None
+
     if SERPER_API_KEY:
-        _search_provider = SerperProvider(api_key=SERPER_API_KEY)
+        _search_provider = SerperProvider(api_key=SERPER_API_KEY, extra_headers=SEARCH_EXTRA_HEADERS)
         log.info("搜索提供者: SerperProvider")
         return _search_provider
 
-    log.warning("无可用的搜索提供者（未配置 Serper API Key）")
+    log.warning("无可用的搜索提供者（缺少可用 API Key）")
     return None
 
 

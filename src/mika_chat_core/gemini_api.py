@@ -23,7 +23,7 @@ import random
 from datetime import datetime
 from typing import Optional, List, Union, Dict, Any, Callable, Tuple
 
-from nonebot import logger as log
+from .infra.logging import logger as log
 
 # 导入异常类
 from .errors import GeminiAPIError, RateLimitError, AuthenticationError, ServerError
@@ -42,6 +42,7 @@ from .gemini_api_proactive import extract_json_object
 from .gemini_api_messages import PreSearchResult, pre_search, build_messages
 from .gemini_api_tools import ToolLoopResult, handle_tool_calls
 from .gemini_api_transport import send_api_request
+from .llm.providers import build_provider_request, detect_provider_name, parse_provider_response
 from .metrics import metrics
 
 # 导入用户档案存储（可选）
@@ -302,7 +303,7 @@ class GeminiClient:
             冷却期由 _mark_key_rate_limited 设置，默认为 60 秒，
             或 API 返回的 Retry-After 头指定的时间。
         """
-        current_time = time.time()
+        current_time = time.monotonic()
         
         # 如果没有配置多个 Key，使用主 Key
         if not self.api_key_list:
@@ -350,7 +351,7 @@ class GeminiClient:
             冷却信息存储在 self._key_cooldowns 字典中。
         """
         cooldown_seconds = retry_after if retry_after > 0 else self._default_cooldown
-        self._key_cooldowns[key] = time.time() + cooldown_seconds
+        self._key_cooldowns[key] = time.monotonic() + cooldown_seconds
         log.warning(f"API Key 被限流，进入冷却期 {cooldown_seconds}s")
     
     def register_tool_handler(self, name: str, handler: Callable):
@@ -1590,6 +1591,12 @@ class GeminiClient:
             # 4. 调用 API
             current_api_key = self._get_api_key()
             messages = [{"role": "user", "content": final_content}]
+            llm_cfg = plugin_config.get_llm_config()
+            provider_name = detect_provider_name(
+                configured_provider=str(llm_cfg.get("provider") or "openai_compat"),
+                base_url=self.base_url,
+            )
+            extra_headers = dict(llm_cfg.get("extra_headers") or {})
             
             client = await self._get_client()
             raw_content = "" # 初始化避免作用域问题
@@ -1603,26 +1610,28 @@ class GeminiClient:
             
             for attempt in range(max_retries + 1):
                 try:
+                    request_body = {
+                        "model": plugin_config.gemini_fast_model,  # 使用快速模型
+                        "messages": messages,
+                        "temperature": plugin_config.gemini_proactive_temperature,  # 使用配置的判决温度
+                        "response_format": {"type": "json_object"},  # 强制 JSON
+                        "stream": False,  # 显式禁用流式传输
+                    }
+                    prepared = build_provider_request(
+                        provider=provider_name,
+                        base_url=self.base_url,
+                        model=str(plugin_config.gemini_fast_model),
+                        api_key=current_api_key,
+                        request_body=request_body,
+                        extra_headers=extra_headers,
+                        default_temperature=float(plugin_config.gemini_proactive_temperature),
+                    )
                     response = await client.post(
-                        f"{self.base_url}/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {current_api_key}",
-                            "Content-Type": "application/json"
-                        },
-                        json={
-                            "model": plugin_config.gemini_fast_model, # 使用快速模型
-                            "messages": messages,
-                            "temperature": plugin_config.gemini_proactive_temperature, # 使用配置的判决温度
-                            "response_format": {"type": "json_object"}, # 强制 JSON
-                            "stream": False, # 显式禁用流式传输
-                            "safetySettings": [ # [安全设置] 同样应用 BLOCK_NONE
-                                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
-                            ]
-                        },
-                        timeout=plugin_config.gemini_proactive_judge_timeout_seconds  # 默认 20s
+                        prepared.url,
+                        headers=prepared.headers,
+                        params=prepared.params,
+                        json=prepared.json_body,
+                        timeout=plugin_config.gemini_proactive_judge_timeout_seconds,  # 默认 20s
                     )
                     break  # 成功则跳出重试循环
                 except (httpx.ConnectError, httpx.NetworkError, httpx.TimeoutException) as e:
@@ -1649,12 +1658,23 @@ class GeminiClient:
             data = response.json()
             
             # 安全获取 content
-            raw_content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if provider_name == "openai_compat":
+                raw_content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                finish_reason = data.get("choices", [{}])[0].get("finish_reason", "UNKNOWN")
+            else:
+                assistant_message, _tool_calls, parsed_content, parsed_finish_reason = parse_provider_response(
+                    provider=provider_name,
+                    data=data,
+                )
+                raw_content = (
+                    str(parsed_content)
+                    if parsed_content is not None
+                    else str(assistant_message.get("content") or "")
+                )
+                finish_reason = parsed_finish_reason or "UNKNOWN"
             
             # 空值检查
             if not raw_content or not raw_content.strip():
-                # Extract finish reason for debugging
-                finish_reason = data.get("choices", [{}])[0].get("finish_reason", "UNKNOWN")
                 log.warning(f"[主动发言判决] API 返回空内容 | finish_reason={finish_reason} | Full Data: {data}")
                 return {"should_reply": False}
             

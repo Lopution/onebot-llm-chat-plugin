@@ -15,7 +15,7 @@ import json
 import re
 from typing import List, Dict, Any, Optional, Tuple, TypedDict, Union
 
-from nonebot import logger as log
+from ..infra.logging import logger as log
 
 from .context_cache import LRUCache
 from .context_manager import ContextManager

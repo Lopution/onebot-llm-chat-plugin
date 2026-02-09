@@ -9,7 +9,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
-from nonebot import logger as log
+from .infra.logging import logger as log
 from .metrics import metrics
 from .config import plugin_config
 
@@ -194,6 +194,7 @@ async def handle_tool_calls(
 
             tool_message = {
                 "role": "tool",
+                "name": function_name,
                 "tool_call_id": tool_call_id,
                 "content": tool_result,
             }
@@ -209,26 +210,25 @@ async def handle_tool_calls(
         if tools is not None:
             next_request_body["tools"] = tools
 
-        next_response = await http_client.post(
-            f"{base_url}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json=next_request_body,
-        )
-        next_response.raise_for_status()
-        next_data = next_response.json()
+        from .gemini_api_transport import send_api_request
 
-        choice = (next_data.get("choices") or [{}])[0] or {}
-        next_message = (choice.get("message") or {}) if isinstance(choice, dict) else {}
-        next_tool_calls = next_message.get("tool_calls") or []
+        next_message, next_tool_calls, _ = await send_api_request(
+            http_client=http_client,
+            request_body=next_request_body,
+            request_id=request_id,
+            retry_count=0,
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+        )
+        choice = {"message": next_message, "finish_reason": "unknown"}
+        next_tool_calls = next_tool_calls or []
 
         log.debug(
             f"[req:{request_id}] tool-loop 响应 | "
             f"content_len={len(next_message.get('content') or '')} | "
             f"has_tool_calls={bool(next_tool_calls)} | "
-            f"finish_reason={choice.get('finish_reason') or next_data.get('choices', [{}])[0].get('finish_reason')}"
+            f"finish_reason={choice.get('finish_reason')}"
         )
 
         if next_tool_calls:
@@ -263,18 +263,14 @@ async def handle_tool_calls(
                     "temperature": getattr(plugin_config, "gemini_temperature", 1.0),
                 }
                 # 强制最终答复：不再暴露 tools
-                final_response = await http_client.post(
-                    f"{base_url}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json=final_request_body,
-                )
-                final_response.raise_for_status()
-                final_data = final_response.json()
-                final_message = (
-                    (final_data.get("choices") or [{}])[0].get("message", {}) or {}
+                final_message, _, _ = await send_api_request(
+                    http_client=http_client,
+                    request_body=final_request_body,
+                    request_id=request_id,
+                    retry_count=0,
+                    api_key=api_key,
+                    base_url=base_url,
+                    model=model,
                 )
                 final_reply = final_message.get("content") or ""
                 trace_messages.append(dict(final_message))

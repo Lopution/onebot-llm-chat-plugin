@@ -18,7 +18,7 @@ import re
 from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime
 
-from nonebot import logger as log
+from ..infra.logging import logger as log
 
 
 def normalize_text(text: str) -> str:

@@ -17,12 +17,10 @@ import base64
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Union
 
-from nonebot import get_driver
-
 from .config import Config
 from .utils.image_processor import extract_images, resolve_image_urls, extract_and_resolve_images
-from .deps import get_gemini_client_dep, get_config
-from nonebot import logger as log
+from .runtime import get_client as get_runtime_client, get_config as get_runtime_config
+from .infra.logging import logger as log
 from .utils.recent_images import get_image_cache
 from .utils.history_image_policy import (
     determine_history_image_action,
@@ -37,9 +35,6 @@ from .utils.safe_api import safe_call_api, safe_send
 from .utils.event_context import build_event_context
 from .utils.text_image_renderer import render_text_to_png_bytes
 from .utils.nb_types import BotT
-
-# 获取 driver 实例
-driver = get_driver()
 
 
 @dataclass
@@ -245,11 +240,13 @@ def _build_proactive_chatroom_injection(
 # ==================== 兼容旧测试的导出（thin wrapper） ====================
 
 def get_gemini_client():
-    """兼容旧 tests：历史上测试 patch `gemini_chat.handlers.get_gemini_client`。
+    """兼容旧 tests：历史上测试 patch `gemini_chat.handlers.get_gemini_client`。"""
+    return get_runtime_client()
 
-    当前实现使用依赖注入入口 [`get_gemini_client_dep()`](mika_chat_core/deps.py:1)。
-    """
-    return get_gemini_client_dep()
+
+def get_config():
+    """兼容旧 tests：统一通过 runtime 获取配置。"""
+    return get_runtime_config()
 
 
 def get_user_profile_store():
@@ -269,7 +266,6 @@ def _handle_task_exception(task: asyncio.Task[Any]) -> None:
             log.error(f"后台任务异常: {exc}", exc_info=exc)
 
 
-@driver.on_bot_connect
 async def sync_offline_messages(bot: BotT):
     """Bot 启动时同步离线期间的群聊消息（后台异步执行）"""
     import asyncio

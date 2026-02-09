@@ -13,14 +13,14 @@ class HeatMonitor:
         self._window_size = window_size
 
     def record_message(self, group_id: str) -> None:
-        now = time.time()
+        now = time.monotonic()
         if group_id not in self._group_logs:
             self._group_logs[group_id] = deque()
         self._group_logs[group_id].append(now)
         self._clean_old_logs(group_id, now)
 
     def get_heat(self, group_id: str) -> int:
-        now = time.time()
+        now = time.monotonic()
         self._clean_old_logs(group_id, now)
         return len(self._group_logs.get(group_id, []))
 
@@ -35,7 +35,7 @@ class HeatMonitor:
 
 heat_monitor = HeatMonitor()
 
-# 冷却时间记录 {group_id: last_trigger_timestamp}
+# 冷却时间记录 {group_id: last_trigger_monotonic}
 _proactive_cooldowns: Dict[str, float] = {}
 
 # 消息条数计数器 {group_id: message_count_since_last_proactive}

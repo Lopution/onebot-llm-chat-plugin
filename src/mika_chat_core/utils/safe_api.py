@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from nonebot import logger
+from ..infra.logging import logger
 
 
 async def safe_call_api(bot: Any, api: str, **data: Any) -> Any | None:

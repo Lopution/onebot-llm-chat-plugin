@@ -1,87 +1,47 @@
-"""NoneBot2 依赖注入模块。
+"""Compatibility bridge for legacy imports.
 
-定义可复用的依赖项，用于 handler 和 matcher 中获取：
-- 聊天历史记录
-- 用户档案数据
-- 处理后的图片
-- API 客户端实例
-- 插件配置
-
-这些依赖项可通过 NoneBot2 的 Depends 机制注入。
+Do not import adapter modules at module-import time, otherwise importing
+`mika_chat_core.handlers` directly can create circular imports through
+`nonebot_plugin_mika_chat.__init__`.
 """
 
+from __future__ import annotations
+
 from typing import Any, Dict, List
-from nonebot.params import Depends
-from .utils.event_context import build_event_context
+
 from .utils.nb_types import BotT, EventT
 
 
-async def get_chat_history(
-    bot: BotT,
-    event: EventT,
-) -> List[Dict[str, Any]]:
-    """依赖项：获取用户聊天历史"""
-    from .utils.context_store import get_context_store
-    
-    store = get_context_store()
-    ctx = build_event_context(bot, event)
-    
-    return await store.get_context(ctx.user_id, ctx.group_id)
+def _deps_module():
+    from nonebot_plugin_mika_chat import deps_nb
+
+    return deps_nb
+
+
+async def get_chat_history(bot: BotT, event: EventT) -> List[Dict[str, Any]]:
+    return await _deps_module().get_chat_history(bot, event)
 
 
 async def get_user_profile_data(bot: BotT, event: EventT) -> Dict[str, Any]:
-    """依赖项：获取用户档案"""
-    from .utils.user_profile import get_user_profile_store
-    
-    try:
-        store = get_user_profile_store()
-        ctx = build_event_context(bot, event)
-        return await store.get_profile(ctx.user_id)
-    except Exception:
-        return {}
+    return await _deps_module().get_user_profile_data(bot, event)
 
 
 async def get_processed_images(bot: BotT, event: EventT) -> List[Dict[str, Any]]:
-    """依赖项：获取处理后的图片（Base64 格式）"""
-    from .utils.image_processor import resolve_image_urls
-    from .lifecycle import get_plugin_config
-    
-    try:
-        from .utils.image_processor import get_image_processor
-        
-        try:
-            config = get_plugin_config()
-        except Exception:
-            from nonebot import get_plugin_config as nb_get_plugin_config
-            from .config import Config
-
-            config = nb_get_plugin_config(Config)
-        urls = await resolve_image_urls(
-            bot, getattr(event, "original_message", None), int(config.gemini_max_images)
-        )
-        if not urls:
-            return []
-        
-        processor = get_image_processor()
-        return await processor.process_images(urls)
-    except Exception:
-        return []
+    return await _deps_module().get_processed_images(bot, event)
 
 
 def get_gemini_client_dep():
-    """依赖项：获取 API 客户端"""
-    from .lifecycle import get_gemini_client
-    return get_gemini_client()
+    return _deps_module().get_gemini_client_dep()
 
 
 def get_config():
-    """依赖项：获取插件配置"""
-    from .lifecycle import get_plugin_config
+    return _deps_module().get_config()
 
-    try:
-        return get_plugin_config()
-    except Exception:
-        from nonebot import get_plugin_config as nb_get_plugin_config
-        from .config import Config
 
-        return nb_get_plugin_config(Config)
+__all__ = [
+    "get_chat_history",
+    "get_user_profile_data",
+    "get_processed_images",
+    "get_gemini_client_dep",
+    "get_config",
+]

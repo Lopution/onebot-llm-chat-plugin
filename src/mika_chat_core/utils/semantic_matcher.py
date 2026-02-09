@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Tuple
 
-from nonebot import logger as log
+from ..infra.logging import logger as log
 
 from ..config import plugin_config
 

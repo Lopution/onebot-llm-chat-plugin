@@ -19,10 +19,11 @@ import httpx
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
-from nonebot import logger as log
+from ..infra.logging import logger as log
 
 from ..config import plugin_config
 from ..gemini_api_proactive import extract_json_object
+from ..llm.providers import build_provider_request, detect_provider_name, parse_provider_response
 from ..utils.prompt_loader import load_prompt_yaml
 
 
@@ -258,7 +259,12 @@ async def extract_profile_with_llm(
     model = plugin_config.profile_extract_model or plugin_config.gemini_fast_model
     temperature = plugin_config.profile_extract_temperature
     max_tokens = plugin_config.profile_extract_max_tokens
-    base_url = plugin_config.gemini_base_url
+    llm_cfg = plugin_config.get_llm_config()
+    base_url = str(llm_cfg.get("base_url") or plugin_config.gemini_base_url)
+    provider_name = detect_provider_name(
+        configured_provider=str(llm_cfg.get("provider") or "openai_compat"),
+        base_url=base_url,
+    )
     
     # 构建请求
     request_body = {
@@ -285,23 +291,42 @@ async def extract_profile_with_llm(
         if plugin_config.profile_extract_log_payload:
             log.debug(f"[ProfileExtract] 请求 | model={model} | messages={len(messages)}")
         
+        prepared = build_provider_request(
+            provider=provider_name,
+            base_url=base_url,
+            model=model,
+            api_key=api_key,
+            request_body=request_body,
+            extra_headers=dict(llm_cfg.get("extra_headers") or {}),
+            default_temperature=float(temperature),
+        )
         response = await http_client.post(
-            f"{base_url}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            },
-            json=request_body
+            prepared.url,
+            headers=prepared.headers,
+            params=prepared.params,
+            json=prepared.json_body,
         )
         
         response.raise_for_status()
         data = response.json()
         
         # 提取内容
-        raw_response = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        if provider_name == "openai_compat":
+            raw_response = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            finish_reason = data.get("choices", [{}])[0].get("finish_reason", "UNKNOWN")
+        else:
+            assistant_message, _tool_calls, parsed_content, parsed_finish_reason = parse_provider_response(
+                provider=provider_name,
+                data=data,
+            )
+            raw_response = (
+                str(parsed_content)
+                if parsed_content is not None
+                else str(assistant_message.get("content") or "")
+            )
+            finish_reason = parsed_finish_reason or "UNKNOWN"
         
         if not raw_response or not raw_response.strip():
-            finish_reason = data.get("choices", [{}])[0].get("finish_reason", "UNKNOWN")
             log.warning(f"[ProfileExtract] API 返回空内容 | finish_reason={finish_reason}")
             return ProfileExtractResult(
                 success=False,

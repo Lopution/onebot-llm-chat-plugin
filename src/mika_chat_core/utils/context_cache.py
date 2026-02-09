@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from typing import Any, Optional
 
-from nonebot import logger as log
+from ..infra.logging import logger as log
 
 
 class LRUCache:

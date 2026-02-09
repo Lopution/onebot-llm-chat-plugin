@@ -10,6 +10,9 @@ from mika_chat_core.gemini_api_tools import handle_tool_calls
 
 def _mock_final_response(text: str) -> MagicMock:
     response = MagicMock()
+    response.status_code = 200
+    response.headers = {}
+    response.text = ""
     response.raise_for_status = MagicMock()
     response.json.return_value = {
         "choices": [{"message": {"content": text}, "finish_reason": "stop"}]

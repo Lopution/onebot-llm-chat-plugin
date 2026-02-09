@@ -93,7 +93,7 @@ async def test_proactive_cooldown():
     m.plugin_config.gemini_proactive_keyword_cooldown = 0
     
     # 设置冷却时间戳为当前时间，应该阻止触发
-    m._proactive_cooldowns['123'] = time.time()
+    m._proactive_cooldowns['123'] = time.monotonic()
     
     event_hit = mock_event(text="I love Mika")
     res = await check_proactive(event_hit)

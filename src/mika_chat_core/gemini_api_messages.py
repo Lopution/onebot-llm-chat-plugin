@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import re
 from typing import Any, Dict, List, Optional, Union
 
-from nonebot import logger as log
+from .infra.logging import logger as log
 
 from .config import plugin_config
 from .utils.context_schema import normalize_content

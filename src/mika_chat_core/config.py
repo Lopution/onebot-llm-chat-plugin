@@ -6,14 +6,14 @@
 - HTTP/网络参数配置
 - 多种触发规则配置
 
-配置通过 NoneBot2 的 get_plugin_config 加载。
+配置由宿主适配层在启动时注入到 mika_chat_core.runtime。
 """
 from pydantic import BaseModel, field_validator, model_validator
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from pathlib import Path
+import json
 import os
 import re
-from nonebot import get_plugin_config
 
 
 # ==================== Gemini API Key 占位符检测（仅用于 gemini_api_key / gemini_api_key_list） ====================
@@ -77,6 +77,18 @@ class Config(BaseModel):
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
     gemini_model: str = "gemini-3-pro-high" # 主模型 (对应列表中的 Gemini 3 Pro (High))
     gemini_fast_model: str = "gemini-2.5-flash-lite" # 快速模型 (对应列表中的 Gemini 2.5 Flash Lite)
+    # ===== 新一代 Provider 单一配置入口（兼容旧 GEMINI_* 读取） =====
+    llm_provider: str = "openai_compat"  # openai_compat | anthropic | google_genai
+    llm_base_url: str = ""
+    llm_api_key: str = ""
+    llm_api_key_list: List[str] = []
+    llm_model: str = ""
+    llm_fast_model: str = ""
+    llm_extra_headers_json: str = ""
+    # 搜索 provider 单一入口（兼容旧 serper_api_key）
+    search_provider: str = "serper"  # serper | tavily
+    search_api_key: str = ""
+    search_extra_headers_json: str = ""
 
     # HTTP / 网络参数
     # 注意：这些参数只作为“默认值”，不改变现有行为（默认与原硬编码一致）。
@@ -215,12 +227,112 @@ class Config(BaseModel):
                 "GEMINI_MASTER_ID 未配置或无效，请在 .env / .env.prod 中设置，例如：GEMINI_MASTER_ID=123456789"
             )
         return v
+
+    @field_validator("llm_provider")
+    @classmethod
+    def validate_llm_provider(cls, v: str) -> str:
+        value = (v or "").strip().lower()
+        allowed = {"openai_compat", "anthropic", "google_genai"}
+        if value not in allowed:
+            raise ValueError("llm_provider 仅支持 openai_compat / anthropic / google_genai")
+        return value
+
+    @field_validator("search_provider")
+    @classmethod
+    def validate_search_provider(cls, v: str) -> str:
+        value = (v or "").strip().lower()
+        allowed = {"serper", "tavily"}
+        if value not in allowed:
+            raise ValueError("search_provider 仅支持 serper / tavily")
+        return value
+
+    @field_validator("llm_base_url")
+    @classmethod
+    def validate_llm_base_url(cls, v: str) -> str:
+        value = (v or "").strip()
+        if not value:
+            return ""
+        if not value.startswith(("http://", "https://")):
+            raise ValueError("llm_base_url 必须以 http:// 或 https:// 开头")
+        return value.rstrip("/")
+
+    @field_validator("llm_api_key")
+    @classmethod
+    def validate_llm_api_key(cls, v: str) -> str:
+        value = (v or "").strip()
+        if not value:
+            return ""
+        if _is_gemini_api_key_placeholder(value):
+            raise ValueError("llm_api_key 看起来是占位符，请配置真实 key")
+        if re.search(r"\s", value):
+            raise ValueError("llm_api_key 不应包含空白字符")
+        if len(value) < 10:
+            raise ValueError("llm_api_key 长度过短")
+        return value
+
+    @field_validator("llm_api_key_list")
+    @classmethod
+    def validate_llm_api_key_list(cls, v: List[str]) -> List[str]:
+        cleaned: List[str] = []
+        for index, key in enumerate(v or []):
+            item = str(key or "").strip()
+            if not item:
+                continue
+            if _is_gemini_api_key_placeholder(item):
+                raise ValueError(f"llm_api_key_list 第 {index + 1} 项看起来是占位符")
+            if re.search(r"\s", item):
+                raise ValueError(f"llm_api_key_list 第 {index + 1} 项包含空白字符")
+            if len(item) < 10:
+                raise ValueError(f"llm_api_key_list 第 {index + 1} 项长度过短")
+            cleaned.append(item)
+        return cleaned
+
+    @field_validator("llm_extra_headers_json", "search_extra_headers_json")
+    @classmethod
+    def validate_extra_headers_json(cls, v: str) -> str:
+        value = (v or "").strip()
+        if not value:
+            return ""
+        try:
+            parsed = json.loads(value)
+        except Exception as exc:
+            raise ValueError(f"headers JSON 解析失败: {exc}") from exc
+        if not isinstance(parsed, dict):
+            raise ValueError("headers JSON 必须是对象（key/value）")
+        for key, item in parsed.items():
+            if not isinstance(key, str) or not key.strip():
+                raise ValueError("headers JSON 的键必须是非空字符串")
+            if not isinstance(item, (str, int, float, bool)):
+                raise ValueError("headers JSON 的值必须是标量（str/int/float/bool）")
+        return value
     
     @model_validator(mode='after')
     def validate_and_set_defaults(self) -> 'Config':
         """验证配置并设置默认值"""
+        llm_api_key = self.llm_api_key.strip()
+        llm_api_key_list = [item for item in self.llm_api_key_list if item]
+
+        # 兼容旧配置：若新字段未配置，则自动映射旧 GEMINI_* 字段
+        if not llm_api_key and not llm_api_key_list:
+            llm_api_key = self.gemini_api_key.strip()
+            llm_api_key_list = [item for item in self.gemini_api_key_list if item]
+            object.__setattr__(self, "llm_api_key", llm_api_key)
+            object.__setattr__(self, "llm_api_key_list", llm_api_key_list)
+
+        if not (self.llm_base_url or "").strip() and (self.gemini_base_url or "").strip():
+            object.__setattr__(self, "llm_base_url", str(self.gemini_base_url).rstrip("/"))
+        if not (self.llm_model or "").strip() and (self.gemini_model or "").strip():
+            object.__setattr__(self, "llm_model", str(self.gemini_model).strip())
+        if not (self.llm_fast_model or "").strip() and (self.gemini_fast_model or "").strip():
+            object.__setattr__(self, "llm_fast_model", str(self.gemini_fast_model).strip())
+
+        if not (self.search_api_key or "").strip() and (self.serper_api_key or "").strip():
+            object.__setattr__(self, "search_api_key", str(self.serper_api_key).strip())
+            if not (self.search_provider or "").strip():
+                object.__setattr__(self, "search_provider", "serper")
+
         # 确保至少配置了一个 API Key
-        if not self.gemini_api_key and not self.gemini_api_key_list:
+        if not self.llm_api_key and not self.llm_api_key_list and not self.gemini_api_key and not self.gemini_api_key_list:
             raise ValueError(
                 "必须至少配置 GEMINI_API_KEY 或 GEMINI_API_KEY_LIST 其中的至少一个，例如："
                 "GEMINI_API_KEY=\"你的Key\" 或 GEMINI_API_KEY_LIST=[\"key1\", \"key2\"]"
@@ -248,20 +360,61 @@ class Config(BaseModel):
     def get_effective_api_keys(self) -> List[str]:
         """获取所有有效的 API Key 列表"""
         keys = []
-        if self.gemini_api_key:
-            keys.append(self.gemini_api_key)
-        keys.extend(self.gemini_api_key_list)
+        if self.llm_api_key:
+            keys.append(self.llm_api_key)
+        keys.extend(self.llm_api_key_list)
+        if not keys:
+            if self.gemini_api_key:
+                keys.append(self.gemini_api_key)
+            keys.extend(self.gemini_api_key_list)
         return list(set(keys))  # 去重
+
+    def get_llm_config(self) -> Dict[str, Any]:
+        """获取当前生效的 LLM provider 配置。"""
+        provider = (self.llm_provider or "openai_compat").strip().lower()
+        base_url = (self.llm_base_url or self.gemini_base_url or "").strip().rstrip("/")
+        model = (self.llm_model or self.gemini_model or "").strip()
+        fast_model = (self.llm_fast_model or self.gemini_fast_model or "").strip()
+        api_keys = self.get_effective_api_keys()
+        extra_headers: Dict[str, str] = {}
+        if self.llm_extra_headers_json.strip():
+            parsed = json.loads(self.llm_extra_headers_json)
+            extra_headers = {str(key): str(value) for key, value in parsed.items()}
+        return {
+            "provider": provider,
+            "base_url": base_url,
+            "model": model,
+            "fast_model": fast_model,
+            "api_keys": api_keys,
+            "extra_headers": extra_headers,
+        }
+
+    def get_search_provider_config(self) -> Dict[str, Any]:
+        """获取当前生效的 Search provider 配置。"""
+        provider = (self.search_provider or "serper").strip().lower()
+        api_key = (self.search_api_key or self.serper_api_key or "").strip()
+        extra_headers: Dict[str, str] = {}
+        if self.search_extra_headers_json.strip():
+            parsed = json.loads(self.search_extra_headers_json)
+            extra_headers = {str(key): str(value) for key, value in parsed.items()}
+        return {
+            "provider": provider,
+            "api_key": api_key,
+            "extra_headers": extra_headers,
+        }
 
     # ==================== 配置分层访问器（P1） ====================
     def get_core_config(self) -> dict:
         """核心对话/网络配置（分层读取，不改变现有 env 键）。"""
+        llm_cfg = self.get_llm_config()
         return {
-            "api_key": self.gemini_api_key,
-            "api_key_list": list(self.gemini_api_key_list),
-            "base_url": self.gemini_base_url,
-            "model": self.gemini_model,
-            "fast_model": self.gemini_fast_model,
+            "provider": llm_cfg["provider"],
+            "api_key": self.llm_api_key or self.gemini_api_key,
+            "api_key_list": list(llm_cfg["api_keys"]),
+            "base_url": llm_cfg["base_url"],
+            "model": llm_cfg["model"],
+            "fast_model": llm_cfg["fast_model"],
+            "extra_headers": dict(llm_cfg["extra_headers"]),
             "max_context": self.gemini_max_context,
             "temperature": self.gemini_temperature,
             "http_timeout_seconds": self.gemini_http_client_timeout_seconds,
@@ -269,7 +422,11 @@ class Config(BaseModel):
 
     def get_search_config(self) -> dict:
         """搜索相关配置分层。"""
+        provider_cfg = self.get_search_provider_config()
         return {
+            "provider": provider_cfg["provider"],
+            "api_key": provider_cfg["api_key"],
+            "extra_headers": dict(provider_cfg["extra_headers"]),
             "cache_ttl_seconds": self.gemini_search_cache_ttl_seconds,
             "cache_max_size": self.gemini_search_cache_max_size,
             "classify_cache_ttl_seconds": self.gemini_search_classify_cache_ttl_seconds,
@@ -569,5 +726,4 @@ class Config(BaseModel):
     gemini_user_profile_cache_max_size: int = 256
 
 
-# 获取插件配置
-plugin_config = get_plugin_config(Config)
+from .runtime import config_proxy as plugin_config

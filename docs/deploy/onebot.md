@@ -110,6 +110,11 @@ NapCat 通常会把 OneBot v11 配置放在挂载目录里（例如 `napcat/data
 2. 若仅有 `file_id`：会尝试调用 OneBot v12 的 `get_file`（best-effort）获取可下载 `url`。
 3. 若无法解析：不会报错，只会把图片当作 `[图片]` 占位处理，确保 Bot 正常运行。
 
+图片下载安全边界（当前实现）：
+1. 仅允许 `http/https`，拒绝 `file://`、`ftp://` 等 scheme。
+2. 默认拒绝明显本地地址（`localhost` / `127.0.0.1` / `::1`）请求，降低 SSRF 风险。
+3. 单图下载有大小上限与超时控制，超限/失败会降级为文本占位，不会中断主流程。
+
 ### 4) ID 类型
 - **v11**：`group_id/user_id` 常为 `int`
 - **v12**：`group_id/user_id` 常为 `str`
