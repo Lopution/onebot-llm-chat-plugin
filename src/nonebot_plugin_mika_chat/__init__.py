@@ -7,13 +7,11 @@ import os
 from nonebot import get_plugin_config
 from nonebot import logger as log
 
-from mika_chat_core.config import Config
-from mika_chat_core.lifecycle import (
-    close_gemini,
-    get_gemini_client,
-    init_gemini,
-    set_plugin_config,
+from mika_chat_core.runtime import (
+    set_config as set_runtime_config,
+    set_paths_port as set_runtime_paths_port,
 )
+from mika_chat_core.settings import Config
 
 STRICT_STARTUP = os.getenv("MIKA_STRICT_STARTUP", "0").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -41,9 +39,18 @@ if PluginMetadata is not None:
     )
 
 plugin_config = get_plugin_config(Config)
+set_runtime_config(plugin_config)
+try:
+    from .paths_nb import LocalstorePathsPort
+
+    set_runtime_paths_port(LocalstorePathsPort())
+except Exception as exc:
+    log.warning(f"mika_chat: localstore path port 注入失败，使用核心默认路径回退 | error={exc}")
 
 try:
     from nonebot import get_driver
+
+    from .lifecycle_nb import close_gemini, get_gemini_client, init_gemini, set_plugin_config
 
     set_plugin_config(plugin_config)
 
@@ -52,7 +59,7 @@ try:
     driver.on_shutdown(close_gemini)
 
     try:
-        import mika_chat_core.matchers  # noqa: F401
+        import nonebot_plugin_mika_chat.matchers  # noqa: F401
     except Exception as exc:
         if STRICT_STARTUP or not _is_missing_dependency_error(exc):
             raise
@@ -75,6 +82,7 @@ except Exception as exc:
         return None
 
     def set_plugin_config(_config: Config):  # type: ignore[no-redef]
+        set_runtime_config(_config)
         return None
 
     def get_gemini_client():  # type: ignore[no-redef]
