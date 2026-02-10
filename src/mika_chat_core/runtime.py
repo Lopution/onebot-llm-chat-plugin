@@ -6,12 +6,15 @@ populate runtime state during startup.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .config import Config
     from .gemini_api import GeminiClient
+    from .ports.host_events import HostEventPort
     from .ports.logging import LoggerPort
+    from .ports.message import MessagePort
     from .ports.paths import PathsPort
 
 
@@ -19,8 +22,13 @@ _config: Optional[Any] = None
 _client: Optional[Any] = None
 _paths_port: Optional[Any] = None
 _logger_port: Optional[Any] = None
+_message_port: Optional[Any] = None
+_host_event_port: Optional[Any] = None
 _deps_hooks: dict[str, Any] = {}
 _tool_overrides: dict[str, Any] = {}
+_config_fallback_warned = False
+
+log = logging.getLogger(__name__)
 
 
 class _ConfigProxy:
@@ -44,12 +52,18 @@ def set_config(config: "Config") -> None:
 
 
 def get_config() -> "Config":
-    global _config
+    global _config, _config_fallback_warned
     if _config is None:
         # Backward-compatible fallback: core modules/tests may access plugin_config
         # before host adapter startup injects runtime config.
         # Use a minimal valid config so legacy unit tests can patch attributes
         # on plugin_config without bootstrapping the host adapter.
+        if not _config_fallback_warned:
+            _config_fallback_warned = True
+            log.warning(
+                "runtime.get_config fallback is active (no host config injected yet); "
+                "this compatibility path should only appear in tests/early import."
+            )
         from .config import Config
 
         _config = Config(gemini_master_id=1, gemini_api_key="A" * 32)
@@ -87,6 +101,24 @@ def set_logger_port(logger_port: Optional["LoggerPort"]) -> None:
 
 def get_logger_port() -> Optional["LoggerPort"]:
     return _logger_port
+
+
+def set_message_port(message_port: Optional["MessagePort"]) -> None:
+    global _message_port
+    _message_port = message_port
+
+
+def get_message_port() -> Optional["MessagePort"]:
+    return _message_port
+
+
+def set_host_event_port(host_event_port: Optional["HostEventPort"]) -> None:
+    global _host_event_port
+    _host_event_port = host_event_port
+
+
+def get_host_event_port() -> Optional["HostEventPort"]:
+    return _host_event_port
 
 
 def set_dep_hook(name: str, hook: Optional[Any]) -> None:
