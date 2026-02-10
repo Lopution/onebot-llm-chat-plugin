@@ -1013,20 +1013,23 @@ async def test_proactive_handler_triggers_group_reply():
     mock_client = AsyncMock()
     mock_client.context_store = mock_context_store
     mock_client.judge_proactive_intent = AsyncMock(return_value={"should_reply": True})
+    mocked_engine_handle = AsyncMock()
 
     with patch(
         "mika_chat_core.matchers.parse_message_with_mentions",
         AsyncMock(return_value=("", [])),
     ), patch("mika_chat_core.deps.get_gemini_client_dep", return_value=mock_client), patch(
-        "mika_chat_core.matchers.handle_group", AsyncMock()
-    ) as mocked_handle_group:
+        "mika_chat_core.matchers.ChatEngine.handle_event",
+        mocked_engine_handle,
+    ):
         await matchers._handle_proactive(mock_bot, mock_event)
 
-    mocked_handle_group.assert_called_once()
-    call_kwargs = mocked_handle_group.call_args.kwargs
-    assert call_kwargs.get("is_proactive") is True
-    # 新行为：不再注入 proactive_reason 系统提示，只标记 is_proactive
-    assert "proactive_reason" not in call_kwargs
+    mocked_engine_handle.assert_called_once()
+    call_args, call_kwargs = mocked_engine_handle.call_args
+    envelope = call_args[0]
+    assert envelope.meta.get("intent") == "group"
+    assert envelope.meta.get("is_proactive") is True
+    assert call_kwargs.get("dispatch") is True
 
 
 @pytest.mark.asyncio
@@ -1054,11 +1057,11 @@ async def test_proactive_handler_skips_when_judge_rejects():
     mock_client.judge_proactive_intent = AsyncMock(return_value={"should_reply": False})
 
     with patch("mika_chat_core.deps.get_gemini_client_dep", return_value=mock_client), patch(
-        "mika_chat_core.matchers.handle_group", AsyncMock()
-    ) as mocked_handle_group:
+        "mika_chat_core.matchers.ChatEngine.handle_event", AsyncMock()
+    ) as mocked_engine_handle:
         await matchers._handle_proactive(mock_bot, mock_event)
 
-    mocked_handle_group.assert_not_called()
+    mocked_engine_handle.assert_not_called()
 
 
 @pytest.mark.asyncio

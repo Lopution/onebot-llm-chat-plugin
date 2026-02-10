@@ -18,8 +18,13 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Union
 
 from .config import Config
+from .contracts import ContentPart, SendMessageAction
 from .utils.image_processor import extract_images, resolve_image_urls, extract_and_resolve_images
-from .runtime import get_client as get_runtime_client, get_config as get_runtime_config
+from .runtime import (
+    get_client as get_runtime_client,
+    get_config as get_runtime_config,
+    get_message_port as get_runtime_message_port,
+)
 from .infra.logging import logger as log
 from .utils.recent_images import get_image_cache
 from .utils.history_image_policy import (
@@ -1131,6 +1136,38 @@ async def _stage_text_fallback(bot: BotT, event: Any, final_text: str) -> SendSt
     return SendStageResult(ok=bool(ok), method="quote_text_fallback", error="" if ok else "safe_send_failed")
 
 
+async def _stage_message_port(
+    final_text: str,
+    *,
+    session_id: str,
+    reply_to: str,
+) -> SendStageResult:
+    """优先通过 MessagePort 发送（宿主适配层执行动作）。"""
+    message_port = get_runtime_message_port()
+    if message_port is None:
+        return SendStageResult(ok=False, method="message_port", error="port_unavailable")
+
+    action = SendMessageAction(
+        type="send_message",
+        session_id=session_id,
+        parts=[ContentPart(kind="text", text=final_text)],
+        reply_to=reply_to,
+        meta={"source": "send_reply_with_policy"},
+    )
+    try:
+        result = await message_port.send_message(action)
+    except Exception as exc:
+        return SendStageResult(ok=False, method="message_port", error=f"port_error:{exc}")
+
+    if isinstance(result, dict) and result.get("ok") is False:
+        return SendStageResult(
+            ok=False,
+            method="message_port",
+            error=str(result.get("error", "port_send_failed")),
+        )
+    return SendStageResult(ok=True, method="message_port", error="")
+
+
 def _build_quote_image_segments(message_id: Optional[str], platform: str, image_base64: str) -> list[dict]:
     segments: list[dict] = []
     if message_id:
@@ -1246,9 +1283,19 @@ async def send_reply_with_policy(
     final_text = _build_final_reply_text(reply_text, is_proactive=is_proactive)
     threshold = int(getattr(plugin_config, "gemini_forward_threshold", 300) or 300)
     is_long = len(final_text) >= max(1, threshold)
-    session = build_event_context(bot, event).session_key
+    ctx = build_event_context(bot, event)
+    session = ctx.session_key
 
     stage_result: Optional[SendStageResult] = None
+
+    stage_result = await _stage_message_port(
+        final_text,
+        session_id=session,
+        reply_to=str(getattr(ctx, "message_id", "") or ""),
+    )
+    if stage_result.ok:
+        log.info(f"[发送策略] session={session} | method={stage_result.method} | is_long={is_long}")
+        return
 
     if is_long:
         stage_result = await _stage_long_forward(bot, event, final_text, plugin_config)

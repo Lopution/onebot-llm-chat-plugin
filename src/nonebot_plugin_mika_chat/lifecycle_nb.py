@@ -21,6 +21,7 @@ import httpx
 from nonebot import get_driver
 
 from mika_chat_core.settings import Config
+from mika_chat_core.core_service import create_core_service_router
 from mika_chat_core.gemini_api import GeminiClient
 from mika_chat_core.runtime import (
     get_client as get_runtime_client,
@@ -52,6 +53,7 @@ DATE_FORMAT_FALLBACK = "%Y年%m月%d日"
 
 HEALTH_ENDPOINT_PATH = "/health"
 METRICS_ENDPOINT_PATH = "/metrics"
+CORE_EVENTS_ENDPOINT_PATH = "/v1/events"
 PLUGIN_VERSION = "1.0.0"
 
 IMAGE_CACHE_GAP_MULTIPLIER = 2
@@ -299,6 +301,13 @@ async def init_gemini():
         f"API 客户端实例已创建 | model={llm_cfg.get('model') or config.gemini_model} | "
         f"provider={llm_cfg.get('provider')}"
     )
+    core_runtime_cfg = config.get_core_runtime_config()
+    extra_remote = (
+        f" | remote={core_runtime_cfg['remote_base_url']}"
+        if core_runtime_cfg["mode"] == "remote"
+        else ""
+    )
+    log.info(f"Core Runtime 模式: {core_runtime_cfg['mode']}{extra_remote}")
     
     # 使用 TOOL_HANDLERS 批量注册工具处理器
     from mika_chat_core.tools import TOOL_HANDLERS
@@ -418,6 +427,15 @@ async def init_gemini():
                 metrics.to_prometheus(plugin_version=PLUGIN_VERSION),
                 media_type=METRICS_PROMETHEUS_CONTENT_TYPE,
             )
+
+        existing_core_route = any(
+            getattr(route, "path", "") == CORE_EVENTS_ENDPOINT_PATH
+            and "POST" in (getattr(route, "methods", set()) or set())
+            for route in app.routes
+        )
+        if not existing_core_route:
+            app.include_router(create_core_service_router())
+            log.debug(f"Core Service 端点已注册: {CORE_EVENTS_ENDPOINT_PATH}")
 
         log.debug("健康检查端点已注册: /health")
         log.debug("指标端点已注册: /metrics, /metrics/prometheus")

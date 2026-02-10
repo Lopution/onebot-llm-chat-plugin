@@ -18,14 +18,20 @@ import random
 import time
 
 from mika_chat_core.settings import Config
-from mika_chat_core.handlers import handle_reset, handle_private, handle_group, parse_message_with_mentions
+from mika_chat_core.handlers import parse_message_with_mentions
 from mika_chat_core.runtime import get_config as get_runtime_config
 from mika_chat_core.utils.image_processor import extract_images, resolve_image_urls
 from mika_chat_core.utils.recent_images import get_image_cache
 from mika_chat_core.group_state import heat_monitor, get_proactive_cooldowns, get_proactive_message_counts
 from mika_chat_core.metrics import metrics
+from mika_chat_core.event_envelope import build_event_envelope
+from mika_chat_core.semantic_transcript import build_context_record_text, summarize_envelope
+from mika_chat_core.engine import ChatEngine
+from mika_chat_core.core_service_client import CoreServiceClient
 from mika_chat_core.utils.event_context import build_event_context, build_event_context_from_event
+from .runtime_ports_nb import get_runtime_ports_bundle
 from nonebot.adapters import Bot, Event
+from mika_chat_core.contracts import EventEnvelope
 
 
 async def check_at_me_anywhere(bot: Bot, event: Event) -> bool:
@@ -80,6 +86,61 @@ def _get_plugin_config() -> Config:
 
 # 获取配置
 plugin_config = _get_plugin_config()
+runtime_ports = get_runtime_ports_bundle()
+
+
+def _build_traced_event_envelope(bot: Bot, event: Event, *, source: str) -> EventEnvelope | None:
+    """Best-effort adapter trace for host->core envelope conversion."""
+    try:
+        envelope = build_event_envelope(bot, event, protocol="onebot")
+        actions = ChatEngine.envelope_to_actions(envelope)
+        log.debug(
+            f"[Adapter->Core] source={source} | session={envelope.session_id} | "
+            f"message_id={envelope.message_id or '?'} | parts={len(envelope.content_parts)} | "
+            f"preview_actions={len(actions)}"
+        )
+        return envelope
+    except Exception as exc:
+        log.debug(f"[Adapter->Core] source={source} | envelope_build_failed={exc}")
+        return None
+
+
+async def _execute_remote_core_event(envelope: EventEnvelope) -> None:
+    runtime_cfg = plugin_config.get_core_runtime_config()
+    base_url = str(runtime_cfg["remote_base_url"] or "").strip()
+    timeout_seconds = float(runtime_cfg["remote_timeout_seconds"])
+    token = str(runtime_cfg["service_token"] or "").strip()
+
+    client = CoreServiceClient(
+        base_url=base_url,
+        timeout_seconds=timeout_seconds,
+        token=token,
+    )
+    actions = await client.handle_event(envelope, dispatch=False)
+    await ChatEngine.dispatch_actions(actions, runtime_ports.message)
+
+
+async def _handle_event_with_runtime_mode(
+    envelope: EventEnvelope,
+    *,
+    bot: Bot,
+    event: Event,
+) -> None:
+    runtime_ports.register_event(envelope, bot=bot, event=event)
+    runtime_cfg = plugin_config.get_core_runtime_config()
+    mode = str(runtime_cfg["mode"] or "embedded").strip().lower()
+
+    if mode == "remote":
+        try:
+            await _execute_remote_core_event(envelope)
+            return
+        except Exception as exc:
+            log.warning(f"[Adapter->Core][remote] failed, fallback_embedded | err={exc}")
+
+    try:
+        await ChatEngine.handle_event(envelope, runtime_ports, plugin_config, dispatch=True)
+    except Exception as exc:
+        log.exception(f"[Adapter->Core] handle_event_failed_without_fallback | err={exc}")
 
 
 # ==================== 指令匹配器 ====================
@@ -91,7 +152,15 @@ reset_cmd = on_command("清空记忆", aliases={"reset", "重置记忆"}, priori
 @reset_cmd.handle()
 async def _handle_reset(bot: Bot, event: Event):
     """清空记忆指令处理"""
-    await handle_reset(bot, event, plugin_config)
+    envelope = _build_traced_event_envelope(bot, event, source="reset_cmd")
+    if envelope is None:
+        envelope = build_event_envelope(bot, event, protocol="onebot")
+    envelope.meta["intent"] = "reset"
+    await _handle_event_with_runtime_mode(
+        envelope,
+        bot=bot,
+        event=event,
+    )
 
 
 # ==================== 消息匹配器 ====================
@@ -108,7 +177,15 @@ private_chat = on_message(rule=_is_private_message, priority=10, block=False)
 @private_chat.handle()
 async def _handle_private(bot: Bot, event: Event):
     """私聊消息处理"""
-    await handle_private(bot, event, plugin_config)
+    envelope = _build_traced_event_envelope(bot, event, source="private_chat")
+    if envelope is None:
+        envelope = build_event_envelope(bot, event, protocol="onebot")
+    envelope.meta["intent"] = "private"
+    await _handle_event_with_runtime_mode(
+        envelope,
+        bot=bot,
+        event=event,
+    )
 
 
 # 群聊消息（需要 @机器人，支持消息任意位置的 @）
@@ -118,7 +195,15 @@ group_chat = on_message(rule=check_at_me_anywhere, priority=10, block=False)
 @group_chat.handle()
 async def _handle_group(bot: Bot, event: Event):
     """群聊消息处理（@机器人时触发）"""
-    await handle_group(bot, event, plugin_config)
+    envelope = _build_traced_event_envelope(bot, event, source="group_chat")
+    if envelope is None:
+        envelope = build_event_envelope(bot, event, protocol="onebot")
+    envelope.meta["intent"] = "group"
+    await _handle_event_with_runtime_mode(
+        envelope,
+        bot=bot,
+        event=event,
+    )
 
 
 # ==================== 主动发言匹配器 ====================
@@ -295,7 +380,6 @@ proactive_chat = on_message(rule=check_proactive, priority=98, block=False)
 async def _handle_proactive(bot: Bot, event: Event):
     """主动发言处理 (二级触发：认知层)"""
     from mika_chat_core.deps import get_gemini_client_dep
-    from mika_chat_core import matchers as core_matchers
     ctx = build_event_context(bot, event)
     if not ctx.is_group or not ctx.group_id:
         return
@@ -308,7 +392,7 @@ async def _handle_proactive(bot: Bot, event: Event):
     parsed_text = ""
     reply_images: list[str] = []
     try:
-        parsed_text, reply_images = await core_matchers.parse_message_with_mentions(bot, event)
+        parsed_text, reply_images = await parse_message_with_mentions(bot, event)
         parsed_text = (parsed_text or "").strip()
     except Exception as e:
         log.debug(f"[主动发言][@解析] parse_message_with_mentions 失败，回退 plaintext: {e}")
@@ -372,7 +456,16 @@ async def _handle_proactive(bot: Bot, event: Event):
     
     # 3. 将生成权交给主 Handler (Actor)
     # 不再注入额外主动发言系统提示：让模型基于真实上下文自然回应触发消息
-    await core_matchers.handle_group(bot, event, plugin_config, is_proactive=True)
+    envelope = _build_traced_event_envelope(bot, event, source="proactive_group")
+    if envelope is None:
+        envelope = build_event_envelope(bot, event, protocol="onebot")
+    envelope.meta["intent"] = "group"
+    envelope.meta["is_proactive"] = True
+    await _handle_event_with_runtime_mode(
+        envelope,
+        bot=bot,
+        event=event,
+    )
 
 
 
@@ -413,41 +506,8 @@ async def _cache_images(bot: Bot, event: Event):
         bot, original_message, int(plugin_config.gemini_max_images)
     )
 
-    def _segment_type(seg: object) -> str:
-        if isinstance(seg, dict):
-            return str(seg.get("type") or "")
-        return str(getattr(seg, "type", "") or "")
-
-    def _segment_data(seg: object) -> dict:
-        if isinstance(seg, dict):
-            data = seg.get("data", {})
-        else:
-            data = getattr(seg, "data", {})
-        return data if isinstance(data, dict) else {}
-
-    has_reply_segment = False
-    has_mention_segment = False
-    mention_tokens: list[str] = []
-    current_image_count = 0
-
-    for seg in original_message:
-        seg_type = _segment_type(seg)
-        seg_data = _segment_data(seg)
-        if seg_type == "reply":
-            has_reply_segment = True
-            continue
-        if seg_type == "at":
-            has_mention_segment = True
-            qq = str(seg_data.get("qq", "")).strip()
-            mention_tokens.append("@全体成员" if qq == "all" else (f"@{qq}" if qq else "@someone"))
-            continue
-        if seg_type == "mention":
-            has_mention_segment = True
-            uid = str(seg_data.get("user_id", "")).strip()
-            mention_tokens.append(f"@{uid}" if uid else "@someone")
-            continue
-        if seg_type == "image":
-            current_image_count += 1
+    envelope = build_event_envelope(bot, event, protocol="onebot")
+    summary = summarize_envelope(envelope)
 
     message_id_str = str(ctx.message_id or "")
     image_cache = get_image_cache()
@@ -484,7 +544,8 @@ async def _cache_images(bot: Bot, event: Event):
         nickname = ctx.sender_name or "User"
         tag = f"{nickname}({ctx.user_id})"
         record_text = ""
-        needs_rich_parse = has_reply_segment or has_mention_segment
+        parse_failed = False
+        needs_rich_parse = summary.has_reply or summary.has_mention
 
         if needs_rich_parse:
             try:
@@ -492,21 +553,16 @@ async def _cache_images(bot: Bot, event: Event):
                 record_text = (parsed_text or "").strip()
             except Exception as e:
                 log.warning(f"[上下文记录] 富文本解析失败，使用降级占位: {e}")
-                fallback_parts: list[str] = []
-                if has_reply_segment:
-                    fallback_parts.append("[引用消息]")
-                if mention_tokens:
-                    fallback_parts.append(" ".join(mention_tokens))
-                plain = (ctx.plaintext or "").strip()
-                if plain:
-                    fallback_parts.append(plain)
-                record_text = " ".join(part for part in fallback_parts if part).strip()
+                parse_failed = True
         else:
             record_text = (ctx.plaintext or "").strip()
 
-        if current_image_count > 0:
-            image_placeholder = "[图片]" if current_image_count == 1 else f"[图片×{current_image_count}]"
-            record_text = f"{record_text} {image_placeholder}".strip() if record_text else image_placeholder
+        record_text = build_context_record_text(
+            summary=summary,
+            plaintext=ctx.plaintext or "",
+            parsed_text=record_text,
+            parse_failed=parse_failed,
+        )
 
         if record_text:
             await client.add_message(

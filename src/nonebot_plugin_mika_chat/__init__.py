@@ -10,7 +10,9 @@ from nonebot import logger as log
 from mika_chat_core.runtime import (
     set_config as set_runtime_config,
     set_dep_hook as set_runtime_dep_hook,
+    set_host_event_port as set_runtime_host_event_port,
     set_logger_port as set_runtime_logger_port,
+    set_message_port as set_runtime_message_port,
     set_paths_port as set_runtime_paths_port,
     set_tool_override as set_runtime_tool_override,
 )
@@ -44,6 +46,15 @@ if PluginMetadata is not None:
 plugin_config = get_plugin_config(Config)
 set_runtime_config(plugin_config)
 set_runtime_logger_port(log)
+
+try:
+    from .runtime_ports_nb import get_runtime_ports_bundle
+
+    runtime_ports = get_runtime_ports_bundle()
+    set_runtime_message_port(runtime_ports.message)
+    set_runtime_host_event_port(runtime_ports.host_events)
+except Exception as exc:
+    log.warning(f"mika_chat: runtime ports 注入失败，使用核心回退实现 | error={exc}")
 
 try:
     from . import deps_nb
