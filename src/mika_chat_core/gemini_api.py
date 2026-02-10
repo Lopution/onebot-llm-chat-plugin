@@ -42,7 +42,12 @@ from .gemini_api_proactive import extract_json_object
 from .gemini_api_messages import PreSearchResult, pre_search, build_messages
 from .gemini_api_tools import ToolLoopResult, handle_tool_calls
 from .gemini_api_transport import send_api_request
-from .llm.providers import build_provider_request, detect_provider_name, parse_provider_response
+from .llm.providers import (
+    build_provider_request,
+    detect_provider_name,
+    get_provider_capabilities,
+    parse_provider_response,
+)
 from .metrics import metrics
 
 # 导入用户档案存储（可选）
@@ -1596,6 +1601,11 @@ class GeminiClient:
                 configured_provider=str(llm_cfg.get("provider") or "openai_compat"),
                 base_url=self.base_url,
             )
+            provider_capabilities = get_provider_capabilities(
+                configured_provider=provider_name,
+                base_url=self.base_url,
+                model=str(plugin_config.gemini_fast_model),
+            )
             extra_headers = dict(llm_cfg.get("extra_headers") or {})
             
             client = await self._get_client()
@@ -1614,9 +1624,10 @@ class GeminiClient:
                         "model": plugin_config.gemini_fast_model,  # 使用快速模型
                         "messages": messages,
                         "temperature": plugin_config.gemini_proactive_temperature,  # 使用配置的判决温度
-                        "response_format": {"type": "json_object"},  # 强制 JSON
                         "stream": False,  # 显式禁用流式传输
                     }
+                    if provider_capabilities.supports_json_object_response:
+                        request_body["response_format"] = {"type": "json_object"}
                     prepared = build_provider_request(
                         provider=provider_name,
                         base_url=self.base_url,

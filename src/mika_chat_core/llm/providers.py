@@ -6,7 +6,7 @@ messages/tools) and maps it to provider-native wire formats.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import copy
 import json
 from typing import Any, Dict, List, Optional, Tuple
@@ -22,12 +22,63 @@ class ProviderPreparedRequest:
     params: Optional[Dict[str, str]] = None
 
 
+@dataclass(frozen=True)
+class ProviderCapabilities:
+    provider: str
+    supports_tools: bool
+    supports_images: bool
+    supports_json_object_response: bool
+
+
 def detect_provider_name(*, configured_provider: str, base_url: str) -> str:
     value = (configured_provider or "").strip().lower()
     if value in {"openai_compat", "anthropic", "google_genai"}:
         return value
     # Backward compatibility: unknown value falls back to openai compatible mode.
     return "openai_compat"
+
+
+def get_provider_capabilities(
+    *,
+    configured_provider: str,
+    base_url: str,
+    model: str = "",
+) -> ProviderCapabilities:
+    provider_name = detect_provider_name(
+        configured_provider=configured_provider,
+        base_url=base_url,
+    )
+    if provider_name == "anthropic":
+        capabilities = ProviderCapabilities(
+            provider="anthropic",
+            supports_tools=True,
+            supports_images=True,
+            supports_json_object_response=False,
+        )
+    elif provider_name == "google_genai":
+        capabilities = ProviderCapabilities(
+            provider="google_genai",
+            supports_tools=True,
+            supports_images=True,
+            supports_json_object_response=False,
+        )
+    else:
+        capabilities = ProviderCapabilities(
+            provider="openai_compat",
+            supports_tools=True,
+            supports_images=True,
+            supports_json_object_response=True,
+        )
+
+    model_lower = str(model or "").strip().lower()
+    if any(key in model_lower for key in ("embedding", "rerank")):
+        capabilities = replace(
+            capabilities,
+            supports_tools=False,
+            supports_images=False,
+            supports_json_object_response=False,
+        )
+    return capabilities
 
 
 def is_google_openai_compat_endpoint(base_url: str) -> bool:

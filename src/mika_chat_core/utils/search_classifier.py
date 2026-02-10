@@ -30,7 +30,12 @@ import time
 from ..infra.logging import logger as log
 
 from ..config import plugin_config
-from ..llm.providers import build_provider_request, detect_provider_name, parse_provider_response
+from ..llm.providers import (
+    build_provider_request,
+    detect_provider_name,
+    get_provider_capabilities,
+    parse_provider_response,
+)
 from .prompt_loader import load_search_prompt
 
 
@@ -905,6 +910,11 @@ async def classify_topic_for_search(
             configured_provider=str(getattr(plugin_config, "llm_provider", "openai_compat")),
             base_url=base_url,
         )
+        provider_capabilities = get_provider_capabilities(
+            configured_provider=provider_name,
+            base_url=base_url,
+            model=model,
+        )
         log.debug(
             f"[诊断] 分类器参数 | max_tokens={classify_max_tokens} | "
             f"temperature={classify_temperature} | model={model} | provider={provider_name}"
@@ -922,8 +932,9 @@ async def classify_topic_for_search(
                 "stream": False,
                 "max_tokens": classify_max_tokens,
                 "temperature": classify_temperature,
-                "response_format": {"type": "json_object"},
             }
+            if provider_capabilities.supports_json_object_response:
+                request_body["response_format"] = {"type": "json_object"}
 
             log.info(
                 f"[分类器请求] model={model} | messages_count={len(messages)} | "

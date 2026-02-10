@@ -293,6 +293,46 @@ class TestClassifyJsonModeAndQuerySanitize:
         second_json = mock_client.post.call_args_list[1].kwargs.get("json")
         assert first_json.get("response_format") == {"type": "json_object"}
         assert "response_format" not in second_json
+
+    @pytest.mark.asyncio
+    async def test_classify_topic_anthropic_skips_json_mode_field(self):
+        """Anthropic 原生 provider 不应发送 response_format。"""
+        from mika_chat_core.utils.search_engine import classify_topic_for_search
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "content": [
+                {
+                    "type": "text",
+                    "text": '{"needs_search": true, "topic": "科技", "search_query": "Claude 4 发布"}',
+                }
+            ],
+            "stop_reason": "end_turn",
+        }
+
+        with patch("httpx.AsyncClient") as mock_client_class, patch(
+            "mika_chat_core.utils.search_classifier.plugin_config.llm_provider",
+            "anthropic",
+        ):
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_client_class.return_value = mock_client
+
+            needs_search, topic, query = await classify_topic_for_search(
+                "Claude 4 什么时候发布",
+                api_key="test-key",
+                base_url="https://api.anthropic.com/v1",
+            )
+
+        assert needs_search is True
+        assert topic == "科技"
+        assert query
+        called_json = mock_client.post.call_args.kwargs.get("json")
+        assert "response_format" not in called_json
+        assert mock_client.post.call_count == 1
     
     @pytest.mark.asyncio
     async def test_classify_topic_opinion(self):

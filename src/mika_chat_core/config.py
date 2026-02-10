@@ -89,6 +89,11 @@ class Config(BaseModel):
     search_provider: str = "serper"  # serper | tavily
     search_api_key: str = ""
     search_extra_headers_json: str = ""
+    # Core 运行模式（Stage C）：embedded=进程内；remote=HTTP Core Service
+    mika_core_runtime_mode: str = "embedded"  # embedded | remote
+    mika_core_remote_base_url: str = ""
+    mika_core_remote_timeout_seconds: float = 15.0
+    mika_core_service_token: str = ""
 
     # HTTP / 网络参数
     # 注意：这些参数只作为“默认值”，不改变现有行为（默认与原硬编码一致）。
@@ -246,6 +251,32 @@ class Config(BaseModel):
             raise ValueError("search_provider 仅支持 serper / tavily")
         return value
 
+    @field_validator("mika_core_runtime_mode")
+    @classmethod
+    def validate_core_runtime_mode(cls, v: str) -> str:
+        value = (v or "").strip().lower()
+        allowed = {"embedded", "remote"}
+        if value not in allowed:
+            raise ValueError("mika_core_runtime_mode 仅支持 embedded / remote")
+        return value
+
+    @field_validator("mika_core_remote_base_url")
+    @classmethod
+    def validate_core_remote_base_url(cls, v: str) -> str:
+        value = (v or "").strip()
+        if not value:
+            return ""
+        if not value.startswith(("http://", "https://")):
+            raise ValueError("mika_core_remote_base_url 必须以 http:// 或 https:// 开头")
+        return value.rstrip("/")
+
+    @field_validator("mika_core_remote_timeout_seconds")
+    @classmethod
+    def validate_core_remote_timeout(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("mika_core_remote_timeout_seconds 必须大于 0")
+        return v
+
     @field_validator("llm_base_url")
     @classmethod
     def validate_llm_base_url(cls, v: str) -> str:
@@ -354,6 +385,11 @@ class Config(BaseModel):
                 raise ValueError("Serper API Key 看起来是占位符，请配置真实的 API Key")
             if len(key) < 10:
                 raise ValueError("Serper API Key 长度不符合要求")
+
+        if self.mika_core_runtime_mode == "remote" and not self.mika_core_remote_base_url.strip():
+            raise ValueError(
+                "mika_core_runtime_mode=remote 时必须配置 mika_core_remote_base_url"
+            )
         
         return self
     
@@ -435,6 +471,15 @@ class Config(BaseModel):
             "llm_gate_fallback_mode": self.gemini_search_llm_gate_fallback_mode,
             "allow_tool_refine": self.gemini_search_allow_tool_refine,
             "tool_refine_max_rounds": self.gemini_search_tool_refine_max_rounds,
+        }
+
+    def get_core_runtime_config(self) -> dict:
+        """Core Runtime（embedded/remote）配置分层。"""
+        return {
+            "mode": (self.mika_core_runtime_mode or "embedded").strip().lower(),
+            "remote_base_url": (self.mika_core_remote_base_url or "").strip().rstrip("/"),
+            "remote_timeout_seconds": float(self.mika_core_remote_timeout_seconds),
+            "service_token": str(self.mika_core_service_token or "").strip(),
         }
 
     def get_image_config(self) -> dict:

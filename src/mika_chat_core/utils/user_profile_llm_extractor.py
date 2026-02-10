@@ -23,7 +23,12 @@ from ..infra.logging import logger as log
 
 from ..config import plugin_config
 from ..gemini_api_proactive import extract_json_object
-from ..llm.providers import build_provider_request, detect_provider_name, parse_provider_response
+from ..llm.providers import (
+    build_provider_request,
+    detect_provider_name,
+    get_provider_capabilities,
+    parse_provider_response,
+)
 from ..utils.prompt_loader import load_prompt_yaml
 
 
@@ -265,6 +270,11 @@ async def extract_profile_with_llm(
         configured_provider=str(llm_cfg.get("provider") or "openai_compat"),
         base_url=base_url,
     )
+    provider_capabilities = get_provider_capabilities(
+        configured_provider=provider_name,
+        base_url=base_url,
+        model=model,
+    )
     
     # 构建请求
     request_body = {
@@ -275,9 +285,10 @@ async def extract_profile_with_llm(
         ],
         "temperature": temperature,
         "max_tokens": max_tokens,
-        "response_format": {"type": "json_object"},
         "stream": False
     }
+    if provider_capabilities.supports_json_object_response:
+        request_body["response_format"] = {"type": "json_object"}
     
     # 发送请求
     should_close_client = False

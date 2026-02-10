@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Union
 from .infra.logging import logger as log
 
 from .config import plugin_config
+from .llm.providers import get_provider_capabilities
 from .utils.context_schema import normalize_content
 
 
@@ -611,9 +612,14 @@ async def build_messages(
 
     messages: List[Dict[str, Any]] = [{"role": "system", "content": enhanced_system_prompt}]
     strict_multimodal = bool(getattr(plugin_config, "gemini_multimodal_strict", True))
-    model_lower = str(model or "").lower()
-    supports_images = not any(k in model_lower for k in ("embedding", "rerank"))
-    supports_tools = bool(enable_tools)
+    llm_cfg = plugin_config.get_llm_config()
+    provider_capabilities = get_provider_capabilities(
+        configured_provider=str(llm_cfg.get("provider") or "openai_compat"),
+        base_url=str(llm_cfg.get("base_url") or plugin_config.gemini_base_url),
+        model=str(model or ""),
+    )
+    supports_images = bool(provider_capabilities.supports_images)
+    supports_tools = bool(provider_capabilities.supports_tools and enable_tools)
     if not strict_multimodal:
         supports_images = True
         supports_tools = bool(enable_tools)
