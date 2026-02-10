@@ -56,6 +56,7 @@ python bot.py
 | [`context_store`](api/context_store.md) | 对话上下文存储 |
 | [`config`](api/config.md) | 配置管理 |
 | [`release-process`](release-process.md) | 版本发布流程 |
+| [`git-sop`](git-sop.md) | Git 分支与版本管理 SOP |
 
 ## 架构设计
 

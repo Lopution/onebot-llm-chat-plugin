@@ -952,7 +952,10 @@ class TestHttpClient:
         
         # 重置客户端
         if search_engine._http_client:
-            await search_engine._http_client.aclose()
+            try:
+                await search_engine._http_client.aclose()
+            except RuntimeError:
+                pass
         search_engine._http_client = None
         
         # Act
@@ -965,6 +968,18 @@ class TestHttpClient:
         # 清理
         await client.aclose()
         search_engine._http_client = None
+
+    @pytest.mark.asyncio
+    async def test_get_http_client_recreates_on_loop_id_mismatch(self):
+        """测试客户端记录的 loop_id 异常时会重建 HTTP 客户端。"""
+        from mika_chat_core.utils import search_engine
+
+        first_client = await search_engine._get_http_client()
+        search_engine._http_client_loop_id = -1
+        second_client = await search_engine._get_http_client()
+
+        assert second_client is not first_client
+        await search_engine.close_search_engine()
     
     @pytest.mark.asyncio
     async def test_close_search_engine(self):

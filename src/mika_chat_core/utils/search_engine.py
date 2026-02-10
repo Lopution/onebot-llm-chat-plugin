@@ -142,7 +142,9 @@ SEARCH_EXTRA_HEADERS: Dict[str, str] = {}
 
 # 全局 HTTP 客户端（复用连接池，提高性能）
 _http_client: Optional[httpx.AsyncClient] = None
-_http_client_lock: asyncio.Lock = asyncio.Lock()
+_http_client_loop_id: Optional[int] = None
+_http_client_lock: Optional[asyncio.Lock] = None
+_http_client_lock_loop_id: Optional[int] = None
 
 # 搜索结果缓存（避免短时间内重复搜索）
 # 格式: {query_hash: (result, timestamp)}
@@ -248,12 +250,40 @@ def configure_classify_cache(ttl_seconds: int, max_size: int) -> None:
 async def _get_http_client() -> httpx.AsyncClient:
     """获取或创建全局 HTTP 客户端。"""
 
-    global _http_client
-    async with _http_client_lock:
+    global _http_client, _http_client_loop_id
+    current_loop_id = id(asyncio.get_running_loop())
+    async with _get_http_client_lock():
+        if (
+            _http_client is not None
+            and isinstance(_http_client, httpx.AsyncClient)
+            and not _http_client.is_closed
+            and _http_client_loop_id is not None
+            and _http_client_loop_id != current_loop_id
+        ):
+            try:
+                await _http_client.aclose()
+            except RuntimeError:
+                pass
+            finally:
+                _http_client = None
+                _http_client_loop_id = None
+
         if _http_client is None or _http_client.is_closed:
             _http_client = create_default_http_client()
+            _http_client_loop_id = current_loop_id
             log.debug("创建新的 HTTP 客户端")
         return _http_client
+
+
+def _get_http_client_lock() -> asyncio.Lock:
+    """返回与当前事件循环绑定的客户端锁。"""
+
+    global _http_client_lock, _http_client_lock_loop_id
+    current_loop_id = id(asyncio.get_running_loop())
+    if _http_client_lock is None or _http_client_lock_loop_id != current_loop_id:
+        _http_client_lock = asyncio.Lock()
+        _http_client_lock_loop_id = current_loop_id
+    return _http_client_lock
 
 
 async def init_search_engine() -> None:
@@ -290,13 +320,19 @@ async def init_search_engine() -> None:
 async def close_search_engine() -> None:
     """关闭时清理 HTTP 客户端。"""
 
-    global _http_client
-    async with _http_client_lock:
+    global _http_client, _http_client_loop_id
+    async with _get_http_client_lock():
         if _http_client and not _http_client.is_closed:
-            await _http_client.aclose()
-            _http_client = None
-            log.info("HTTP 客户端已关闭")
+            try:
+                await _http_client.aclose()
+            except RuntimeError:
+                pass
+            finally:
+                _http_client = None
+                _http_client_loop_id = None
+                log.info("HTTP 客户端已关闭")
     _http_client = None
+    _http_client_loop_id = None
 
 
 # ============================================================
