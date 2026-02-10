@@ -260,11 +260,11 @@ class Config(BaseModel):
     @field_validator('gemini_master_id')
     @classmethod
     def validate_master_id(cls, v: int) -> int:
-        """验证 master_id 必须为正整数"""
-        if v <= 0:
-            raise ValueError(
-                "GEMINI_MASTER_ID 未配置或无效，请在 .env / .env.prod 中设置，例如：GEMINI_MASTER_ID=123456789"
-            )
+        """验证 master_id 基本合法性（最终必填校验在 model_validator 中统一处理）。"""
+        if v < 0:
+            raise ValueError("master_id 不能为负数")
+        if v == 0:
+            return v
         return v
 
     @field_validator("llm_provider")
@@ -391,6 +391,10 @@ class Config(BaseModel):
         env_search_provider = _read_env_str("MIKA_SEARCH_PROVIDER")
         env_search_api_key = _read_env_str("MIKA_SEARCH_API_KEY")
         env_search_extra_headers_json = _read_env_str("MIKA_SEARCH_EXTRA_HEADERS_JSON")
+        env_master_id = _read_env_str("MIKA_MASTER_ID")
+        env_master_name = _read_env_str("MIKA_MASTER_NAME")
+        env_bot_display_name = _read_env_str("MIKA_BOT_DISPLAY_NAME")
+        env_group_whitelist = _read_env_list("MIKA_GROUP_WHITELIST")
 
         if "llm_provider" not in fields_set and env_llm_provider:
             object.__setattr__(self, "llm_provider", self.__class__.validate_llm_provider(env_llm_provider))
@@ -423,6 +427,27 @@ class Config(BaseModel):
                 "search_extra_headers_json",
                 self.__class__.validate_extra_headers_json(env_search_extra_headers_json),
             )
+        if "gemini_master_id" not in fields_set and env_master_id:
+            try:
+                parsed_master_id = int(env_master_id)
+            except ValueError as exc:
+                raise ValueError("MIKA_MASTER_ID 必须是正整数") from exc
+            object.__setattr__(self, "gemini_master_id", self.__class__.validate_master_id(parsed_master_id))
+        if "gemini_master_name" not in fields_set and env_master_name:
+            object.__setattr__(self, "gemini_master_name", env_master_name)
+        if "gemini_bot_display_name" not in fields_set and env_bot_display_name:
+            object.__setattr__(self, "gemini_bot_display_name", env_bot_display_name)
+        if "gemini_group_whitelist" not in fields_set and env_group_whitelist:
+            parsed_group_whitelist: List[int] = []
+            for item in env_group_whitelist:
+                try:
+                    parsed_group_id = int(str(item).strip())
+                except ValueError as exc:
+                    raise ValueError(f"MIKA_GROUP_WHITELIST 包含非数字项: {item}") from exc
+                if parsed_group_id <= 0:
+                    raise ValueError(f"MIKA_GROUP_WHITELIST 包含无效群号: {item}")
+                parsed_group_whitelist.append(parsed_group_id)
+            object.__setattr__(self, "gemini_group_whitelist", parsed_group_whitelist)
 
         # 旧 env 键保留兼容，但提示迁移到新键
         _warn_legacy_env_if_needed(old_key="GEMINI_API_KEY", new_key="MIKA_LLM_API_KEY")
@@ -431,6 +456,10 @@ class Config(BaseModel):
         _warn_legacy_env_if_needed(old_key="GEMINI_MODEL", new_key="MIKA_LLM_MODEL")
         _warn_legacy_env_if_needed(old_key="GEMINI_FAST_MODEL", new_key="MIKA_LLM_FAST_MODEL")
         _warn_legacy_env_if_needed(old_key="SERPER_API_KEY", new_key="MIKA_SEARCH_API_KEY")
+        _warn_legacy_env_if_needed(old_key="GEMINI_MASTER_ID", new_key="MIKA_MASTER_ID")
+        _warn_legacy_env_if_needed(old_key="GEMINI_MASTER_NAME", new_key="MIKA_MASTER_NAME")
+        _warn_legacy_env_if_needed(old_key="GEMINI_BOT_DISPLAY_NAME", new_key="MIKA_BOT_DISPLAY_NAME")
+        _warn_legacy_env_if_needed(old_key="GEMINI_GROUP_WHITELIST", new_key="MIKA_GROUP_WHITELIST")
 
         # 兼容旧配置：若新字段未配置，则自动映射旧 GEMINI_* 字段
         if not llm_api_key and not llm_api_key_list:
@@ -478,6 +507,11 @@ class Config(BaseModel):
         if self.mika_core_runtime_mode == "remote" and not self.mika_core_remote_base_url.strip():
             raise ValueError(
                 "mika_core_runtime_mode=remote 时必须配置 mika_core_remote_base_url"
+            )
+
+        if self.gemini_master_id <= 0:
+            raise ValueError(
+                "MIKA_MASTER_ID 未配置或无效，请在 .env / .env.prod 中设置（兼容 GEMINI_MASTER_ID），例如：MIKA_MASTER_ID=123456789"
             )
         
         return self

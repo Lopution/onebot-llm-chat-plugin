@@ -189,8 +189,8 @@ python3 scripts/config_wizard.py
 | `MIKA_LLM_PROVIDER` | LLM provider（`openai_compat`/`anthropic`/`google_genai`） | ❌ | `openai_compat` |
 | `MIKA_LLM_MODEL` | 主模型名称 | ❌ | `gemini-3-pro-high` |
 | `MIKA_LLM_FAST_MODEL` | 快速模型名称 | ❌ | `gemini-2.5-flash-lite` |
-| `GEMINI_MASTER_ID` | 主人 QQ 号 | ✅ | - |
-| `GEMINI_GROUP_WHITELIST` | 群组白名单 | ❌ | - |
+| `MIKA_MASTER_ID` | 主人 QQ 号（兼容旧键 `GEMINI_MASTER_ID`） | ✅ | - |
+| `MIKA_GROUP_WHITELIST` | 群组白名单（兼容旧键 `GEMINI_GROUP_WHITELIST`） | ❌ | - |
 | `GEMINI_OFFLINE_SYNC_ENABLED` | 离线同步（非标准 API，默认关闭） | ❌ | `false` |
 | `GEMINI_CONTEXT_MODE` | 上下文模式（`legacy`/`structured`） | ❌ | `structured` |
 | `GEMINI_CONTEXT_MAX_TURNS` | 上下文最大轮次（先于按条数截断） | ❌ | `30` |

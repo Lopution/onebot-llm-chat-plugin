@@ -36,6 +36,7 @@ pip install -e .
 
 ```env
 MIKA_LLM_API_KEY=your_api_key_here
+MIKA_MASTER_ID=123456789
 ```
 
 ### 启动机器人

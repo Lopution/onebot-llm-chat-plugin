@@ -57,6 +57,22 @@
 
 - 若未设置 `MIKA_SEARCH_API_KEY`，会回退到 `SERPER_API_KEY`。
 
+## 身份与权限配置
+
+推荐使用新字段：
+
+| 配置项 | 说明 |
+|---|---|
+| `MIKA_MASTER_ID` | 主人 QQ ID（必填） |
+| `MIKA_MASTER_NAME` | 主人称呼（可选） |
+| `MIKA_BOT_DISPLAY_NAME` | 机器人显示名（可选） |
+| `MIKA_GROUP_WHITELIST` | 群白名单（可选，JSON 数组） |
+
+兼容逻辑（自动）：
+
+- 若未设置 `MIKA_MASTER_*`，会回退读取旧键 `GEMINI_MASTER_*`。
+- 若未设置 `MIKA_GROUP_WHITELIST`，会回退读取 `GEMINI_GROUP_WHITELIST`。
+
 ### Search 能力矩阵（当前实现）
 
 | Provider | 说明 |

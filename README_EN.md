@@ -190,8 +190,8 @@ python3 scripts/config_wizard.py
 | `MIKA_LLM_PROVIDER` | LLM provider (`openai_compat` / `anthropic` / `google_genai`) | ❌ | `openai_compat` |
 | `MIKA_LLM_MODEL` | Primary model | ❌ | `gemini-3-pro-high` |
 | `MIKA_LLM_FAST_MODEL` | Fast model | ❌ | `gemini-2.5-flash-lite` |
-| `GEMINI_MASTER_ID` | Master QQ ID | ✅ | - |
-| `GEMINI_GROUP_WHITELIST` | Group whitelist | ❌ | - |
+| `MIKA_MASTER_ID` | Master QQ ID (compatible with legacy `GEMINI_MASTER_ID`) | ✅ | - |
+| `MIKA_GROUP_WHITELIST` | Group whitelist (compatible with legacy `GEMINI_GROUP_WHITELIST`) | ❌ | - |
 | `GEMINI_OFFLINE_SYNC_ENABLED` | Offline sync (non-standard API, off by default) | ❌ | `false` |
 | `GEMINI_CONTEXT_MODE` | Context mode (`legacy`/`structured`) | ❌ | `structured` |
 | `GEMINI_CONTEXT_MAX_TURNS` | Max context turns (applied before raw message count trim) | ❌ | `30` |

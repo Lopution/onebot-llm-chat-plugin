@@ -80,7 +80,7 @@ def env_has_required_values(path: Path) -> bool:
     env_map = read_env_map(path)
     api_key = env_map.get("MIKA_LLM_API_KEY", "") or env_map.get("GEMINI_API_KEY", "")
     key_list = env_map.get("MIKA_LLM_API_KEY_LIST", "") or env_map.get("GEMINI_API_KEY_LIST", "")
-    master_id = env_map.get("GEMINI_MASTER_ID", "")
+    master_id = env_map.get("MIKA_MASTER_ID", "") or env_map.get("GEMINI_MASTER_ID", "")
     return bool((api_key or key_list) and master_id and master_id != "0")
 
 

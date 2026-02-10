@@ -119,11 +119,15 @@ def main() -> int:
         api_key = ask_input("请输入 MIKA_LLM_API_KEY（单 key）", default=current_api_key, required=True)
         updates["MIKA_LLM_API_KEY"] = api_key
 
-    current_master = env_values.get("GEMINI_MASTER_ID", "")
+    current_master = env_values.get("MIKA_MASTER_ID", "") or env_values.get("GEMINI_MASTER_ID", "")
     need_master = args.all or (not current_master or current_master == "0")
     if need_master:
-        master_id = ask_input("请输入 GEMINI_MASTER_ID（你的 QQ 号）", default="" if current_master == "0" else current_master, required=True)
-        updates["GEMINI_MASTER_ID"] = master_id
+        master_id = ask_input(
+            "请输入 MIKA_MASTER_ID（你的 QQ 号）",
+            default="" if current_master == "0" else current_master,
+            required=True,
+        )
+        updates["MIKA_MASTER_ID"] = master_id
 
     if args.all:
         host = ask_input("HOST", default=env_values.get("HOST", "0.0.0.0"))
@@ -131,7 +135,7 @@ def main() -> int:
         updates["HOST"] = host
         updates["PORT"] = port
 
-        whitelist_default = env_values.get("GEMINI_GROUP_WHITELIST", "")
+        whitelist_default = env_values.get("MIKA_GROUP_WHITELIST", "") or env_values.get("GEMINI_GROUP_WHITELIST", "")
         whitelist_raw = ask_input(
             "群白名单（逗号分隔，留空=不限制）",
             default=whitelist_default,
@@ -139,7 +143,7 @@ def main() -> int:
         )
         normalized = normalize_whitelist(whitelist_raw)
         if normalized:
-            updates["GEMINI_GROUP_WHITELIST"] = normalized
+            updates["MIKA_GROUP_WHITELIST"] = normalized
 
     if not updates:
         print("当前 .env 已满足最小必需配置，无需修改。")
