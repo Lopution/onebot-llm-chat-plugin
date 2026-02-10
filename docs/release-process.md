@@ -31,6 +31,8 @@
 
 合并策略建议使用 GitHub 的 **Squash merge**，让每个 PR 对应 `main` 上一个提交，便于回滚与追溯。
 
+建议为 `main` 开启分支保护：要求 PR + CI（tests.yml 的 pytest matrix）通过后才允许合并。
+
 ## Release Steps
 
 推荐按以下步骤发布（适用于 GitHub Actions 自动发布）：
