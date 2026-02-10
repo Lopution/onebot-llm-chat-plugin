@@ -62,7 +62,7 @@ class TestConfigValidation:
             Config(gemini_api_key="", gemini_api_key_list=[], gemini_master_id=123456789)
         
         error_msg = str(exc_info.value)
-        assert "gemini_api_key" in error_msg or "至少一个" in error_msg
+        assert "gemini_api_key" in error_msg or "至少配置一个" in error_msg
     
     def test_config_with_short_api_key_raises_error(self, invalid_api_key_short: str):
         """测试 API Key 过短时抛出验证错误"""

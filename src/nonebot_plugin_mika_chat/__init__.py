@@ -36,7 +36,7 @@ if PluginMetadata is not None:
     __plugin_meta__ = PluginMetadata(
         name="mika_chat",
         description="NoneBot adapter for Mika Chat Core (OneBot v11/v12)",
-        usage="配置 GEMINI_API_KEY 和 GEMINI_MASTER_ID 后启动；群聊通过 @ 触发回复。",
+        usage="配置 MIKA_LLM_API_KEY（兼容 GEMINI_API_KEY）与 GEMINI_MASTER_ID 后启动；群聊通过 @ 触发回复。",
         type="application",
         homepage="https://github.com/Lopution/mika-chat-core",
         config=Config,

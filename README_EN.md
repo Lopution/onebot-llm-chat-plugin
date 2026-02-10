@@ -180,11 +180,16 @@ python3 scripts/config_wizard.py
 
 #### Config Reference
 
+> Note: from this version, prefer `MIKA_LLM_*` / `MIKA_SEARCH_*` as canonical keys for LLM/Search.  
+> Legacy `GEMINI_*` / `SERPER_API_KEY` are still supported for compatibility.
+
 | Key | Description | Required | Default |
 |-----|-------------|:--------:|---------|
-| `GEMINI_API_KEY` | Gemini API key | ✅ | - |
-| `GEMINI_BASE_URL` | API base URL (for proxy/gateway) | ❌ | - |
-| `GEMINI_MODEL` | Primary model | ❌ | `gemini-3-pro-high` |
+| `MIKA_LLM_API_KEY` | LLM API key (compatible with legacy `GEMINI_API_KEY`) | ✅ | - |
+| `MIKA_LLM_BASE_URL` | LLM API base URL (proxy/gateway use) | ❌ | - |
+| `MIKA_LLM_PROVIDER` | LLM provider (`openai_compat` / `anthropic` / `google_genai`) | ❌ | `openai_compat` |
+| `MIKA_LLM_MODEL` | Primary model | ❌ | `gemini-3-pro-high` |
+| `MIKA_LLM_FAST_MODEL` | Fast model | ❌ | `gemini-2.5-flash-lite` |
 | `GEMINI_MASTER_ID` | Master QQ ID | ✅ | - |
 | `GEMINI_GROUP_WHITELIST` | Group whitelist | ❌ | - |
 | `GEMINI_OFFLINE_SYNC_ENABLED` | Offline sync (non-standard API, off by default) | ❌ | `false` |
@@ -216,7 +221,7 @@ python3 scripts/config_wizard.py
 | `GEMINI_ACTIVE_REPLY_LTM_ENABLED` | Global gate for proactive LTM-like reply | ❌ | `true` |
 | `GEMINI_ACTIVE_REPLY_PROBABILITY` | Final probability gate for proactive reply (0~1) | ❌ | `1.0` |
 | `GEMINI_ACTIVE_REPLY_WHITELIST` | Group whitelist for proactive reply (empty = no extra limit) | ❌ | `[]` |
-| `SERPER_API_KEY` | Serper API key | ❌ | - |
+| `MIKA_SEARCH_API_KEY` | Search API key (compatible with `SERPER_API_KEY`) | ❌ | - |
 | `MIKA_STRICT_STARTUP` | Strict startup mode (fail-fast on loader errors) | ❌ | `false` |
 
 > 📖 Full config: [`docs/api/config.md`](docs/api/config.md)

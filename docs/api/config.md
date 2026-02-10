@@ -19,16 +19,17 @@
 
 | 配置项 | 说明 |
 |---|---|
-| `LLM_PROVIDER` | `openai_compat` / `anthropic` / `google_genai` |
-| `LLM_BASE_URL` | API 基地址（`openai_compat` 常用） |
-| `LLM_API_KEY` | 主 key |
-| `LLM_API_KEY_LIST` | 轮换 key 列表 |
-| `LLM_MODEL` | 主模型 |
-| `LLM_FAST_MODEL` | 快速模型 |
+| `MIKA_LLM_PROVIDER` | `openai_compat` / `anthropic` / `google_genai` |
+| `MIKA_LLM_BASE_URL` | API 基地址（`openai_compat` 常用） |
+| `MIKA_LLM_API_KEY` | 主 key |
+| `MIKA_LLM_API_KEY_LIST` | 轮换 key 列表 |
+| `MIKA_LLM_MODEL` | 主模型 |
+| `MIKA_LLM_FAST_MODEL` | 快速模型 |
+| `MIKA_LLM_EXTRA_HEADERS_JSON` | 额外请求头（JSON 字符串） |
 
 兼容逻辑（自动）：
 
-- 若未设置 `LLM_*`，会回退读取 `GEMINI_*`。
+- 若未设置 `MIKA_LLM_*`，会回退读取旧键 `GEMINI_*`。
 - 默认兼容模式是 `openai_compat`，可接 OpenAI / OpenRouter / NewAPI / 多数兼容网关。
 
 ### LLM 能力矩阵（当前实现）
@@ -48,20 +49,20 @@
 
 | 配置项 | 说明 |
 |---|---|
-| `SEARCH_PROVIDER` | `serper` / `tavily` |
-| `SEARCH_API_KEY` | 搜索服务 key |
-| `SEARCH_EXTRA_HEADERS_JSON` | 额外请求头（JSON 字符串） |
+| `MIKA_SEARCH_PROVIDER` | `serper` / `tavily` |
+| `MIKA_SEARCH_API_KEY` | 搜索服务 key |
+| `MIKA_SEARCH_EXTRA_HEADERS_JSON` | 额外请求头（JSON 字符串） |
 
 兼容逻辑（自动）：
 
-- 若未设置 `SEARCH_API_KEY`，会回退到 `SERPER_API_KEY`。
+- 若未设置 `MIKA_SEARCH_API_KEY`，会回退到 `SERPER_API_KEY`。
 
 ### Search 能力矩阵（当前实现）
 
 | Provider | 说明 |
 |---|---|
 | `serper` | 默认 provider，支持结果过滤、可信源排序、注入文本生成 |
-| `tavily` | 可通过 `SEARCH_PROVIDER=tavily` 切换，沿用同一编排/缓存/去重策略 |
+| `tavily` | 可通过 `MIKA_SEARCH_PROVIDER=tavily` 切换，沿用同一编排/缓存/去重策略 |
 
 ## Core Runtime 配置（Stage C）
 

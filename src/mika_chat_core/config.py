@@ -14,6 +14,7 @@ from pathlib import Path
 import json
 import os
 import re
+import warnings
 
 
 # ==================== Gemini API Key 占位符检测（仅用于 gemini_api_key / gemini_api_key_list） ====================
@@ -60,6 +61,39 @@ def _get_project_relative_path(subpath: str) -> str:
     """获取项目相对路径"""
     project_root = Path(__file__).parent.parent.parent.parent
     return str(project_root / subpath)
+
+
+def _read_env_str(key: str) -> str:
+    value = os.getenv(key)
+    if value is None:
+        return ""
+    return value.strip()
+
+
+def _read_env_list(key: str) -> List[str]:
+    raw = _read_env_str(key)
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, list):
+            return [str(item).strip() for item in parsed if str(item).strip()]
+    except Exception:
+        pass
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def _warn_legacy_env_if_needed(*, old_key: str, new_key: str) -> None:
+    old_value = _read_env_str(old_key)
+    if not old_value:
+        return
+    if _read_env_str(new_key):
+        return
+    warnings.warn(
+        f"检测到旧环境变量 {old_key}，建议迁移到 {new_key}（当前仍兼容）。",
+        UserWarning,
+        stacklevel=3,
+    )
 
 
 
@@ -342,6 +376,61 @@ class Config(BaseModel):
         """验证配置并设置默认值"""
         llm_api_key = self.llm_api_key.strip()
         llm_api_key_list = [item for item in self.llm_api_key_list if item]
+        fields_set = set(getattr(self, "__pydantic_fields_set__", set()))
+
+        # 新版 canonical env（MIKA_LLM_* / MIKA_SEARCH_*）直读：
+        # 在宿主配置层未显式提供字段时，优先从环境变量补齐。
+        env_llm_provider = _read_env_str("MIKA_LLM_PROVIDER")
+        env_llm_base_url = _read_env_str("MIKA_LLM_BASE_URL")
+        env_llm_api_key = _read_env_str("MIKA_LLM_API_KEY")
+        env_llm_api_key_list = _read_env_list("MIKA_LLM_API_KEY_LIST")
+        env_llm_model = _read_env_str("MIKA_LLM_MODEL")
+        env_llm_fast_model = _read_env_str("MIKA_LLM_FAST_MODEL")
+        env_llm_extra_headers_json = _read_env_str("MIKA_LLM_EXTRA_HEADERS_JSON")
+
+        env_search_provider = _read_env_str("MIKA_SEARCH_PROVIDER")
+        env_search_api_key = _read_env_str("MIKA_SEARCH_API_KEY")
+        env_search_extra_headers_json = _read_env_str("MIKA_SEARCH_EXTRA_HEADERS_JSON")
+
+        if "llm_provider" not in fields_set and env_llm_provider:
+            object.__setattr__(self, "llm_provider", self.__class__.validate_llm_provider(env_llm_provider))
+        if "llm_base_url" not in fields_set and env_llm_base_url:
+            object.__setattr__(self, "llm_base_url", self.__class__.validate_llm_base_url(env_llm_base_url))
+        if "llm_api_key" not in fields_set and env_llm_api_key:
+            llm_api_key = self.__class__.validate_llm_api_key(env_llm_api_key)
+            object.__setattr__(self, "llm_api_key", llm_api_key)
+        if "llm_api_key_list" not in fields_set and env_llm_api_key_list:
+            llm_api_key_list = self.__class__.validate_llm_api_key_list(env_llm_api_key_list)
+            object.__setattr__(self, "llm_api_key_list", llm_api_key_list)
+        if "llm_model" not in fields_set and env_llm_model:
+            object.__setattr__(self, "llm_model", env_llm_model)
+        if "llm_fast_model" not in fields_set and env_llm_fast_model:
+            object.__setattr__(self, "llm_fast_model", env_llm_fast_model)
+        if "llm_extra_headers_json" not in fields_set and env_llm_extra_headers_json:
+            object.__setattr__(
+                self,
+                "llm_extra_headers_json",
+                self.__class__.validate_extra_headers_json(env_llm_extra_headers_json),
+            )
+
+        if "search_provider" not in fields_set and env_search_provider:
+            object.__setattr__(self, "search_provider", self.__class__.validate_search_provider(env_search_provider))
+        if "search_api_key" not in fields_set and env_search_api_key:
+            object.__setattr__(self, "search_api_key", env_search_api_key)
+        if "search_extra_headers_json" not in fields_set and env_search_extra_headers_json:
+            object.__setattr__(
+                self,
+                "search_extra_headers_json",
+                self.__class__.validate_extra_headers_json(env_search_extra_headers_json),
+            )
+
+        # 旧 env 键保留兼容，但提示迁移到新键
+        _warn_legacy_env_if_needed(old_key="GEMINI_API_KEY", new_key="MIKA_LLM_API_KEY")
+        _warn_legacy_env_if_needed(old_key="GEMINI_API_KEY_LIST", new_key="MIKA_LLM_API_KEY_LIST")
+        _warn_legacy_env_if_needed(old_key="GEMINI_BASE_URL", new_key="MIKA_LLM_BASE_URL")
+        _warn_legacy_env_if_needed(old_key="GEMINI_MODEL", new_key="MIKA_LLM_MODEL")
+        _warn_legacy_env_if_needed(old_key="GEMINI_FAST_MODEL", new_key="MIKA_LLM_FAST_MODEL")
+        _warn_legacy_env_if_needed(old_key="SERPER_API_KEY", new_key="MIKA_SEARCH_API_KEY")
 
         # 兼容旧配置：若新字段未配置，则自动映射旧 GEMINI_* 字段
         if not llm_api_key and not llm_api_key_list:
@@ -365,8 +454,8 @@ class Config(BaseModel):
         # 确保至少配置了一个 API Key
         if not self.llm_api_key and not self.llm_api_key_list and not self.gemini_api_key and not self.gemini_api_key_list:
             raise ValueError(
-                "必须至少配置 GEMINI_API_KEY 或 GEMINI_API_KEY_LIST 其中的至少一个，例如："
-                "GEMINI_API_KEY=\"你的Key\" 或 GEMINI_API_KEY_LIST=[\"key1\", \"key2\"]"
+                "必须至少配置一个 API Key：MIKA_LLM_API_KEY / MIKA_LLM_API_KEY_LIST（推荐）"
+                "或兼容旧键 GEMINI_API_KEY / GEMINI_API_KEY_LIST 其中之一。"
             )
         
         # 如果语义模型路径未配置，使用项目相对路径作为默认值

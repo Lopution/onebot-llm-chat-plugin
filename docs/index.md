@@ -35,7 +35,7 @@ pip install -e .
 复制 `.env.example` 为 `.env` 并填写配置：
 
 ```env
-GEMINI_API_KEY=your_api_key_here
+MIKA_LLM_API_KEY=your_api_key_here
 ```
 
 ### 启动机器人

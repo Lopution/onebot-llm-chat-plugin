@@ -91,8 +91,8 @@ def check_env() -> tuple[CheckResult, dict[str, str]]:
             {},
         )
     env_map = read_env(env_file)
-    api_key = env_map.get("GEMINI_API_KEY", "")
-    key_list = env_map.get("GEMINI_API_KEY_LIST", "")
+    api_key = env_map.get("MIKA_LLM_API_KEY", "") or env_map.get("GEMINI_API_KEY", "")
+    key_list = env_map.get("MIKA_LLM_API_KEY_LIST", "") or env_map.get("GEMINI_API_KEY_LIST", "")
     master_id = env_map.get("GEMINI_MASTER_ID", "")
     if (api_key or key_list) and master_id and master_id != "0":
         return CheckResult("PASS", "关键配置", f"使用 {env_file.name}"), env_map
@@ -100,7 +100,7 @@ def check_env() -> tuple[CheckResult, dict[str, str]]:
         CheckResult(
             "FAIL",
             "关键配置",
-            f"{env_file.name} 缺少 GEMINI_API_KEY(或 KEY_LIST) / GEMINI_MASTER_ID",
+            f"{env_file.name} 缺少 MIKA_LLM_API_KEY(或 KEY_LIST，兼容 GEMINI_*) / GEMINI_MASTER_ID",
             "运行: python scripts/config_wizard.py",
         ),
         env_map,

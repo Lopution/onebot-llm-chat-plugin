@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from mika_chat_core.config import Config
 
 
@@ -29,3 +31,33 @@ def test_search_provider_config_supports_tavily():
     search_cfg = config.get_search_provider_config()
     assert search_cfg["provider"] == "tavily"
     assert search_cfg["api_key"] == "tavily-key"
+
+
+def test_mika_llm_env_aliases_are_applied(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("MIKA_LLM_PROVIDER", "openai_compat")
+    monkeypatch.setenv("MIKA_LLM_BASE_URL", "https://api.openai.com/v1")
+    monkeypatch.setenv("MIKA_LLM_API_KEY", "B" * 32)
+    monkeypatch.setenv("MIKA_LLM_MODEL", "gpt-4o-mini")
+    monkeypatch.setenv("MIKA_LLM_FAST_MODEL", "gpt-4o-mini")
+    monkeypatch.setenv("MIKA_SEARCH_PROVIDER", "tavily")
+    monkeypatch.setenv("MIKA_SEARCH_API_KEY", "tavily-key")
+
+    config = Config(gemini_master_id=123456789)
+    llm_cfg = config.get_llm_config()
+    search_cfg = config.get_search_provider_config()
+
+    assert llm_cfg["provider"] == "openai_compat"
+    assert llm_cfg["base_url"] == "https://api.openai.com/v1"
+    assert llm_cfg["model"] == "gpt-4o-mini"
+    assert llm_cfg["fast_model"] == "gpt-4o-mini"
+    assert llm_cfg["api_keys"][0] == "B" * 32
+    assert search_cfg["provider"] == "tavily"
+    assert search_cfg["api_key"] == "tavily-key"
+
+
+def test_legacy_env_emits_deprecation_warning(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "A" * 32)
+    monkeypatch.delenv("MIKA_LLM_API_KEY", raising=False)
+
+    with pytest.warns(UserWarning, match="GEMINI_API_KEY"):
+        Config(gemini_master_id=123456789, gemini_api_key="A" * 32)

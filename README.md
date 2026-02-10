@@ -179,11 +179,16 @@ python3 scripts/config_wizard.py
 
 #### 配置项说明
 
+> 说明：从当前版本起，LLM/Search 主入口推荐使用 `MIKA_LLM_*` / `MIKA_SEARCH_*`。  
+> 旧键 `GEMINI_*` / `SERPER_API_KEY` 仍兼容，但会逐步弃用。
+
 | 配置项 | 说明 | 必填 | 默认值 |
 |--------|------|:----:|--------|
-| `GEMINI_API_KEY` | Gemini API Key | ✅ | - |
-| `GEMINI_BASE_URL` | API 基础地址（使用中转时填写） | ❌ | - |
-| `GEMINI_MODEL` | 主模型名称 | ❌ | `gemini-3-pro-high` |
+| `MIKA_LLM_API_KEY` | LLM API Key（兼容旧键 `GEMINI_API_KEY`） | ✅ | - |
+| `MIKA_LLM_BASE_URL` | LLM API 基础地址（中转/网关场景） | ❌ | - |
+| `MIKA_LLM_PROVIDER` | LLM provider（`openai_compat`/`anthropic`/`google_genai`） | ❌ | `openai_compat` |
+| `MIKA_LLM_MODEL` | 主模型名称 | ❌ | `gemini-3-pro-high` |
+| `MIKA_LLM_FAST_MODEL` | 快速模型名称 | ❌ | `gemini-2.5-flash-lite` |
 | `GEMINI_MASTER_ID` | 主人 QQ 号 | ✅ | - |
 | `GEMINI_GROUP_WHITELIST` | 群组白名单 | ❌ | - |
 | `GEMINI_OFFLINE_SYNC_ENABLED` | 离线同步（非标准 API，默认关闭） | ❌ | `false` |
@@ -215,7 +220,7 @@ python3 scripts/config_wizard.py
 | `GEMINI_ACTIVE_REPLY_LTM_ENABLED` | 主动回复 LTM 门控总开关 | ❌ | `true` |
 | `GEMINI_ACTIVE_REPLY_PROBABILITY` | 主动回复最终概率门控（0~1） | ❌ | `1.0` |
 | `GEMINI_ACTIVE_REPLY_WHITELIST` | 允许主动回复的群白名单（空=不额外限制） | ❌ | `[]` |
-| `SERPER_API_KEY` | Serper 搜索 API Key | ❌ | - |
+| `MIKA_SEARCH_API_KEY` | 搜索 API Key（兼容旧键 `SERPER_API_KEY`） | ❌ | - |
 | `MIKA_STRICT_STARTUP` | 严格启动模式（加载失败直接退出） | ❌ | `false` |
 
 > 📖 完整配置说明请参阅 [`docs/api/config.md`](docs/api/config.md)

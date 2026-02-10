@@ -112,12 +112,12 @@ def main() -> int:
 
     updates: dict[str, str] = {}
 
-    current_api_key = env_values.get("GEMINI_API_KEY", "")
-    current_key_list = env_values.get("GEMINI_API_KEY_LIST", "")
+    current_api_key = env_values.get("MIKA_LLM_API_KEY", "") or env_values.get("GEMINI_API_KEY", "")
+    current_key_list = env_values.get("MIKA_LLM_API_KEY_LIST", "") or env_values.get("GEMINI_API_KEY_LIST", "")
     need_api = args.all or (not current_api_key and not current_key_list)
     if need_api:
-        api_key = ask_input("请输入 GEMINI_API_KEY（单 key）", default=current_api_key, required=True)
-        updates["GEMINI_API_KEY"] = api_key
+        api_key = ask_input("请输入 MIKA_LLM_API_KEY（单 key）", default=current_api_key, required=True)
+        updates["MIKA_LLM_API_KEY"] = api_key
 
     current_master = env_values.get("GEMINI_MASTER_ID", "")
     need_master = args.all or (not current_master or current_master == "0")
