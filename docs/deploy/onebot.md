@@ -41,6 +41,38 @@ nonebot.load_plugin("nonebot_plugin_mika_chat")
 
 > 说明：NoneBot 是当前默认宿主，不是唯一方向。后续可基于 `mika_chat_core` 增加其它宿主适配层。
 
+## 适配层与核心职责边界（当前约定）
+
+为支持后续多框架扩展，当前职责按下列边界收敛：
+
+- `mika_chat_core`（核心）负责：
+  - 对话编排、上下文存储、工具编排、provider/search 抽象
+  - 宿主无关的数据结构（如 `contracts.EventEnvelope`）
+  - 通过 `runtime` 读取配置、logger、路径等端口
+- `nonebot_plugin_mika_chat`（适配层）负责：
+  - NoneBot matcher 注册与生命周期 hook
+  - NoneBot/OneBot 事件转换（host event -> core envelope）
+  - 宿主专有 API 能力注入（如 get_msg、本地路径端口、工具 override）
+
+开发约束：
+
+- 核心包不直接导入 `nonebot*`（由测试守卫约束）
+- 宿主相关行为只允许出现在适配层目录中
+- 兼容回退必须显式可见（日志/文档可追踪），禁止在核心路径新增静默回退
+
+### 收尾门禁（Stage B-D）
+
+当前 Stage B-D 的收尾与冻结门禁，以本地计划文件为准：
+
+- `plans/HOST_DECOUPLING_EXEC_PLAN.md`
+
+门禁要求的关键验证项：
+
+- 核心导入守卫：`tests/test_core_no_nonebot_imports.py`
+- 无宿主运行时导入：`tests/test_core_import_without_host_runtime.py`
+- 协议语义一致性：`tests/test_stage_b_protocol_semantics.py`
+- Core Service 关键路径：`tests/test_core_service.py`
+
 ### 已有 NoneBot 宿主时（最短接入）
 
 如果你已经有自己的 NoneBot2 项目，不需要使用本仓库的 `bot.py`：
@@ -173,6 +205,7 @@ Forward 调用的典型 API：
 - `GET /health`：返回数据库状态、客户端状态，以及可选的 API 主动探测结果。  
 - `GET /metrics`：默认返回 JSON 指标快照；当 `Accept: text/plain` 或 `?format=prometheus` 时，可返回 Prometheus 文本（需启用 `GEMINI_METRICS_PROMETHEUS_ENABLED=true`）。  
 - `GET /metrics/prometheus`：固定返回 Prometheus 文本格式（若禁用会返回 404）。
+- `POST /v1/events`：Core Service 入口（输入 `EventEnvelope`，返回 `Action[]`，用于跨语言宿主适配）。
 
 可选开关（默认保守）：
 - `GEMINI_METRICS_PROMETHEUS_ENABLED=true`
@@ -218,3 +251,17 @@ P0 之后默认策略是“传输层先收敛，业务层不盲重试”：
 - `GEMINI_ACTIVE_REPLY_WHITELIST=["123456789"]`
 
 其中 `GEMINI_ACTIVE_REPLY_WHITELIST` 留空表示不额外限制群范围（仍受主白名单与原有 proactive 规则控制）。
+
+## Core Service（Stage C）最小说明
+
+默认 `embedded` 模式无需额外配置。若要验证跨语言调用，可切到 `remote`：
+
+```env
+MIKA_CORE_RUNTIME_MODE=remote
+MIKA_CORE_REMOTE_BASE_URL=http://127.0.0.1:8080
+# 可选
+# MIKA_CORE_SERVICE_TOKEN=your-token
+```
+
+`remote` 模式下，适配层会把统一事件结构（`EventEnvelope`）POST 到 `/v1/events`，拿到动作后再执行。
+如果远端不可用，会自动回退到本地 `embedded` 调用链路。
