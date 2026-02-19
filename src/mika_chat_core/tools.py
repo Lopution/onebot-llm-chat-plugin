@@ -11,16 +11,36 @@ from typing import Any, Callable, Dict
 from .infra.logging import logger
 from .runtime import get_config as get_runtime_config
 from .runtime import get_tool_override
+from .tools_registry import ToolDefinition, get_tool_registry
 
 
 TOOL_HANDLERS: Dict[str, Callable] = {}
+_registry = get_tool_registry()
 
 
-def tool(name: str):
+def tool(
+    name: str,
+    *,
+    description: str = "",
+    parameters: Dict[str, Any] | None = None,
+    source: str = "builtin",
+    enabled: bool = True,
+):
     """工具注册装饰器。"""
 
     def decorator(func: Callable) -> Callable:
         TOOL_HANDLERS[name] = func
+        _registry.register(
+            ToolDefinition(
+                name=name,
+                description=description.strip() or str(getattr(func, "__doc__", "") or "").strip() or name,
+                parameters=dict(parameters or {"type": "object", "properties": {}}),
+                handler=func,  # type: ignore[arg-type]
+                source=source,
+                enabled=enabled,
+            ),
+            replace=True,
+        )
         return func
 
     return decorator
@@ -31,7 +51,16 @@ def _resolve_tool_override(name: str) -> Callable | None:
     return override if callable(override) else None
 
 
-@tool("search_group_history")
+@tool(
+    "search_group_history",
+    description="搜索当前会话的历史消息记录。仅用于查询聊天上下文，不用于互联网实时信息。",
+    parameters={
+        "type": "object",
+        "properties": {
+            "count": {"type": "integer", "description": "要获取的历史消息数量，默认20，最大50"}
+        },
+    },
+)
 async def handle_search_group_history(args: dict, group_id: str) -> str:
     """群聊历史搜索工具（支持宿主覆盖）。"""
     override = _resolve_tool_override("search_group_history")
@@ -89,7 +118,17 @@ async def handle_search_group_history(args: dict, group_id: str) -> str:
         return f"翻记录时出错了：{str(exc)}"
 
 
-@tool("web_search")
+@tool(
+    "web_search",
+    description="搜索互联网获取实时信息。适用于新闻、天气、价格、赛事等时效性问题。",
+    parameters={
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "搜索关键词，应简洁明确"}
+        },
+        "required": ["query"],
+    },
+)
 async def handle_web_search(args: dict, group_id: str = "") -> str:
     """Web 搜索工具处理器。"""
     from .utils.search_engine import google_search
@@ -100,7 +139,22 @@ async def handle_web_search(args: dict, group_id: str = "") -> str:
     return result if result else "未找到相关搜索结果"
 
 
-@tool("fetch_history_images")
+@tool(
+    "fetch_history_images",
+    description="按消息ID回取历史图片，支持图片二阶段分析。",
+    parameters={
+        "type": "object",
+        "properties": {
+            "msg_ids": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "需要回取图片的消息ID列表",
+            },
+            "max_images": {"type": "integer", "description": "最多回取图片数量"},
+        },
+        "required": ["msg_ids"],
+    },
+)
 async def handle_fetch_history_images(args: dict, group_id: str = "") -> str:
     """历史图片回取工具（支持宿主覆盖）。"""
     override = _resolve_tool_override("fetch_history_images")
@@ -119,11 +173,11 @@ async def handle_fetch_history_images(args: dict, group_id: str = "") -> str:
             plugin_config = get_runtime_config()
         except Exception:
             plugin_config = Config(  # type: ignore[call-arg]
-                gemini_api_key="test-api-key-12345678901234567890",
-                gemini_master_id=1,
+                llm_api_key="test-api-key-12345678901234567890",
+                mika_master_id="1",
             )
 
-        max_allowed = int(getattr(plugin_config, "gemini_history_image_two_stage_max", 2) or 2)
+        max_allowed = int(getattr(plugin_config, "mika_history_image_two_stage_max", 2) or 2)
 
         group_id_str = str(group_id or "").strip()
         if not group_id_str:
@@ -140,7 +194,7 @@ async def handle_fetch_history_images(args: dict, group_id: str = "") -> str:
             metrics.history_image_fetch_tool_fail_total += 1
             return json.dumps({"error": "No msg_ids provided", "images": []})
 
-        msg_ids = msg_ids[: max_images + 1]
+        msg_ids = msg_ids[:max_images]
 
         image_cache = get_image_cache()
         processor = get_image_processor()
@@ -278,6 +332,190 @@ async def handle_fetch_history_images(args: dict, group_id: str = "") -> str:
         return json.dumps({"error": str(exc), "images": []})
 
 
+@tool(
+    "search_knowledge",
+    description="检索本地知识库（RAG）。适用于文档问答、设定查询、群规/FAQ 等非实时知识。",
+    parameters={
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "检索问题或关键词"},
+            "corpus_id": {"type": "string", "description": "可选：指定知识库 corpus"},
+            "top_k": {"type": "integer", "description": "可选：返回条数，默认 5"},
+        },
+        "required": ["query"],
+    },
+)
+async def handle_search_knowledge(args: dict, group_id: str = "") -> str:
+    from .config import Config
+    from .utils.knowledge_store import get_knowledge_store
+    from .utils.semantic_matcher import semantic_matcher
+
+    try:
+        try:
+            runtime_cfg = get_runtime_config()
+        except Exception:
+            runtime_cfg = Config(  # type: ignore[call-arg]
+                llm_api_key="test-api-key-12345678901234567890",
+                mika_master_id="1",
+            )
+
+        if not bool(getattr(runtime_cfg, "mika_knowledge_enabled", False)):
+            return "知识库功能未开启。"
+
+        query = str((args or {}).get("query") or "").strip()
+        if not query:
+            return "缺少 query 参数。"
+
+        query_embedding = semantic_matcher.encode(query)
+        if query_embedding is None:
+            return "语义向量不可用（请检查语义模型是否可用）。"
+
+        corpus_id = str((args or {}).get("corpus_id") or "").strip()
+        if not corpus_id:
+            corpus_id = str(getattr(runtime_cfg, "mika_knowledge_default_corpus", "default") or "default")
+
+        top_k_raw = (args or {}).get("top_k", getattr(runtime_cfg, "mika_knowledge_search_top_k", 5))
+        top_k = max(1, min(int(top_k_raw or 5), 10))
+        min_similarity = float(
+            getattr(runtime_cfg, "mika_knowledge_min_similarity", 0.5) or 0.5
+        )
+
+        session_key = f"group:{group_id}" if str(group_id or "").strip() else ""
+        store = get_knowledge_store()
+        await store.init_table()
+        results = await store.search(
+            query_embedding,
+            corpus_id=corpus_id,
+            session_key=session_key or None,
+            top_k=top_k,
+            min_similarity=min_similarity,
+        )
+        if not results:
+            return "没有检索到相关知识。"
+
+        lines = []
+        for idx, (entry, score) in enumerate(results, start=1):
+            title = entry.title or entry.doc_id
+            snippet = entry.content.replace("\n", " ").strip()
+            if len(snippet) > 220:
+                snippet = snippet[:220] + "..."
+            lines.append(
+                f"{idx}. ({score:.3f}) [{title}] {snippet} "
+                f"(corpus={entry.corpus_id}, doc={entry.doc_id}, chunk={entry.chunk_id})"
+            )
+            await store.update_recall(entry.id)
+
+        return "[Knowledge Search Results]\n" + "\n".join(lines)
+    except Exception as exc:
+        logger.error(f"search_knowledge: 工具执行失败 | error={exc}", exc_info=True)
+        return f"知识库检索失败：{exc}"
+
+
+@tool(
+    "ingest_knowledge",
+    description="写入知识库文档（文本切片并向量化存储）。通常由管理端调用，不建议模型在普通对话中频繁调用。",
+    parameters={
+        "type": "object",
+        "properties": {
+            "content": {"type": "string", "description": "要写入知识库的文档正文"},
+            "doc_id": {"type": "string", "description": "文档 ID（可选，默认按内容摘要生成）"},
+            "title": {"type": "string", "description": "文档标题（可选）"},
+            "source": {"type": "string", "description": "来源标记（可选）"},
+            "corpus_id": {"type": "string", "description": "知识库 corpus（可选）"},
+            "tags": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "标签（可选）",
+            },
+        },
+        "required": ["content"],
+    },
+)
+async def handle_ingest_knowledge(args: dict, group_id: str = "") -> str:
+    import hashlib
+
+    from .config import Config
+    from .utils.knowledge_chunker import split_text_chunks
+    from .utils.knowledge_store import get_knowledge_store
+    from .utils.semantic_matcher import semantic_matcher
+
+    try:
+        try:
+            runtime_cfg = get_runtime_config()
+        except Exception:
+            runtime_cfg = Config(  # type: ignore[call-arg]
+                llm_api_key="test-api-key-12345678901234567890",
+                mika_master_id="1",
+            )
+
+        if not bool(getattr(runtime_cfg, "mika_knowledge_enabled", False)):
+            return json.dumps({"ok": False, "error": "knowledge_disabled"}, ensure_ascii=False)
+
+        content = str((args or {}).get("content") or "").strip()
+        if not content:
+            return json.dumps({"ok": False, "error": "content_required"}, ensure_ascii=False)
+
+        if len(content) > 120000:
+            return json.dumps({"ok": False, "error": "content_too_large"}, ensure_ascii=False)
+
+        corpus_id = str((args or {}).get("corpus_id") or "").strip()
+        if not corpus_id:
+            corpus_id = str(getattr(runtime_cfg, "mika_knowledge_default_corpus", "default") or "default")
+
+        title = str((args or {}).get("title") or "").strip()
+        source = str((args or {}).get("source") or "").strip()
+        tags = (args or {}).get("tags")
+
+        doc_id = str((args or {}).get("doc_id") or "").strip()
+        if not doc_id:
+            digest = hashlib.sha1(content.encode("utf-8")).hexdigest()[:16]
+            doc_id = f"doc_{digest}"
+
+        chunks = split_text_chunks(
+            content,
+            max_chars=int(getattr(runtime_cfg, "mika_knowledge_chunk_max_chars", 450) or 450),
+            overlap_chars=int(
+                getattr(runtime_cfg, "mika_knowledge_chunk_overlap_chars", 80) or 80
+            ),
+        )
+        if not chunks:
+            return json.dumps({"ok": False, "error": "empty_chunks"}, ensure_ascii=False)
+
+        embeddings = semantic_matcher.encode_batch(chunks)
+        if not embeddings or len(embeddings) != len(chunks):
+            return json.dumps(
+                {"ok": False, "error": "embedding_failed", "chunks": len(chunks)},
+                ensure_ascii=False,
+            )
+
+        session_key = f"group:{group_id}" if str(group_id or "").strip() else ""
+        store = get_knowledge_store()
+        await store.init_table()
+        inserted = await store.upsert_document(
+            corpus_id=corpus_id,
+            doc_id=doc_id,
+            chunks=chunks,
+            embeddings=embeddings,
+            title=title,
+            source=source,
+            tags=tags,
+            session_key=session_key,
+        )
+
+        return json.dumps(
+            {
+                "ok": inserted > 0,
+                "corpus_id": corpus_id,
+                "doc_id": doc_id,
+                "chunks": inserted,
+            },
+            ensure_ascii=False,
+        )
+    except Exception as exc:
+        logger.error(f"ingest_knowledge: 工具执行失败 | error={exc}", exc_info=True)
+        return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
+
+
 from .utils.search_engine import TIME_SENSITIVE_KEYWORDS  # noqa: E402
 
 
@@ -293,4 +531,3 @@ def extract_images(message: Any, max_images: int = 10):
     from .utils.image_processor import extract_images as _extract
 
     return _extract(message, max_images=max_images)
-

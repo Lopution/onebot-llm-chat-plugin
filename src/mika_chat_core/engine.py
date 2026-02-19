@@ -5,13 +5,16 @@ Host-agnostic entrypoint for adapters: `EventEnvelope -> Action[]`.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Optional
 
 from .contracts import ChatMessage, ChatSession, ContentPart, EventEnvelope, NoopAction, SendMessageAction
+from .ports.host_events import HostEventPort
 from .ports.message import MessagePort
 
 
 CoreAction = SendMessageAction | NoopAction
+log = logging.getLogger(__name__)
 
 
 class ChatEngine:
@@ -26,6 +29,32 @@ class ChatEngine:
         if candidate is not None and hasattr(candidate, "send_message"):
             return candidate  # type: ignore[return-value]
         return None
+
+    @staticmethod
+    def _resolve_host_event_port(ports: Any) -> Optional[HostEventPort]:
+        """Best-effort resolve host event port from ports bundle or direct port."""
+        if ports is None:
+            return None
+        if hasattr(ports, "resolve_event"):
+            return ports  # type: ignore[return-value]
+        candidate = getattr(ports, "host_events", None)
+        if candidate is not None and hasattr(candidate, "resolve_event"):
+            return candidate  # type: ignore[return-value]
+        return None
+
+    @staticmethod
+    def _resolve_intent(envelope: EventEnvelope) -> str:
+        intent = str(envelope.meta.get("intent") or "").strip().lower()
+        if intent:
+            return intent
+        session_id = str(envelope.session_id or "").strip().lower()
+        if session_id.startswith("group:"):
+            return "group"
+        if session_id.startswith("private:"):
+            return "private"
+        if envelope.meta.get("group_id"):
+            return "group"
+        return "private"
 
     @staticmethod
     def envelope_to_chat_session(envelope: EventEnvelope) -> ChatSession:
@@ -119,6 +148,67 @@ class ChatEngine:
         return results
 
     @staticmethod
+    async def _try_handle_with_host_runtime(
+        envelope: EventEnvelope,
+        *,
+        host_event_port: HostEventPort,
+        settings: Optional[Any],
+    ) -> Optional[list[CoreAction]]:
+        runtime_ref = host_event_port.resolve_event(envelope)
+        if runtime_ref is None:
+            return None
+
+        intent = ChatEngine._resolve_intent(envelope)
+        if intent not in {"reset", "private", "group"}:
+            return [
+                NoopAction(
+                    type="noop",
+                    reason="unsupported_intent",
+                    meta={"intent": intent, "session_id": envelope.session_id},
+                )
+            ]
+
+        from .handlers import handle_group, handle_private, handle_reset
+        from .runtime import get_client as get_runtime_client
+        from .runtime import get_config as get_runtime_config
+
+        plugin_config = settings or get_runtime_config()
+        mika_client = get_runtime_client()
+
+        if intent == "reset":
+            await handle_reset(
+                envelope,
+                plugin_config=plugin_config,
+                mika_client=mika_client,
+            )
+        elif intent == "private":
+            await handle_private(
+                envelope,
+                plugin_config=plugin_config,
+                mika_client=mika_client,
+            )
+        else:
+            await handle_group(
+                envelope,
+                plugin_config=plugin_config,
+                mika_client=mika_client,
+                is_proactive=bool(envelope.meta.get("is_proactive", False)),
+                proactive_reason=(
+                    str(envelope.meta.get("proactive_reason"))
+                    if envelope.meta.get("proactive_reason") is not None
+                    else None
+                ),
+            )
+
+        return [
+            NoopAction(
+                type="noop",
+                reason="handled_by_host_runtime",
+                meta={"intent": intent, "session_id": envelope.session_id},
+            )
+        ]
+
+    @staticmethod
     async def handle_event(
         envelope: EventEnvelope,
         ports: Any,
@@ -133,6 +223,40 @@ class ChatEngine:
         - Output: host-agnostic actions
         - Optional side effect: dispatch actions when `dispatch=True`
         """
+        host_event_port = ChatEngine._resolve_host_event_port(ports)
+        if host_event_port is not None:
+            runtime_actions = await ChatEngine._try_handle_with_host_runtime(
+                envelope,
+                host_event_port=host_event_port,
+                settings=settings,
+            )
+            if runtime_actions is not None:
+                if dispatch:
+                    message_port = ChatEngine._resolve_message_port(ports)
+                    send_actions = [action for action in runtime_actions if isinstance(action, SendMessageAction)]
+                    if send_actions and message_port is None:
+                        raise ValueError("dispatch requires message port in ports bundle")
+                    if send_actions and message_port is not None:
+                        await ChatEngine.dispatch_actions(runtime_actions, message_port)
+                return runtime_actions
+
+        explicit_intent = str(envelope.meta.get("intent") or "").strip()
+        if explicit_intent:
+            intent = ChatEngine._resolve_intent(envelope)
+            log.warning(
+                "host runtime event not found for explicit intent, skip fallback text action | "
+                "intent=%s session=%s message=%s",
+                intent,
+                envelope.session_id,
+                envelope.message_id,
+            )
+            return [
+                NoopAction(
+                    type="noop",
+                    reason="host_runtime_unavailable",
+                    meta={"intent": intent, "session_id": envelope.session_id},
+                )
+            ]
 
         actions = ChatEngine.envelope_to_actions(envelope, reply_text=reply_text)
         if not dispatch:

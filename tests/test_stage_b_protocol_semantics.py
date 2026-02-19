@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from mika_chat_core.contracts import Author, ContentPart, EventEnvelope
-from mika_chat_core.event_envelope import extract_content_parts
+from mika_chat_core.compat.onebot_envelope import extract_content_parts
 from mika_chat_core.semantic_transcript import (
     build_context_record_text,
     summarize_content_parts,

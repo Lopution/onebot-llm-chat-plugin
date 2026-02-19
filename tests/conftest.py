@@ -56,9 +56,10 @@ def _ensure_dependency_or_stub(package: str, *, force_stub: bool = False) -> Non
 _ensure_dependency_or_stub("pydantic")
 _ensure_dependency_or_stub("httpx")
 _ensure_dependency_or_stub("nonebot")
+_ensure_dependency_or_stub("nonebot_plugin_localstore")
 # 受限沙箱环境里真实 aiosqlite 可能卡死（后台线程无法唤醒事件循环），默认强制使用 stub。
-# 如需在本机/CI 使用真实 aiosqlite 以覆盖更接近生产的行为，可设置：GEMINI_TEST_USE_REAL_AIOSQLITE=1
-_use_real_aiosqlite = os.getenv("GEMINI_TEST_USE_REAL_AIOSQLITE") == "1"
+# 如需在本机/CI 使用真实 aiosqlite 以覆盖更接近生产的行为，可设置：MIKA_TEST_USE_REAL_AIOSQLITE=1
+_use_real_aiosqlite = os.getenv("MIKA_TEST_USE_REAL_AIOSQLITE") == "1"
 _ensure_dependency_or_stub("aiosqlite", force_stub=not _use_real_aiosqlite)
 
 
@@ -111,44 +112,44 @@ def _fake_get_plugin_config(model: object):
     try:
         if callable(model):
             return model(
-                gemini_api_key="test-api-key-12345678901234567890",
-                gemini_api_key_list=[],
-                gemini_base_url="https://test.api.example.com/v1",
-                gemini_model="gemini-test",
-                gemini_validate_on_startup=False,
-                gemini_master_id=123456789,
-                gemini_master_name="TestSensei",
-                gemini_prompt_file="",
-                gemini_system_prompt="测试助手",
-                gemini_max_context=40,
-                gemini_history_count=50,
-                gemini_reply_private=True,
-                gemini_reply_at=True,
-                gemini_max_images=10,
-                gemini_forward_threshold=300,
-                gemini_group_whitelist=[],
+                llm_api_key="test-api-key-12345678901234567890",
+                llm_api_key_list=[],
+                llm_base_url="https://test.api.example.com/v1",
+                llm_model="mika-test",
+                mika_validate_on_startup=False,
+                mika_master_id=123456789,
+                mika_master_name="TestSensei",
+                mika_prompt_file="",
+                mika_system_prompt="测试助手",
+                mika_max_context=40,
+                mika_history_count=50,
+                mika_reply_private=True,
+                mika_reply_at=True,
+                mika_max_images=10,
+                mika_forward_threshold=300,
+                mika_group_whitelist=[],
             )
     except Exception:
         pass
 
     # 兜底：极简 MagicMock（尽量覆盖常用字段）
     fallback = MagicMock()
-    fallback.gemini_api_key = "test-api-key-12345678901234567890"
-    fallback.gemini_api_key_list = []
-    fallback.gemini_base_url = "https://test.api.example.com/v1"
-    fallback.gemini_model = "gemini-test"
-    fallback.gemini_validate_on_startup = False
-    fallback.gemini_master_id = 123456789
-    fallback.gemini_master_name = "TestSensei"
-    fallback.gemini_prompt_file = ""
-    fallback.gemini_system_prompt = "测试助手"
-    fallback.gemini_max_context = 40
-    fallback.gemini_history_count = 50
-    fallback.gemini_reply_private = True
-    fallback.gemini_reply_at = True
-    fallback.gemini_max_images = 10
-    fallback.gemini_forward_threshold = 300
-    fallback.gemini_group_whitelist = []
+    fallback.llm_api_key = "test-api-key-12345678901234567890"
+    fallback.llm_api_key_list = []
+    fallback.llm_base_url = "https://test.api.example.com/v1"
+    fallback.llm_model = "mika-test"
+    fallback.mika_validate_on_startup = False
+    fallback.mika_master_id = 123456789
+    fallback.mika_master_name = "TestSensei"
+    fallback.mika_prompt_file = ""
+    fallback.mika_system_prompt = "测试助手"
+    fallback.mika_max_context = 40
+    fallback.mika_history_count = 50
+    fallback.mika_reply_private = True
+    fallback.mika_reply_at = True
+    fallback.mika_max_images = 10
+    fallback.mika_forward_threshold = 300
+    fallback.mika_group_whitelist = []
     return fallback
 
 # 设置 nonebot 内部的 _driver 变量，让 get_driver() 成功
@@ -182,6 +183,41 @@ def _cleanup_patches():
         pass
 
 atexit.register(_cleanup_patches)
+
+
+@pytest.fixture(autouse=True)
+def reset_runtime_state_between_tests():
+    """清理 runtime 全局状态，避免测试间环境污染。"""
+    from mika_chat_core.config import Config
+    from mika_chat_core import runtime as runtime_module
+    from mika_chat_core.tools_registry import get_tool_registry
+
+    runtime_module.reset_runtime_state()
+    runtime_module.set_config(
+        Config(
+            llm_api_key="test-api-key-12345678901234567890",
+            llm_api_key_list=[],
+            llm_base_url="https://test.api.example.com/v1",
+            llm_model="mika-test",
+            llm_fast_model="mika-test-fast",
+            mika_validate_on_startup=False,
+            mika_master_id=123456789,
+            mika_master_name="TestSensei",
+            mika_prompt_file="",
+            mika_system_prompt="测试助手",
+            mika_max_context=40,
+            mika_history_count=50,
+            mika_reply_private=True,
+            mika_reply_at=True,
+            mika_max_images=10,
+            mika_forward_threshold=300,
+            mika_group_whitelist=[],
+        )
+    )
+    get_tool_registry().clear_sources({"mcp", "plugin"})
+    yield
+    get_tool_registry().clear_sources({"mcp", "plugin"})
+    runtime_module.reset_runtime_state()
 
 
 # ==================== pytest-asyncio 配置 ====================
@@ -241,6 +277,14 @@ async def temp_database(temp_db_path: Path):
     """)
     await conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_archive_key_time ON message_archive(context_key, timestamp)
+    """)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS context_summaries (
+            context_key TEXT PRIMARY KEY,
+            summary TEXT NOT NULL DEFAULT '',
+            source_message_count INTEGER NOT NULL DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
     """)
 
     await conn.commit()
@@ -326,22 +370,22 @@ def mock_api_response_error():
 def test_config_dict():
     """测试用配置字典"""
     return {
-        "gemini_api_key": "test-api-key-1234567890abcdef12345678",
-        "gemini_api_key_list": [],
-        "gemini_base_url": "https://test.api.example.com/v1",
-        "gemini_model": "gemini-test-model",
-        "gemini_validate_on_startup": False,
-        "gemini_master_id": 123456789,
-        "gemini_master_name": "TestMaster",
-        "gemini_prompt_file": "",
-        "gemini_system_prompt": "你是一个测试助手",
-        "gemini_max_context": 10,
-        "gemini_history_count": 20,
-        "gemini_reply_private": True,
-        "gemini_reply_at": True,
-        "gemini_max_images": 5,
-        "gemini_forward_threshold": 200,
-        "gemini_group_whitelist": [111222333, 444555666],
+        "llm_api_key": "test-api-key-1234567890abcdef12345678",
+        "llm_api_key_list": [],
+        "llm_base_url": "https://test.api.example.com/v1",
+        "llm_model": "mika-test-model",
+        "mika_validate_on_startup": False,
+        "mika_master_id": 123456789,
+        "mika_master_name": "TestMaster",
+        "mika_prompt_file": "",
+        "mika_system_prompt": "你是一个测试助手",
+        "mika_max_context": 10,
+        "mika_history_count": 20,
+        "mika_reply_private": True,
+        "mika_reply_at": True,
+        "mika_max_images": 5,
+        "mika_forward_threshold": 200,
+        "mika_group_whitelist": [111222333, 444555666],
     }
 
 
@@ -382,9 +426,9 @@ def mock_nonebot_env():
         
         # Mock config
         mock_config.return_value = MagicMock(
-            gemini_api_key="test-key-12345678901234567890",
-            gemini_master_id=123456789,
-            gemini_master_name="TestSensei"
+            llm_api_key="test-key-12345678901234567890",
+            mika_master_id=123456789,
+            mika_master_name="TestSensei"
         )
         
         # Mock bot
@@ -474,44 +518,16 @@ def temp_prompts_dir(tmp_path: Path) -> Path:
 def sample_prompt_yaml(temp_prompts_dir: Path) -> Path:
     """创建示例提示词 YAML 文件"""
     yaml_content = """
-role:
-  name: "测试角色"
-  name_en: "Test Role"
-  identity: "测试身份描述"
-
-personality:
-  core:
-    - trait: "友好"
-      description: "对用户友好"
-    - trait: "乐于助人"
-      description: "积极帮助解决问题"
-
-social:
-  love:
-    - "编程"
-    - "测试"
-  friends:
-    - name: "小明"
-      trait: "勤奋"
-
-language_style:
-  jk_style: "使用轻松的语气"
-  expressions:
-    - "呢"
-    - "呀"
-  forbidden:
-    - "使用粗话"
-
-interaction_rules:
-  group_chat:
-    - "礼貌回复"
-  knowledge:
-    - "使用搜索工具"
-  context:
-    - "记住历史"
-
-environment:
-  master_info: "测试用户信息"
+name: "测试角色"
+character_prompt: |
+  你是一个测试角色，会用简洁方式回答。
+  你会把 {master_name} 作为称呼。
+dialogue_examples:
+  - scenario: "问候"
+    user: "你好"
+    bot: "你好呀，老师。"
+error_messages:
+  default: "测试默认错误消息"
 """
     yaml_path = temp_prompts_dir / "test_prompt.yaml"
     yaml_path.write_text(yaml_content, encoding="utf-8")

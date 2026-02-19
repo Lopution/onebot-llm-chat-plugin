@@ -1,7 +1,7 @@
 """Host-agnostic contracts for adapters and core engine.
 
 The goal of this module is to provide JSON-serializable structures that can be
-shared by embedded adapters and future remote core-service adapters.
+shared by host adapters and remote core-service adapters.
 """
 
 from __future__ import annotations
@@ -81,6 +81,7 @@ class EventEnvelope:
     message_id: str
     timestamp: float
     author: Author
+    bot_self_id: str = ""
     content_parts: List[ContentPart] = field(default_factory=list)
     meta: Dict[str, Any] = field(default_factory=dict)
     raw: Dict[str, Any] = field(default_factory=dict)
@@ -94,6 +95,7 @@ class EventEnvelope:
             "message_id": self.message_id,
             "timestamp": self.timestamp,
             "author": self.author.to_dict(),
+            "bot_self_id": self.bot_self_id,
             "content_parts": [part.to_dict() for part in self.content_parts],
             "meta": dict(self.meta),
             "raw": dict(self.raw),
@@ -109,6 +111,7 @@ class EventEnvelope:
             message_id=str(data.get("message_id", "")),
             timestamp=float(data.get("timestamp", 0.0)),
             author=Author.from_dict(dict(data.get("author", {}) or {})),
+            bot_self_id=str(data.get("bot_self_id", "")),
             content_parts=[ContentPart.from_dict(dict(p or {})) for p in list(data.get("content_parts", []) or [])],
             meta=dict(data.get("meta", {}) or {}),
             raw=dict(data.get("raw", {}) or {}),
@@ -224,3 +227,79 @@ class NoopAction:
             reason=str(data.get("reason", "")),
             meta=dict(data.get("meta", {}) or {}),
         )
+
+
+@dataclass
+class PlatformCapabilities:
+    """Adapter capability declaration.
+
+    Core can use this declaration for capability-based fallback instead of
+    platform-specific branching.
+    """
+
+    supports_reply: bool = True
+    supports_image_send: bool = True
+    supports_image_receive: bool = True
+    supports_mentions: bool = True
+    supports_forward_message: bool = False
+    supports_history_fetch: bool = False
+    supports_member_info: bool = False
+    supports_file_resolve: bool = False
+    supports_message_fetch: bool = False
+    max_text_length: int = 0
+    platform_name: str = ""
+
+
+@dataclass(frozen=True)
+class SessionKey:
+    """Unified cross-platform session identity.
+
+    Canonical format: ``platform:scope:conversation_id:user_id``.
+
+    Examples:
+      - ``qq:group:123456:789012``
+      - ``telegram:private::user123``
+      - ``discord:guild:server#channel:user456``
+    """
+
+    platform: str
+    scope: str
+    conversation_id: str
+    user_id: str
+
+    def __str__(self) -> str:
+        return f"{self.platform}:{self.scope}:{self.conversation_id}:{self.user_id}"
+
+    @classmethod
+    def parse(cls, key: str) -> "SessionKey":
+        parts = str(key).split(":", 3)
+        if len(parts) == 4:
+            return cls(
+                platform=parts[0],
+                scope=parts[1],
+                conversation_id=parts[2],
+                user_id=parts[3],
+            )
+        if len(parts) == 3:
+            return cls(
+                platform=parts[0],
+                scope=parts[1],
+                conversation_id=parts[2],
+                user_id="",
+            )
+        if len(parts) == 2:
+            return cls(
+                platform="",
+                scope=parts[0],
+                conversation_id=parts[1],
+                user_id="",
+            )
+        raise ValueError(f"invalid session key: {key}")
+
+    @property
+    def is_group(self) -> bool:
+        return self.scope in ("group", "guild", "channel")
+
+    @property
+    def conversation_key(self) -> str:
+        return f"{self.platform}:{self.scope}:{self.conversation_id}"

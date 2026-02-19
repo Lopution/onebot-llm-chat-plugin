@@ -103,7 +103,7 @@ class TestShouldSearch:
         
         assert should_search("现在最好的AI模型是哪个") is True
         assert should_search("GPT和Claude哪个最强") is True
-        assert should_search("推荐一个好用的gemini") is True
+        assert should_search("推荐一个好用的mika") is True
     
     def test_should_search_with_ai_what_is(self):
         """测试 AI 关键词 + '是什么' 组合"""
@@ -502,10 +502,10 @@ class TestClassifyFallbackStrongTimeliness:
         }
 
         with patch("httpx.AsyncClient") as mock_client_class, patch(
-            "mika_chat_core.utils.search_engine.plugin_config.gemini_search_classify_cache_ttl_seconds",
+            "mika_chat_core.utils.search_engine.plugin_config.mika_search_classify_cache_ttl_seconds",
             60,
         ), patch(
-            "mika_chat_core.utils.search_engine.plugin_config.gemini_search_classify_cache_max_size",
+            "mika_chat_core.utils.search_engine.plugin_config.mika_search_classify_cache_max_size",
             200,
         ):
             mock_client = AsyncMock()
@@ -956,7 +956,7 @@ class TestTimelinessKeywords:
         assert len(AI_KEYWORDS) > 0
         assert "gpt" in AI_KEYWORDS
         assert "claude" in AI_KEYWORDS
-        assert "gemini" in AI_KEYWORDS
+        assert "mika" in AI_KEYWORDS
 
 
 class TestTrustedDomains:

@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, AsyncIterator, Optional
 
-from ..contracts import SendMessageAction
+from ..contracts import PlatformCapabilities, SendMessageAction
 
 
 @dataclass
 class FakeMessagePort:
     sent_actions: list[SendMessageAction] = field(default_factory=list)
+    streamed_texts: list[str] = field(default_factory=list)
     messages: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     async def send_message(self, action: SendMessageAction) -> dict[str, Any]:
@@ -28,6 +29,47 @@ class FakeMessagePort:
 
     async def fetch_message(self, message_id: str) -> Optional[dict[str, Any]]:
         return self.messages.get(message_id)
+
+    async def send_stream(
+        self,
+        *,
+        session_id: str,
+        chunks: AsyncIterator[str],
+        reply_to: str = "",
+        meta: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
+        collected: list[str] = []
+        async for chunk in chunks:
+            text = str(chunk or "")
+            if not text:
+                continue
+            collected.append(text)
+        merged = "".join(collected)
+        self.streamed_texts.append(merged)
+        payload = {
+            "ok": True,
+            "session_id": session_id,
+            "reply_to": reply_to,
+            "text": merged,
+            "meta": dict(meta or {}),
+            "chunks": len(collected),
+        }
+        return payload
+
+
+@dataclass
+class FakeOutboundMessagePort(FakeMessagePort):
+    forwarded_messages: list[dict[str, Any]] = field(default_factory=list)
+
+    async def send_forward(self, session_id: str, messages: list[dict[str, Any]]) -> dict[str, Any]:
+        payload = {
+            "ok": True,
+            "session_id": session_id,
+            "messages": [dict(item or {}) for item in messages],
+            "count": len(messages),
+        }
+        self.forwarded_messages.append(payload)
+        return payload
 
 
 @dataclass
@@ -57,7 +99,39 @@ class FakeClockPort:
 
 
 @dataclass
+class FakePlatformApiPort:
+    _capabilities: PlatformCapabilities = field(default_factory=PlatformCapabilities)
+    _history: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    _members: dict[str, dict[str, Any]] = field(default_factory=dict)
+    _messages: dict[str, dict[str, Any]] = field(default_factory=dict)
+    _file_urls: dict[str, str] = field(default_factory=dict)
+
+    def capabilities(self) -> PlatformCapabilities:
+        return self._capabilities
+
+    async def fetch_conversation_history(
+        self,
+        conversation_id: str,
+        limit: int = 20,
+    ) -> Optional[list[dict[str, Any]]]:
+        records = self._history.get(conversation_id)
+        if records is None:
+            return None
+        return [dict(item or {}) for item in records[: max(limit, 0)]]
+
+    async def get_member_info(self, conversation_id: str, user_id: str) -> Optional[dict[str, Any]]:
+        return self._members.get(f"{conversation_id}:{user_id}")
+
+    async def fetch_message(self, message_id: str) -> Optional[dict[str, Any]]:
+        return self._messages.get(message_id)
+
+    async def resolve_file_url(self, file_id: str) -> Optional[str]:
+        return self._file_urls.get(file_id)
+
+
+@dataclass
 class FakePorts:
     message: FakeMessagePort = field(default_factory=FakeMessagePort)
     asset: FakeAssetPort = field(default_factory=FakeAssetPort)
     clock: FakeClockPort = field(default_factory=FakeClockPort)
+    platform_api: FakePlatformApiPort = field(default_factory=FakePlatformApiPort)

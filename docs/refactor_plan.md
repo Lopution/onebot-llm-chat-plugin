@@ -1,6 +1,6 @@
 # 小步拆分回归验证清单（兼容入口保持）
 
-本次拆分仅新增内部模块并让 [`gemini_api.py`](../src/mika_chat_core/gemini_api.py:1) 作为兼容入口继续对外提供同名接口。
+本次拆分仅新增内部模块并让 [`mika_api.py`](../src/mika_chat_core/mika_api.py:1) 作为兼容入口继续对外提供同名接口。
 
 ## ✅ 回归验证清单
 
@@ -21,13 +21,13 @@
 
 ## 新增内部模块（本轮）
 
-- 回复清理：[`gemini_api_sanitize.py`](../src/mika_chat_core/gemini_api_sanitize.py:1)
-- JSON 提取：[`gemini_api_proactive.py`](../src/mika_chat_core/gemini_api_proactive.py:1)
-- 搜索前置与消息构建：[`gemini_api_messages.py`](../src/mika_chat_core/gemini_api_messages.py:1)
-- 工具调用处理：[`gemini_api_tools.py`](../src/mika_chat_core/gemini_api_tools.py:1)
-- 请求与错误映射：[`gemini_api_transport.py`](../src/mika_chat_core/gemini_api_transport.py:1)
+- 回复清理：[`mika_api_sanitize.py`](../src/mika_chat_core/mika_api_sanitize.py:1)
+- JSON 提取：[`mika_api_proactive.py`](../src/mika_chat_core/mika_api_proactive.py:1)
+- 搜索前置与消息构建：[`mika_api_messages.py`](../src/mika_chat_core/mika_api_messages.py:1)
+- 工具调用处理：[`mika_api_tools.py`](../src/mika_chat_core/mika_api_tools.py:1)
+- 请求与错误映射：[`mika_api_transport.py`](../src/mika_chat_core/mika_api_transport.py:1)
 
 ## 兼容性说明
 
-- 对外入口与导入路径保持：[`gemini_api.py`](../src/mika_chat_core/gemini_api.py:1)
+- 对外入口与导入路径保持：[`mika_api.py`](../src/mika_chat_core/mika_api.py:1)
 - 对外接口与行为保持不变，仅内部委派到新模块

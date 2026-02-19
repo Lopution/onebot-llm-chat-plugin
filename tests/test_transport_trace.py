@@ -7,29 +7,29 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_context_trace_disabled_no_info_log():
-    from mika_chat_core.gemini_api import GeminiClient, plugin_config
+    from mika_chat_core.mika_api import MikaClient, plugin_config
 
-    client = GeminiClient(api_key="A" * 32, use_persistent_storage=False)
+    client = MikaClient(api_key="A" * 32, use_persistent_storage=False)
     client._get_context_async = AsyncMock(return_value=[])  # type: ignore[method-assign]
 
-    old_enabled = getattr(plugin_config, "gemini_context_trace_enabled", False)
-    old_rate = getattr(plugin_config, "gemini_context_trace_sample_rate", 1.0)
-    plugin_config.gemini_context_trace_enabled = False
-    plugin_config.gemini_context_trace_sample_rate = 1.0
+    old_enabled = getattr(plugin_config, "mika_context_trace_enabled", False)
+    old_rate = getattr(plugin_config, "mika_context_trace_sample_rate", 1.0)
+    plugin_config.mika_context_trace_enabled = False
+    plugin_config.mika_context_trace_sample_rate = 1.0
     try:
-        with patch("mika_chat_core.gemini_api.log.info") as mock_info:
+        with patch("mika_chat_core.mika_api.log.info") as mock_info:
             await client._log_context_diagnostics("10001", None, "req-1")
             mock_info.assert_not_called()
     finally:
-        plugin_config.gemini_context_trace_enabled = old_enabled
-        plugin_config.gemini_context_trace_sample_rate = old_rate
+        plugin_config.mika_context_trace_enabled = old_enabled
+        plugin_config.mika_context_trace_sample_rate = old_rate
 
 
 @pytest.mark.asyncio
 async def test_context_trace_enabled_logs_info():
-    from mika_chat_core.gemini_api import GeminiClient, plugin_config
+    from mika_chat_core.mika_api import MikaClient, plugin_config
 
-    client = GeminiClient(api_key="A" * 32, use_persistent_storage=False)
+    client = MikaClient(api_key="A" * 32, use_persistent_storage=False)
     client._get_context_async = AsyncMock(  # type: ignore[method-assign]
         return_value=[
             {"role": "user", "content": "hello"},
@@ -37,15 +37,15 @@ async def test_context_trace_enabled_logs_info():
         ]
     )
 
-    old_enabled = getattr(plugin_config, "gemini_context_trace_enabled", False)
-    old_rate = getattr(plugin_config, "gemini_context_trace_sample_rate", 1.0)
-    plugin_config.gemini_context_trace_enabled = True
-    plugin_config.gemini_context_trace_sample_rate = 1.0
+    old_enabled = getattr(plugin_config, "mika_context_trace_enabled", False)
+    old_rate = getattr(plugin_config, "mika_context_trace_sample_rate", 1.0)
+    plugin_config.mika_context_trace_enabled = True
+    plugin_config.mika_context_trace_sample_rate = 1.0
     try:
-        with patch("mika_chat_core.gemini_api.log.info") as mock_info:
+        with patch("mika_chat_core.mika_api.log.info") as mock_info:
             await client._log_context_diagnostics("10001", "20002", "req-2")
             assert mock_info.call_count >= 1
             assert "context_trace" in mock_info.call_args_list[0].args[0]
     finally:
-        plugin_config.gemini_context_trace_enabled = old_enabled
-        plugin_config.gemini_context_trace_sample_rate = old_rate
+        plugin_config.mika_context_trace_enabled = old_enabled
+        plugin_config.mika_context_trace_sample_rate = old_rate

@@ -1,4 +1,4 @@
-"""Gemini Chat 搜索引擎（主入口模块）。
+"""Mika Chat 搜索引擎（主入口模块）。
 
 本文件是对外的稳定入口，外部代码通过本模块导入相关函数/常量。
 
@@ -21,7 +21,6 @@ from typing import Dict, List, Optional, Protocol, Tuple, runtime_checkable
 
 import asyncio
 import httpx
-import os
 import time
 
 from ..infra.logging import logger as log
@@ -299,19 +298,18 @@ async def init_search_engine() -> None:
     SERPER_API_KEY = ""
     TAVILY_API_KEY = ""
     if SEARCH_PROVIDER_NAME == "tavily":
-        TAVILY_API_KEY = configured_key or os.getenv("TAVILY_API_KEY", "")
+        TAVILY_API_KEY = configured_key
         if TAVILY_API_KEY:
             log.success("Tavily API Key 加载成功")
         else:
-            log.warning("未找到 TAVILY_API_KEY，搜索功能将被禁用")
+            log.warning("未配置 search_api_key（provider=tavily），搜索功能将被禁用")
     else:
-        legacy_serper_key = str(getattr(plugin_config, "serper_api_key", "") or "").strip()
-        SERPER_API_KEY = configured_key or legacy_serper_key or os.getenv("SERPER_API_KEY", "")
+        SERPER_API_KEY = configured_key
         SEARCH_PROVIDER_NAME = "serper"
         if SERPER_API_KEY:
             log.success("Serper API Key 加载成功")
         else:
-            log.warning("未找到 SERPER_API_KEY，搜索功能将被禁用")
+            log.warning("未配置 search_api_key（provider=serper），搜索功能将被禁用")
 
     await _get_http_client()
     log.success("HTTP 客户端初始化完成")
@@ -366,7 +364,7 @@ def _get_max_injection_results() -> int:
     """从配置读取注入结果上限（提供安全兜底）。"""
 
     try:
-        value = int(getattr(plugin_config, "gemini_search_max_injection_results", DEFAULT_INJECTION_RESULTS))
+        value = int(getattr(plugin_config, "mika_search_max_injection_results", DEFAULT_INJECTION_RESULTS))
         return max(MIN_INJECTION_RESULTS, min(MAX_INJECTION_RESULTS, value))
     except Exception:
         return DEFAULT_INJECTION_RESULTS

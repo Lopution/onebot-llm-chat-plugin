@@ -47,14 +47,14 @@ sys.modules["nonebot"].logger = MagicMock()
 
 # Mock config
 from mika_chat_core.config import Config
-mock_config = Config(gemini_api_key="AIxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
-mock_config.gemini_proactive_rate = 1.0  # Force trigger for testing
-mock_config.gemini_heat_threshold = 2    # Low threshold
-mock_config.gemini_proactive_cooldown = 0 # No cooldown
-mock_config.gemini_group_whitelist = []  # Empty whitelist = allow logic? Check code.
-mock_config.gemini_proactive_keywords = ["Mika"]
-mock_config.gemini_proactive_topics = ["test"]
-mock_config.gemini_proactive_ignore_len = 0
+mock_config = Config(mika_api_key="AIxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+mock_config.mika_proactive_rate = 1.0  # Force trigger for testing
+mock_config.mika_heat_threshold = 2    # Low threshold
+mock_config.mika_proactive_cooldown = 0 # No cooldown
+mock_config.mika_group_whitelist = []  # Empty whitelist = allow logic? Check code.
+mock_config.mika_proactive_keywords = ["Mika"]
+mock_config.mika_proactive_topics = ["test"]
+mock_config.mika_proactive_ignore_len = 0
 
 # Import matchers
 # We need to patch get_plugin_config before importing matchers
@@ -92,8 +92,8 @@ async def test_proactive():
     result = await matchers.check_proactive(event)
     print(f"Check Result (Keyword Trigger): {result}")
 
-    # 3. Test Judge Intent (Mock Gemini)
-    # This requires mocking get_gemini_client_dep
+    # 3. Test Judge Intent (Mock Mika client)
+    # This requires mocking get_mika_client_dep
     
     mock_client = MagicMock()
     mock_client.context_store.get_context.return_value = [] # awaitable?
@@ -110,9 +110,9 @@ async def test_proactive():
     # Patch deps
     # We need to ensure deps module is mocked or patchable
     # Since we imported matchers, deps might be imported relative.
-    # We can patch 'mika_chat_core.deps.get_gemini_client_dep'
-    
-    with patch("mika_chat_core.deps.get_gemini_client_dep", return_value=mock_client), \
+    # We can patch 'mika_chat_core.deps.get_mika_client_dep'
+
+    with patch("mika_chat_core.deps.get_mika_client_dep", return_value=mock_client), \
          patch("mika_chat_core.matchers.handle_group") as mock_handle_group:
          
          await matchers._handle_proactive(MagicMock(), event)

@@ -205,7 +205,7 @@ def _set_classify_cache(key: str, value: Tuple[bool, str, str], max_size: int) -
 def _get_classify_cache_ttl_seconds() -> int:
     try:
         value = int(
-            getattr(plugin_config, "gemini_search_classify_cache_ttl_seconds", CLASSIFY_DEFAULT_CACHE_TTL_SECONDS)
+            getattr(plugin_config, "mika_search_classify_cache_ttl_seconds", CLASSIFY_DEFAULT_CACHE_TTL_SECONDS)
         )
         return max(CLASSIFY_MIN_CACHE_TTL_SECONDS, value)
     except Exception:
@@ -214,7 +214,7 @@ def _get_classify_cache_ttl_seconds() -> int:
 
 def _get_classify_cache_max_size() -> int:
     try:
-        value = int(getattr(plugin_config, "gemini_search_classify_cache_max_size", CLASSIFY_DEFAULT_CACHE_MAX_SIZE))
+        value = int(getattr(plugin_config, "mika_search_classify_cache_max_size", CLASSIFY_DEFAULT_CACHE_MAX_SIZE))
         return max(CLASSIFY_MIN_CACHE_MAX_SIZE, value)
     except Exception:
         return CLASSIFY_DEFAULT_CACHE_MAX_SIZE
@@ -222,7 +222,7 @@ def _get_classify_cache_max_size() -> int:
 
 def _get_classify_temperature() -> float:
     try:
-        value = float(getattr(plugin_config, "gemini_search_classify_temperature", CLASSIFY_TEMPERATURE_MIN))
+        value = float(getattr(plugin_config, "mika_search_classify_temperature", CLASSIFY_TEMPERATURE_MIN))
         return max(CLASSIFY_TEMPERATURE_MIN, min(CLASSIFY_TEMPERATURE_MAX, value))
     except Exception:
         return CLASSIFY_TEMPERATURE_MIN
@@ -230,7 +230,7 @@ def _get_classify_temperature() -> float:
 
 def _get_classify_max_tokens() -> int:
     try:
-        value = int(getattr(plugin_config, "gemini_search_classify_max_tokens", CLASSIFY_DEFAULT_MAX_TOKENS))
+        value = int(getattr(plugin_config, "mika_search_classify_max_tokens", CLASSIFY_DEFAULT_MAX_TOKENS))
         return max(CLASSIFY_MIN_MAX_TOKENS, min(CLASSIFY_MAX_MAX_TOKENS, value))
     except Exception:
         return CLASSIFY_DEFAULT_MAX_TOKENS
@@ -241,7 +241,7 @@ def _get_classify_max_query_length() -> int:
 
     try:
         value = int(
-            getattr(plugin_config, "gemini_search_classify_max_query_length", CLASSIFY_DEFAULT_MAX_QUERY_LENGTH)
+            getattr(plugin_config, "mika_search_classify_max_query_length", CLASSIFY_DEFAULT_MAX_QUERY_LENGTH)
         )
         return max(CLASSIFY_MIN_MAX_QUERY_LENGTH, min(CLASSIFY_MAX_MAX_QUERY_LENGTH, value))
     except Exception:
@@ -253,7 +253,7 @@ def _get_query_normalize_bot_names() -> List[str]:
 
     names: List[str] = []
     try:
-        display_name = getattr(plugin_config, "gemini_bot_display_name", "")
+        display_name = getattr(plugin_config, "mika_bot_display_name", "")
         if isinstance(display_name, str) and display_name.strip():
             names.append(display_name.strip())
     except Exception:
@@ -312,7 +312,7 @@ TIMELINESS_KEYWORDS = [
 # AI 相关关键词（配合"最好"、"最强"等词触发搜索）
 AI_KEYWORDS = [
     "gpt",
-    "gemini",
+    "mika",
     "claude",
     "llama",
     "glm",
@@ -406,7 +406,7 @@ def _get_min_query_length() -> int:
     """从配置读取最小 query 长度（提供安全兜底）。"""
 
     try:
-        value = int(getattr(plugin_config, "gemini_search_min_query_length", MIN_QUERY_LENGTH_DEFAULT))
+        value = int(getattr(plugin_config, "mika_search_min_query_length", MIN_QUERY_LENGTH_DEFAULT))
         return max(MIN_QUERY_LENGTH_FLOOR, value)
     except Exception:
         return MIN_QUERY_LENGTH_DEFAULT
@@ -676,7 +676,7 @@ def _resolve_pronoun_query(query: str, context: Optional[list], max_len: int) ->
 
     entity_keywords = [
         "gpt",
-        "gemini",
+        "mika",
         "claude",
         "llama",
         "qwen",
@@ -685,7 +685,7 @@ def _resolve_pronoun_query(query: str, context: Optional[list], max_len: int) ->
         "chatgpt",
         "gpt-4",
         "gpt-5",
-        "gemini-2",
+        "mika-2",
         "claude-3",
         "claude-4",
         "iphone",

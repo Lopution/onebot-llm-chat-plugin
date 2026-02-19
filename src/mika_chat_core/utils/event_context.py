@@ -19,6 +19,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from ..contracts import EventEnvelope
+
 
 @dataclass(frozen=True)
 class EventContext:
@@ -210,3 +212,34 @@ def build_event_context_from_event(event: Any, platform: str = "unknown") -> Eve
     适用于 matcher rule 场景（函数签名只有 event，拿不到 bot）。
     """
     return _build_event_context_with_platform(_normalize_platform(platform), event)
+
+
+def build_event_context_from_envelope(envelope: EventEnvelope) -> EventContext:
+    """仅从 EventEnvelope 构建 EventContext（不依赖宿主对象）。"""
+    meta = envelope.meta or {}
+    user_id = str(envelope.author.id or meta.get("user_id", "") or "").strip()
+    group_id_raw = str(meta.get("group_id", "") or "").strip()
+    group_id = group_id_raw or None
+    is_group = bool(group_id)
+
+    plaintext = " ".join(
+        part.text.strip()
+        for part in envelope.content_parts
+        if part.kind == "text" and str(part.text or "").strip()
+    ).strip()
+
+    session_key = str(envelope.session_id or "").strip()
+    if not session_key:
+        session_key = f"group:{group_id}" if group_id else f"private:{user_id}"
+
+    return EventContext(
+        platform=_normalize_platform(envelope.platform),
+        user_id=user_id,
+        group_id=group_id,
+        message_id=str(envelope.message_id or "").strip() or None,
+        is_group=is_group,
+        is_tome=bool(meta.get("is_tome", False)),
+        plaintext=plaintext,
+        session_key=session_key,
+        sender_name=str(envelope.author.nickname or user_id or "").strip(),
+    )

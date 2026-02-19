@@ -15,7 +15,10 @@ from nonebot.params import Depends
 from nonebot import get_plugin_config as nb_get_plugin_config
 from nonebot.adapters import Bot, Event
 
-from mika_chat_core.runtime import get_config as get_runtime_config
+from mika_chat_core.runtime import (
+    get_config as get_runtime_config,
+    get_platform_api_port as get_runtime_platform_api_port,
+)
 from mika_chat_core.settings import Config
 from mika_chat_core.utils.event_context import build_event_context
 
@@ -57,7 +60,9 @@ async def get_processed_images(bot: Bot, event: Event) -> List[Dict[str, Any]]:
         except Exception:
             config = nb_get_plugin_config(Config)
         urls = await resolve_image_urls(
-            bot, getattr(event, "original_message", None), int(config.gemini_max_images)
+            getattr(event, "original_message", None),
+            int(config.mika_max_images),
+            platform_api=get_runtime_platform_api_port(),
         )
         if not urls:
             return []
@@ -68,10 +73,10 @@ async def get_processed_images(bot: Bot, event: Event) -> List[Dict[str, Any]]:
         return []
 
 
-def get_gemini_client_dep():
+def get_mika_client_dep():
     """依赖项：获取 API 客户端"""
-    from nonebot_plugin_mika_chat.lifecycle_nb import get_gemini_client
-    return get_gemini_client()
+    from nonebot_plugin_mika_chat.lifecycle_nb import get_mika_client
+    return get_mika_client()
 
 
 def get_config():

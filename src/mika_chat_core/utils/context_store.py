@@ -19,13 +19,35 @@ from ..infra.logging import logger as log
 
 from .context_cache import LRUCache
 from .context_manager import ContextManager
+from .context_summarizer import ContextSummarizer
 from .context_compress import compress_context_for_safety as _compress_context_for_safety
 from .context_compress import compress_message_content as _compress_message_content
 from .context_compress import sanitize_text_for_safety as _sanitize_text_for_safety
+from .context_store_session_ops import (
+    clear_session as service_clear_session,
+    get_all_keys as service_get_all_keys,
+    get_session_stats as service_get_session_stats,
+    get_stats as service_get_stats,
+    list_sessions as service_list_sessions,
+    preview_text as service_preview_text,
+)
+from .context_store_summary_ops import (
+    build_key_info_summary as service_build_key_info_summary,
+    build_summary_for_messages as service_build_summary_for_messages,
+    extract_key_info_from_history as service_extract_key_info_from_history,
+    get_cached_summary as service_get_cached_summary,
+    resolve_summary_runtime_config as service_resolve_summary_runtime_config,
+    save_cached_summary as service_save_cached_summary,
+)
+from .context_store_write_ops import (
+    AddMessageDeps,
+    add_message_flow as service_add_message_flow,
+)
 from .context_schema import normalize_content
 from .context_db import DB_PATH as _CONTEXT_DB_PATH
 from .context_db import get_db, get_db_path, init_database, close_database
 from .session_lock import SessionLockManager
+from ..runtime import get_config as get_runtime_config
 
 # 内存缓存最大条目数（越小越省内存）
 MAX_CACHE_SIZE: int = 200
@@ -59,6 +81,10 @@ class MessageDict(TypedDict, total=False):
     timestamp: float  # 消息时间戳
     tool_calls: List[Dict[str, Any]]
     tool_call_id: str
+
+
+class ContextStoreWriteError(RuntimeError):
+    """上下文持久化写入失败（事务已回滚）。"""
 
 
 class SQLiteContextStore:
@@ -100,7 +126,10 @@ class SQLiteContextStore:
         max_turns: int = 30,
         max_tokens_soft: int = 12000,
         summary_enabled: bool = False,
+        summary_trigger_turns: int = 20,
+        summary_max_chars: int = 500,
         history_store_multimodal: bool = False,
+        context_summarizer: Optional[ContextSummarizer] = None,
     ):
         self.max_context = max_context
         # 使用 LRU 缓存替代普通字典，限制缓存大小防止内存溢出
@@ -112,6 +141,12 @@ class SQLiteContextStore:
             max_tokens_soft=max_tokens_soft,
             summary_enabled=summary_enabled,
             hard_max_messages=max_context * CONTEXT_MESSAGE_MULTIPLIER,
+        )
+        self._summary_enabled = bool(summary_enabled)
+        self._summary_trigger_turns = max(1, int(summary_trigger_turns or 20))
+        self._summary_max_chars = max(50, int(summary_max_chars or 500))
+        self._context_summarizer = context_summarizer or (
+            ContextSummarizer() if self._summary_enabled else None
         )
         self._history_store_multimodal = bool(history_store_multimodal)
         # 关键信息缓存（用户 QQ 号 -> 提取的信息）
@@ -168,13 +203,13 @@ class SQLiteContextStore:
         return cleaned
 
     def _extract_user_identity_from_message(self, content: str) -> Tuple[Optional[str], Optional[str]]:
-        """从消息内容中提取用户身份 (QQ号, 昵称)
+        """从消息内容中提取用户身份 (平台ID, 昵称)
         
-        消息格式：[昵称(QQ号)]: 内容
+        消息格式：[昵称(平台ID)]: 内容
         Returns:
             (user_id, nickname) 元组
         """
-        match = re.match(r'\[(.*?)\((\d+)\)\]:', content)
+        match = re.match(r'\[(.*?)\(([^)]+)\)\]:', content)
         if match:
             raw_nickname = match.group(1)
             user_id = match.group(2)
@@ -219,46 +254,13 @@ class SQLiteContextStore:
         """从历史消息中提取所有用户的关键信息
         
         Returns:
-            用户 QQ 号 -> 信息字典 的映射
+            用户平台 ID -> 信息字典 的映射
         """
-        user_info: Dict[str, Dict[str, str]] = {}
-        
-        for msg in messages:
-            if msg.get("role") != "user":
-                continue
-                
-            content = msg.get("content", "")
-            if isinstance(content, list):
-                # 多模态消息，取第一个文本
-                for item in content:
-                    if isinstance(item, dict) and item.get("type") == "text":
-                        content = item.get("text", "")
-                        break
-                else:
-                    continue
-            
-            if not isinstance(content, str):
-                continue
-            
-            # 提取用户 ID 和 昵称
-            user_id, nickname = self._extract_user_identity_from_message(content)
-            if not user_id:
-                continue
-            
-            # 初始化用户信息字典
-            if user_id not in user_info:
-                user_info[user_id] = {}
-            
-            # 更新最新昵称
-            if nickname:
-                user_info[user_id]["__nickname__"] = nickname
-            
-            # 提取关键信息
-            info = self._extract_key_info_from_message(content)
-            if info:
-                user_info[user_id].update(info)
-        
-        return user_info
+        return service_extract_key_info_from_history(
+            messages,
+            extract_user_identity_from_message_fn=self._extract_user_identity_from_message,
+            extract_key_info_from_message_fn=self._extract_key_info_from_message,
+        )
     
     def _build_key_info_summary(self, user_info: Dict[str, Dict[str, str]]) -> str:
         """构建关键信息摘要
@@ -269,38 +271,51 @@ class SQLiteContextStore:
         Returns:
             格式化的摘要字符串
         """
-        if not user_info:
-            return ""
-        
-        summary_parts = []
-        for user_id, info in user_info.items():
-            # 过滤掉内部字段，检查是否有实际内容
-            public_info = {k: v for k, v in info.items() if not k.startswith("__")}
-            if not public_info:
-                continue
-            
-            user_desc = []
-            if "name" in info:
-                user_desc.append(f"自称{info['name']}")
-            if "identity" in info:
-                user_desc.append(f"是{info['identity']}")
-            if "occupation" in info:
-                user_desc.append(f"职业是{info['occupation']}")
-            if "age" in info:
-                user_desc.append(f"{info['age']}岁")
-            if "preference" in info:
-                user_desc.append(f"喜欢{info['preference']}")
-            
-            nickname = info.get("__nickname__", "未知")
-            
-            if user_desc:
-                if user_id == "MASTER":
-                    summary_parts.append(f"Sensei: {', '.join(user_desc)}")
-                else:
-                    # 使用 [昵称(ID)] 格式，与对话格式保持一致，减少模型认知负担
-                    summary_parts.append(f"用户 [{nickname}({user_id})]: {', '.join(user_desc)}")
-        
-        return "; ".join(summary_parts)
+        return service_build_key_info_summary(user_info)
+
+    def _resolve_summary_runtime_config(self) -> Tuple[str, str, str, Dict[str, str]]:
+        """解析摘要调用所需的 provider/base_url/model/key。"""
+        return service_resolve_summary_runtime_config(
+            get_runtime_config_fn=get_runtime_config,
+        )
+
+    async def _get_cached_summary(self, context_key: str) -> Tuple[str, int]:
+        return await service_get_cached_summary(
+            context_key,
+            get_db_fn=get_db,
+        )
+
+    async def _save_cached_summary(
+        self,
+        context_key: str,
+        summary: str,
+        source_message_count: int,
+    ) -> None:
+        await service_save_cached_summary(
+            context_key,
+            summary,
+            source_message_count,
+            get_db_fn=get_db,
+            log_obj=log,
+        )
+
+    async def _build_summary_for_messages(
+        self,
+        *,
+        context_key: str,
+        messages: List[MessageDict],
+    ) -> str:
+        """按需生成或复用历史摘要。"""
+        return await service_build_summary_for_messages(
+            context_key=context_key,
+            messages=messages,
+            summary_enabled=self._summary_enabled,
+            context_summarizer=self._context_summarizer,
+            summary_max_chars=self._summary_max_chars,
+            get_cached_summary_caller=self._get_cached_summary,
+            resolve_summary_runtime_config_caller=self._resolve_summary_runtime_config,
+            save_cached_summary_caller=self._save_cached_summary,
+        )
     
     async def _compress_context(
         self,
@@ -313,7 +328,19 @@ class SQLiteContextStore:
         注意：用户决定禁用智能摘要功能，因此不再注入摘要。
         """
         max_messages = self.max_context * CONTEXT_MESSAGE_MULTIPLIER
-        compressed = self._context_manager.process(messages)
+
+        async def _summary_builder(old_messages: List[MessageDict]) -> str:
+            return await self._build_summary_for_messages(
+                context_key=context_key,
+                messages=old_messages,
+            )
+
+        compressed = await self._context_manager.process_with_summary(
+            messages,
+            summary_builder=_summary_builder if self._summary_enabled else None,
+            summary_trigger_turns=self._summary_trigger_turns,
+            summary_max_chars=self._summary_max_chars,
+        )
         if len(compressed) > max_messages:
             compressed = compressed[-max_messages:]
 
@@ -386,79 +413,33 @@ class SQLiteContextStore:
         """
         key = self._make_key(user_id, group_id)
         async with self._lock_manager.get_lock(key):
-            
-            # 获取当前上下文
-            messages = await self.get_context(user_id, group_id)
-            
-            normalized_content = normalize_content(content)
-
-            # 构建消息对象
-            new_msg: MessageDict = {
-                "role": role,
-                "content": normalized_content,
-            }
-            if message_id:
-                new_msg["message_id"] = str(message_id)
-            if tool_calls and role == "assistant":
-                new_msg["tool_calls"] = tool_calls
-            if tool_call_id and role == "tool":
-                new_msg["tool_call_id"] = str(tool_call_id)
-            # 添加时间戳
-            if timestamp is None:
-                import time
-                timestamp = time.time()
-            new_msg["timestamp"] = timestamp
-                
-            messages.append(new_msg)
-            
-            # 统一上下文管理：结构化 + turn/token 截断
-            messages = self._context_manager.process(messages)
-            if len(messages) > self.max_context * CONTEXT_MESSAGE_MULTIPLIER:
-                messages = await self._compress_context(messages, key)
-
-            snapshot_messages = self._prepare_snapshot_messages(messages)
-            
-            # 更新缓存（使用 LRU 策略）
-            self._cache.set(key, snapshot_messages)
-            
-            # 异步写入数据库（使用显式事务确保原子性）
-            db = None
-            try:
-                db = await get_db()
-                
-                # 开始显式事务
-                await db.execute("BEGIN IMMEDIATE")
-                
-                try:
-                    # 1. 更新上下文快照 (最近 N 条)
-                    await db.execute("""
-                        INSERT INTO contexts (context_key, messages, updated_at)
-                        VALUES (?, ?, CURRENT_TIMESTAMP)
-                        ON CONFLICT(context_key) DO UPDATE SET
-                            messages = excluded.messages,
-                            updated_at = CURRENT_TIMESTAMP
-                    """, (key, json.dumps(snapshot_messages, ensure_ascii=False)))
-                    
-                    # 2. 插入归档记录 (全量历史)
-                    # 处理 content，如果是列表(多模态)则转JSON字符串，如果是字符串则直接存
-                    if isinstance(normalized_content, (list, dict)):
-                        archive_content = json.dumps(normalized_content, ensure_ascii=False)
-                    else:
-                        archive_content = str(normalized_content)
-                    
-                    await db.execute("""
-                        INSERT INTO message_archive (context_key, user_id, role, content, message_id, timestamp)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    """, (key, user_id, role, archive_content, message_id, timestamp))
-                    
-                    await db.commit()
-                    log.debug(f"上下文已保存: {key} | 消息数={len(snapshot_messages)}")
-                except Exception as e:
-                    # 事务内部发生错误，回滚
-                    await db.rollback()
-                    raise
-            except Exception as e:
-                log.error(f"保存上下文失败: {e}", exc_info=True)
+            await service_add_message_flow(
+                deps=AddMessageDeps(
+                    get_context_caller=self.get_context,
+                    build_summary_for_messages_caller=self._build_summary_for_messages,
+                    context_manager=self._context_manager,
+                    summary_enabled=self._summary_enabled,
+                    summary_trigger_turns=self._summary_trigger_turns,
+                    summary_max_chars=self._summary_max_chars,
+                    max_context=self.max_context,
+                    context_message_multiplier=CONTEXT_MESSAGE_MULTIPLIER,
+                    compress_context_caller=self._compress_context,
+                    prepare_snapshot_messages_caller=self._prepare_snapshot_messages,
+                    cache_setter=self._cache.set,
+                    get_db_fn=get_db,
+                    log_obj=log,
+                    context_write_error_cls=ContextStoreWriteError,
+                ),
+                context_key=key,
+                user_id=user_id,
+                role=role,
+                content=content,
+                group_id=group_id,
+                message_id=message_id,
+                timestamp=timestamp,
+                tool_calls=tool_calls,
+                tool_call_id=tool_call_id,
+            )
 
     def _textify_content_for_snapshot(
         self, content: Union[str, List[Dict[str, Any]]]
@@ -511,43 +492,87 @@ class SQLiteContextStore:
                 "DELETE FROM contexts WHERE context_key = ?",
                 (key,)
             )
+            await db.execute(
+                "DELETE FROM context_summaries WHERE context_key = ?",
+                (key,),
+            )
             await db.commit()
             log.info(f"上下文已清空: {key}")
         except Exception as e:
             log.error(f"清空上下文失败: {e}", exc_info=True)
+
+    def _preview_text(self, raw_content: Any, *, max_length: int = 120) -> str:
+        """将消息内容转换为可展示的单行预览文本。"""
+        return service_preview_text(
+            raw_content,
+            textify_content_for_snapshot_fn=self._textify_content_for_snapshot,
+            max_length=max_length,
+        )
+
+    async def list_sessions(
+        self,
+        *,
+        query: str = "",
+        page: int = 1,
+        page_size: int = 20,
+    ) -> Dict[str, Any]:
+        """分页列出会话（用于 WebUI 会话管理）。"""
+        return await service_list_sessions(
+            query=query,
+            page=page,
+            page_size=page_size,
+            get_db_fn=get_db,
+            log_obj=log,
+        )
+
+    async def get_session_stats(
+        self,
+        session_key: str,
+        *,
+        preview_limit: int = 5,
+    ) -> Dict[str, Any]:
+        """获取单个会话统计信息与消息预览。"""
+        return await service_get_session_stats(
+            session_key,
+            preview_limit=preview_limit,
+            get_db_fn=get_db,
+            preview_text_fn=self._preview_text,
+            log_obj=log,
+        )
+
+    async def clear_session(
+        self,
+        session_key: str,
+        *,
+        purge_archive: bool = True,
+        purge_topic_state: bool = True,
+    ) -> Dict[str, int]:
+        """按会话键清空上下文数据（用于 WebUI）。"""
+        return await service_clear_session(
+            session_key,
+            purge_archive=purge_archive,
+            purge_topic_state=purge_topic_state,
+            cache_delete_fn=self._cache.delete,
+            get_db_fn=get_db,
+            log_obj=log,
+        )
     
     async def get_all_keys(self) -> List[str]:
         """获取所有上下文键（用于调试）"""
-        try:
-            db = await get_db()
-            async with db.execute("SELECT context_key FROM contexts") as cursor:
-                rows = await cursor.fetchall()
-                keys = [row[0] for row in rows]
-                log.debug(f"获取所有键: 共 {len(keys)} 个")
-                return keys
-        except Exception as e:
-            log.error(f"获取键列表失败: {e}", exc_info=True)
-            return []
+        return await service_get_all_keys(
+            get_db_fn=get_db,
+            log_obj=log,
+        )
     
     async def get_stats(self) -> Dict[str, Any]:
         """获取存储统计信息"""
-        try:
-            db = await get_db()
-            async with db.execute("SELECT COUNT(*) FROM contexts") as cursor:
-                row = await cursor.fetchone()
-                total_contexts = row[0] if row else 0
-            
-            stats = {
-                "total_contexts": total_contexts,
-                "cached_contexts": len(self._cache),
-                "max_cache_size": self._max_cache_size,
-                "db_path": str(get_db_path())
-            }
-            log.debug(f"存储统计: {stats}")
-            return stats
-        except Exception as e:
-            log.error(f"获取统计信息失败: {e}", exc_info=True)
-            return {"error": str(e)}
+        return await service_get_stats(
+            get_db_fn=get_db,
+            get_db_path_fn=get_db_path,
+            cache_len=len(self._cache),
+            max_cache_size=self._max_cache_size,
+            log_obj=log,
+        )
 
 
 # 全局存储实例
@@ -562,6 +587,8 @@ def get_context_store(
     max_turns: int = 30,
     max_tokens_soft: int = 12000,
     summary_enabled: bool = False,
+    summary_trigger_turns: int = 20,
+    summary_max_chars: int = 500,
     history_store_multimodal: bool = False,
 ) -> SQLiteContextStore:
     """获取全局上下文存储实例"""
@@ -574,6 +601,8 @@ def get_context_store(
             max_turns=max_turns,
             max_tokens_soft=max_tokens_soft,
             summary_enabled=summary_enabled,
+            summary_trigger_turns=summary_trigger_turns,
+            summary_max_chars=summary_max_chars,
             history_store_multimodal=history_store_multimodal,
         )
     return context_store

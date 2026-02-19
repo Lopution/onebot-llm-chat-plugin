@@ -11,9 +11,9 @@ from .logging import logger as log
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
 
 
-def get_data_root(namespace: str = "gemini_chat") -> Path:
+def get_data_root(namespace: str = "mika_chat") -> Path:
     """Resolve writable data root for a namespace."""
-    env_data_dir = os.getenv("GEMINI_DATA_DIR")
+    env_data_dir = str(os.getenv("MIKA_DATA_DIR", "") or "").strip()
     if env_data_dir:
         return Path(env_data_dir) / namespace
 
@@ -29,7 +29,7 @@ def get_data_root(namespace: str = "gemini_chat") -> Path:
     return _PROJECT_ROOT / "data" / namespace
 
 
-def get_cache_root(namespace: str = "gemini_chat") -> Path:
+def get_cache_root(namespace: str = "mika_chat") -> Path:
     """Resolve writable cache root for a namespace."""
     port = get_paths_port()
     if port is not None:
@@ -41,4 +41,3 @@ def get_cache_root(namespace: str = "gemini_chat") -> Path:
             log.warning(f"paths_port.get_cache_dir failed, fallback to project cache dir: {exc}")
 
     return _PROJECT_ROOT / "data" / namespace
-

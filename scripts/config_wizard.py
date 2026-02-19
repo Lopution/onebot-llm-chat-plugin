@@ -112,21 +112,17 @@ def main() -> int:
 
     updates: dict[str, str] = {}
 
-    current_api_key = env_values.get("MIKA_LLM_API_KEY", "") or env_values.get("GEMINI_API_KEY", "")
-    current_key_list = env_values.get("MIKA_LLM_API_KEY_LIST", "") or env_values.get("GEMINI_API_KEY_LIST", "")
+    current_api_key = str(env_values.get("MIKA_API_KEY", "")).strip()
+    current_key_list = str(env_values.get("MIKA_API_KEY_LIST", "")).strip()
     need_api = args.all or (not current_api_key and not current_key_list)
     if need_api:
-        api_key = ask_input("请输入 MIKA_LLM_API_KEY（单 key）", default=current_api_key, required=True)
-        updates["MIKA_LLM_API_KEY"] = api_key
+        api_key = ask_input("请输入 MIKA_API_KEY（单 key）", default=current_api_key, required=True)
+        updates["MIKA_API_KEY"] = api_key
 
-    current_master = env_values.get("MIKA_MASTER_ID", "") or env_values.get("GEMINI_MASTER_ID", "")
+    current_master = str(env_values.get("MIKA_MASTER_ID", "")).strip()
     need_master = args.all or (not current_master or current_master == "0")
     if need_master:
-        master_id = ask_input(
-            "请输入 MIKA_MASTER_ID（你的 QQ 号）",
-            default="" if current_master == "0" else current_master,
-            required=True,
-        )
+        master_id = ask_input("请输入 MIKA_MASTER_ID（你的 QQ 号）", default="" if current_master == "0" else current_master, required=True)
         updates["MIKA_MASTER_ID"] = master_id
 
     if args.all:
@@ -135,7 +131,7 @@ def main() -> int:
         updates["HOST"] = host
         updates["PORT"] = port
 
-        whitelist_default = env_values.get("MIKA_GROUP_WHITELIST", "") or env_values.get("GEMINI_GROUP_WHITELIST", "")
+        whitelist_default = str(env_values.get("MIKA_GROUP_WHITELIST", "")).strip()
         whitelist_raw = ask_input(
             "群白名单（逗号分隔，留空=不限制）",
             default=whitelist_default,

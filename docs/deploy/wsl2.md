@@ -60,7 +60,7 @@ python3 scripts/doctor.py
 语义匹配默认可能使用 `sentence-transformers + torch`，内存占用较大。你可以：
 
 - 换后端(更省内存)：`fastembed`
-- 或直接关闭语义：`GEMINI_SEMANTIC_ENABLED=false`
+- 或直接关闭语义：`MIKA_SEMANTIC_ENABLED=false`
 
 fastembed 示例：
 
@@ -69,8 +69,8 @@ pip install fastembed
 ```
 
 ```env
-GEMINI_SEMANTIC_BACKEND=fastembed
-GEMINI_SEMANTIC_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+MIKA_SEMANTIC_BACKEND=fastembed
+MIKA_SEMANTIC_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
 ```
 
 如果你是离线/受限网络环境：把模型准备到本地目录，再按配置使用对应的 `*_MODEL_FALLBACK` 或本地路径参数。

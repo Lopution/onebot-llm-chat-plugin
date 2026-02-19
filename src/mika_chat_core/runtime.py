@@ -11,7 +11,8 @@ from typing import Any, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .config import Config
-    from .gemini_api import GeminiClient
+    from .mika_api import MikaClient
+    from .ports.bot_api import PlatformApiPort
     from .ports.host_events import HostEventPort
     from .ports.logging import LoggerPort
     from .ports.message import MessagePort
@@ -24,9 +25,10 @@ _paths_port: Optional[Any] = None
 _logger_port: Optional[Any] = None
 _message_port: Optional[Any] = None
 _host_event_port: Optional[Any] = None
+_platform_api_port: Optional[Any] = None
 _deps_hooks: dict[str, Any] = {}
 _tool_overrides: dict[str, Any] = {}
-_config_fallback_warned = False
+_agent_run_hooks: Optional[Any] = None
 
 log = logging.getLogger(__name__)
 
@@ -52,21 +54,9 @@ def set_config(config: "Config") -> None:
 
 
 def get_config() -> "Config":
-    global _config, _config_fallback_warned
+    global _config
     if _config is None:
-        # Backward-compatible fallback: core modules/tests may access plugin_config
-        # before host adapter startup injects runtime config.
-        # Use a minimal valid config so legacy unit tests can patch attributes
-        # on plugin_config without bootstrapping the host adapter.
-        if not _config_fallback_warned:
-            _config_fallback_warned = True
-            log.warning(
-                "runtime.get_config fallback is active (no host config injected yet); "
-                "this compatibility path should only appear in tests/early import."
-            )
-        from .config import Config
-
-        _config = Config(gemini_master_id=1, gemini_api_key="A" * 32)
+        raise RuntimeError("mika_chat_core runtime config is not initialized")
     return _config
 
 
@@ -74,12 +64,12 @@ def has_config() -> bool:
     return _config is not None
 
 
-def set_client(client: Optional["GeminiClient"]) -> None:
+def set_client(client: Optional["MikaClient"]) -> None:
     global _client
     _client = client
 
 
-def get_client() -> "GeminiClient":
+def get_client() -> "MikaClient":
     if _client is None:
         raise RuntimeError("mika_chat_core runtime client is not initialized")
     return _client
@@ -121,6 +111,15 @@ def get_host_event_port() -> Optional["HostEventPort"]:
     return _host_event_port
 
 
+def set_platform_api_port(platform_api_port: Optional["PlatformApiPort"]) -> None:
+    global _platform_api_port
+    _platform_api_port = platform_api_port
+
+
+def get_platform_api_port() -> Optional["PlatformApiPort"]:
+    return _platform_api_port
+
+
 def set_dep_hook(name: str, hook: Optional[Any]) -> None:
     if hook is None:
         _deps_hooks.pop(name, None)
@@ -141,3 +140,32 @@ def set_tool_override(name: str, handler: Optional[Any]) -> None:
 
 def get_tool_override(name: str) -> Optional[Any]:
     return _tool_overrides.get(name)
+
+
+def set_agent_run_hooks(hooks: Optional[Any]) -> None:
+    global _agent_run_hooks
+    _agent_run_hooks = hooks
+
+
+def get_agent_run_hooks() -> Optional[Any]:
+    return _agent_run_hooks
+
+
+def reset_runtime_state() -> None:
+    """Reset all runtime singletons/hooks.
+
+    主要用于测试隔离；宿主正常运行无需调用。
+    """
+    global _config, _client, _paths_port, _logger_port, _message_port
+    global _host_event_port, _platform_api_port, _agent_run_hooks
+
+    _config = None
+    _client = None
+    _paths_port = None
+    _logger_port = None
+    _message_port = None
+    _host_event_port = None
+    _platform_api_port = None
+    _agent_run_hooks = None
+    _deps_hooks.clear()
+    _tool_overrides.clear()

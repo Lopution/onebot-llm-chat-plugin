@@ -2,7 +2,7 @@
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path("data/gemini_chat/contexts.db")
+DB_PATH = Path("data/mika_chat/contexts.db")
 
 def main():
     print(f"Connecting to {DB_PATH}")

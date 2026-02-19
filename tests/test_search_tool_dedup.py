@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from mika_chat_core.gemini_api_messages import PreSearchResult
-from mika_chat_core.gemini_api_tools import handle_tool_calls
+from mika_chat_core.mika_api_layers.core.messages import PreSearchResult
+from mika_chat_core.mika_api_layers.tools.tools import handle_tool_calls
 
 
 def _mock_final_response(text: str) -> MagicMock:
@@ -41,11 +41,11 @@ async def test_handle_tool_calls_blocks_duplicate_web_search_after_presearch():
         result_count=3,
     )
 
-    with patch("mika_chat_core.gemini_api_tools.plugin_config.gemini_tool_allowlist", ["web_search"]), patch(
-        "mika_chat_core.gemini_api_tools.plugin_config.gemini_search_allow_tool_refine",
+    with patch("mika_chat_core.mika_api_layers.tools.tools.plugin_config.mika_tool_allowlist", ["web_search"]), patch(
+        "mika_chat_core.mika_api_layers.tools.tools.plugin_config.mika_search_allow_tool_refine",
         True,
     ), patch(
-        "mika_chat_core.gemini_api_tools.plugin_config.gemini_search_tool_refine_max_rounds",
+        "mika_chat_core.mika_api_layers.tools.tools.plugin_config.mika_search_tool_refine_max_rounds",
         1,
     ):
         reply = await handle_tool_calls(
@@ -56,7 +56,7 @@ async def test_handle_tool_calls_blocks_duplicate_web_search_after_presearch():
             group_id=None,
             request_id="req-dedup",
             tool_handlers={"web_search": tool_handler},
-            model="gemini-test",
+            model="mika-test",
             base_url="https://api.example.com",
             http_client=http_client,
             search_state=search_state,
@@ -99,11 +99,11 @@ async def test_handle_tool_calls_refine_only_once_when_max_rounds_is_one():
         result_count=2,
     )
 
-    with patch("mika_chat_core.gemini_api_tools.plugin_config.gemini_tool_allowlist", ["web_search"]), patch(
-        "mika_chat_core.gemini_api_tools.plugin_config.gemini_search_allow_tool_refine",
+    with patch("mika_chat_core.mika_api_layers.tools.tools.plugin_config.mika_tool_allowlist", ["web_search"]), patch(
+        "mika_chat_core.mika_api_layers.tools.tools.plugin_config.mika_search_allow_tool_refine",
         True,
     ), patch(
-        "mika_chat_core.gemini_api_tools.plugin_config.gemini_search_tool_refine_max_rounds",
+        "mika_chat_core.mika_api_layers.tools.tools.plugin_config.mika_search_tool_refine_max_rounds",
         1,
     ):
         reply = await handle_tool_calls(
@@ -114,7 +114,7 @@ async def test_handle_tool_calls_refine_only_once_when_max_rounds_is_one():
             group_id=None,
             request_id="req-refine-once",
             tool_handlers={"web_search": tool_handler},
-            model="gemini-test",
+            model="mika-test",
             base_url="https://api.example.com",
             http_client=http_client,
             search_state=search_state,

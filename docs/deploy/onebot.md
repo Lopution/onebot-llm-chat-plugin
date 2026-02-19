@@ -28,6 +28,23 @@ python bot.py
 
 > 如果你已经有稳定的运行方式（如 `start.sh` / `start.ps1`），可以继续沿用。
 
+## Prompt 配置（V2）
+
+当前默认角色提示词文件为 `system.yaml`（`prompts/` 目录下），由 `MIKA_PROMPT_FILE` 指定。  
+Prompt V2 仅要求：
+
+```yaml
+name: "角色名"
+character_prompt: |
+  角色定义自由文本
+```
+
+可选字段：
+- `dialogue_examples`（few-shot 示例）
+- `error_messages`（错误提示模板）
+
+旧结构化字段（`role/personality/instructions/...`）与旧 `system_prompt` 字段已不再作为正式 schema。
+
 ## 模块说明
 
 - 中立核心模块：`mika_chat_core`
@@ -40,38 +57,6 @@ nonebot.load_plugin("nonebot_plugin_mika_chat")
 ```
 
 > 说明：NoneBot 是当前默认宿主，不是唯一方向。后续可基于 `mika_chat_core` 增加其它宿主适配层。
-
-## 适配层与核心职责边界（当前约定）
-
-为支持后续多框架扩展，当前职责按下列边界收敛：
-
-- `mika_chat_core`（核心）负责：
-  - 对话编排、上下文存储、工具编排、provider/search 抽象
-  - 宿主无关的数据结构（如 `contracts.EventEnvelope`）
-  - 通过 `runtime` 读取配置、logger、路径等端口
-- `nonebot_plugin_mika_chat`（适配层）负责：
-  - NoneBot matcher 注册与生命周期 hook
-  - NoneBot/OneBot 事件转换（host event -> core envelope）
-  - 宿主专有 API 能力注入（如 get_msg、本地路径端口、工具 override）
-
-开发约束：
-
-- 核心包不直接导入 `nonebot*`（由测试守卫约束）
-- 宿主相关行为只允许出现在适配层目录中
-- 兼容回退必须显式可见（日志/文档可追踪），禁止在核心路径新增静默回退
-
-### 收尾门禁（Stage B-D）
-
-当前 Stage B-D 的收尾与冻结门禁，以本地计划文件为准：
-
-- `plans/HOST_DECOUPLING_EXEC_PLAN.md`
-
-门禁要求的关键验证项：
-
-- 核心导入守卫：`tests/test_core_no_nonebot_imports.py`
-- 无宿主运行时导入：`tests/test_core_import_without_host_runtime.py`
-- 协议语义一致性：`tests/test_stage_b_protocol_semantics.py`
-- Core Service 关键路径：`tests/test_core_service.py`
 
 ### 已有 NoneBot 宿主时（最短接入）
 
@@ -142,11 +127,6 @@ NapCat 通常会把 OneBot v11 配置放在挂载目录里（例如 `napcat/data
 2. 若仅有 `file_id`：会尝试调用 OneBot v12 的 `get_file`（best-effort）获取可下载 `url`。
 3. 若无法解析：不会报错，只会把图片当作 `[图片]` 占位处理，确保 Bot 正常运行。
 
-图片下载安全边界（当前实现）：
-1. 仅允许 `http/https`，拒绝 `file://`、`ftp://` 等 scheme。
-2. 默认拒绝明显本地地址（`localhost` / `127.0.0.1` / `::1`）请求，降低 SSRF 风险。
-3. 单图下载有大小上限与超时控制，超限/失败会降级为文本占位，不会中断主流程。
-
 ### 4) ID 类型
 - **v11**：`group_id/user_id` 常为 `int`
 - **v12**：`group_id/user_id` 常为 `str`
@@ -158,10 +138,10 @@ NapCat 通常会把 OneBot v11 配置放在挂载目录里（例如 `napcat/data
 这意味着你不需要迁移历史数据库；v11/v12 只要群号一致即可复用同一份上下文。
 
 ### 5) 结构化上下文（增强图片/工具连续理解）
-- 默认启用 `GEMINI_CONTEXT_MODE=structured`
+- 默认启用 `MIKA_CONTEXT_MODE=structured`
 - 上下文按“轮次优先 + 软 token 阈值”裁剪，避免只按条数粗截断导致语义断裂
 - 工具调用轨迹会写入会话历史，减少多轮工具场景“失忆”问题
-- 当模型/平台不支持对应多模态能力时，`GEMINI_MULTIMODAL_STRICT=true` 会自动清洗不合法块，优先保证可用性
+- 当模型/平台不支持对应多模态能力时，`MIKA_MULTIMODAL_STRICT=true` 会自动清洗不合法块，优先保证可用性
 
 ## 兼容策略（best-effort + 降级）
 
@@ -175,7 +155,7 @@ Forward 调用的典型 API：
 
 若 Forward 或引用发送失败，会自动回退到“渲染图片并引用发送”；若图片发送仍失败，再回退为“单条纯文本引用发送”。
   
-`GEMINI_LONG_MESSAGE_CHUNK_SIZE` 当前仅作为兼容保留，不再是默认主链路兜底。
+`MIKA_LONG_MESSAGE_CHUNK_SIZE` 当前仅作为兼容保留，不再是默认主链路兜底。
 
 ### 2) 引用回复（Quote）优先，但不强依赖
 优先使用：
@@ -193,25 +173,24 @@ Forward 调用的典型 API：
 离线消息同步通常依赖 `get_group_msg_history`，属于**并非所有实现都支持**的 API。
 
 因此插件默认关闭离线同步：
-- `GEMINI_OFFLINE_SYNC_ENABLED=false`
+- `MIKA_OFFLINE_SYNC_ENABLED=false`
 
 如果你的实现支持该 API，并且确实需要离线同步，可以手动开启：
-- `GEMINI_OFFLINE_SYNC_ENABLED=true`
+- `MIKA_OFFLINE_SYNC_ENABLED=true`
 
 开启后仍是 best-effort：某个群同步失败会跳过，不影响 Bot 上线与其它群的处理。
 
 ## 可观测性端点
 
 - `GET /health`：返回数据库状态、客户端状态，以及可选的 API 主动探测结果。  
-- `GET /metrics`：默认返回 JSON 指标快照；当 `Accept: text/plain` 或 `?format=prometheus` 时，可返回 Prometheus 文本（需启用 `GEMINI_METRICS_PROMETHEUS_ENABLED=true`）。  
+- `GET /metrics`：默认返回 JSON 指标快照；当 `Accept: text/plain` 或 `?format=prometheus` 时，可返回 Prometheus 文本（需启用 `MIKA_METRICS_PROMETHEUS_ENABLED=true`）。  
 - `GET /metrics/prometheus`：固定返回 Prometheus 文本格式（若禁用会返回 404）。
-- `POST /v1/events`：Core Service 入口（输入 `EventEnvelope`，返回 `Action[]`，用于跨语言宿主适配）。
 
 可选开关（默认保守）：
-- `GEMINI_METRICS_PROMETHEUS_ENABLED=true`
-- `GEMINI_HEALTH_CHECK_API_PROBE_ENABLED=false`
-- `GEMINI_HEALTH_CHECK_API_PROBE_TIMEOUT_SECONDS=3.0`
-- `GEMINI_HEALTH_CHECK_API_PROBE_TTL_SECONDS=30`
+- `MIKA_METRICS_PROMETHEUS_ENABLED=true`
+- `MIKA_HEALTH_CHECK_API_PROBE_ENABLED=false`
+- `MIKA_HEALTH_CHECK_API_PROBE_TIMEOUT_SECONDS=3.0`
+- `MIKA_HEALTH_CHECK_API_PROBE_TTL_SECONDS=30`
 
 ## 常见排错
 
@@ -223,45 +202,31 @@ Forward 调用的典型 API：
 不同实现对 Forward 支持差异较大；失败后插件会自动降级为“图片引用 -> 单条文本引用”。
 
 若你希望关闭图片兜底，可设置：
-- `GEMINI_LONG_REPLY_IMAGE_FALLBACK_ENABLED=false`
+- `MIKA_LONG_REPLY_IMAGE_FALLBACK_ENABLED=false`
 
 ### “API 经常空回复，且反复重试”
 P0 之后默认策略是“传输层先收敛，业务层不盲重试”：
-- `GEMINI_EMPTY_REPLY_LOCAL_RETRIES=1`
-- `GEMINI_EMPTY_REPLY_LOCAL_RETRY_DELAY_SECONDS=0.4`
-- `GEMINI_TRANSPORT_TIMEOUT_RETRIES=1`
-- `GEMINI_TRANSPORT_TIMEOUT_RETRY_DELAY_SECONDS=0.6`
-- `GEMINI_EMPTY_REPLY_CONTEXT_DEGRADE_ENABLED=false`
+- `MIKA_EMPTY_REPLY_LOCAL_RETRIES=1`
+- `MIKA_EMPTY_REPLY_LOCAL_RETRY_DELAY_SECONDS=0.4`
+- `MIKA_TRANSPORT_TIMEOUT_RETRIES=1`
+- `MIKA_TRANSPORT_TIMEOUT_RETRY_DELAY_SECONDS=0.6`
+- `MIKA_EMPTY_REPLY_CONTEXT_DEGRADE_ENABLED=false`
 
 若你确认不是网络/上游问题，才建议临时开启业务级上下文降级：
-- `GEMINI_EMPTY_REPLY_CONTEXT_DEGRADE_ENABLED=true`
-- `GEMINI_EMPTY_REPLY_CONTEXT_DEGRADE_MAX_LEVEL=2`
+- `MIKA_EMPTY_REPLY_CONTEXT_DEGRADE_ENABLED=true`
+- `MIKA_EMPTY_REPLY_CONTEXT_DEGRADE_MAX_LEVEL=2`
 
 ### “想要排查上下文构建是否异常”
 可临时开启上下文 trace：
-- `GEMINI_CONTEXT_TRACE_ENABLED=true`
-- `GEMINI_CONTEXT_TRACE_SAMPLE_RATE=1.0`
+- `MIKA_CONTEXT_TRACE_ENABLED=true`
+- `MIKA_CONTEXT_TRACE_SAMPLE_RATE=1.0`
 
 在线上环境建议将采样率降到 0.1 或更低，避免日志过量。
 
 ### “主动发言在某些群太频繁/不希望触发”
 可使用主动回复门控：
-- `GEMINI_ACTIVE_REPLY_LTM_ENABLED=true`
-- `GEMINI_ACTIVE_REPLY_PROBABILITY=0.3`
-- `GEMINI_ACTIVE_REPLY_WHITELIST=["123456789"]`
+- `MIKA_ACTIVE_REPLY_LTM_ENABLED=true`
+- `MIKA_ACTIVE_REPLY_PROBABILITY=0.3`
+- `MIKA_ACTIVE_REPLY_WHITELIST=["123456789"]`
 
-其中 `GEMINI_ACTIVE_REPLY_WHITELIST` 留空表示不额外限制群范围（仍受主白名单与原有 proactive 规则控制）。
-
-## Core Service（Stage C）最小说明
-
-默认 `embedded` 模式无需额外配置。若要验证跨语言调用，可切到 `remote`：
-
-```env
-MIKA_CORE_RUNTIME_MODE=remote
-MIKA_CORE_REMOTE_BASE_URL=http://127.0.0.1:8080
-# 可选
-# MIKA_CORE_SERVICE_TOKEN=your-token
-```
-
-`remote` 模式下，适配层会把统一事件结构（`EventEnvelope`）POST 到 `/v1/events`，拿到动作后再执行。
-如果远端不可用，会自动回退到本地 `embedded` 调用链路。
+其中 `MIKA_ACTIVE_REPLY_WHITELIST` 留空表示不额外限制群范围（仍受主白名单与原有 proactive 规则控制）。

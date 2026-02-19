@@ -1,2 +1,2 @@
-# Gemini Chat 插件测试包
+# Mika Chat 插件测试包
 """单元测试模块"""

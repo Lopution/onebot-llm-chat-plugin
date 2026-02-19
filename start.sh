@@ -23,8 +23,8 @@ if [ ! -f ".env" ] && [ ! -f ".env.prod" ]; then
         cp .env.example .env
         echo -e "${GREEN}✅ 已生成 .env（来自 .env.example）${NC}"
         echo -e "${YELLOW}⚠️  请先编辑 .env，至少填写：${NC}"
-        echo -e "${YELLOW}   - GEMINI_API_KEY（或 GEMINI_API_KEY_LIST）${NC}"
-        echo -e "${YELLOW}   - GEMINI_MASTER_ID${NC}"
+        echo -e "${YELLOW}   - MIKA_API_KEY（或 MIKA_API_KEY_LIST）${NC}"
+        echo -e "${YELLOW}   - MIKA_MASTER_ID${NC}"
         echo
         echo -e "${CYAN}💡 编辑完成后重新运行本脚本即可${NC}"
         exit 0
@@ -44,24 +44,130 @@ fi
 
 # 若配置仍是示例默认值，提前提示，避免用户一上来看到一堆报错堆栈
 if [ -n "$CONFIG_CHECK_FILE" ]; then
-    if grep -q '^GEMINI_MASTER_ID=0' "$CONFIG_CHECK_FILE"; then
-        echo -e "${YELLOW}⚠️  检测到 ${CONFIG_CHECK_NAME} 中 GEMINI_MASTER_ID 仍为 0（示例值）${NC}"
-        echo -e "${CYAN}💡 请编辑 ${CONFIG_CHECK_NAME}，设置为你的 QQ 号，例如：GEMINI_MASTER_ID=123456789${NC}"
+    if grep -q '^MIKA_MASTER_ID=0' "$CONFIG_CHECK_FILE"; then
+        echo -e "${YELLOW}⚠️  检测到 ${CONFIG_CHECK_NAME} 中 MIKA_MASTER_ID 仍为 0（示例值）${NC}"
+        echo -e "${CYAN}💡 请编辑 ${CONFIG_CHECK_NAME}，设置为你的 QQ 号，例如：MIKA_MASTER_ID=123456789${NC}"
         exit 0
     fi
 
-    if grep -q '^GEMINI_API_KEY=\"\"' "$CONFIG_CHECK_FILE"; then
+    if grep -q '^MIKA_API_KEY=\"\"' "$CONFIG_CHECK_FILE"; then
         # 若用户未配置 key_list（或仍为空），提示先填写
-        if ! grep -q '^GEMINI_API_KEY_LIST=' "$CONFIG_CHECK_FILE" || grep -q '^GEMINI_API_KEY_LIST=\[[[:space:]]*\]$' "$CONFIG_CHECK_FILE"; then
-            echo -e "${YELLOW}⚠️  检测到 ${CONFIG_CHECK_NAME} 中 GEMINI_API_KEY 仍为空（示例值）${NC}"
-            echo -e "${CYAN}💡 请编辑 ${CONFIG_CHECK_NAME}，填写 GEMINI_API_KEY 或 GEMINI_API_KEY_LIST${NC}"
+        if ! grep -q '^MIKA_API_KEY_LIST=' "$CONFIG_CHECK_FILE" || grep -q '^MIKA_API_KEY_LIST=\[[[:space:]]*\]$' "$CONFIG_CHECK_FILE"; then
+            echo -e "${YELLOW}⚠️  检测到 ${CONFIG_CHECK_NAME} 中 MIKA_API_KEY 仍为空（示例值）${NC}"
+            echo -e "${CYAN}💡 请编辑 ${CONFIG_CHECK_NAME}，填写 MIKA_API_KEY 或 MIKA_API_KEY_LIST${NC}"
             exit 0
         fi
     fi
 fi
 
-# ========== 1. 激活虚拟环境 ==========
-echo -e "${YELLOW}[1/2] 准备 Python 环境...${NC}"
+# ========== 1. 启动/检查 NapCat Docker ==========
+echo -e "${YELLOW}[1/3] 检查 NapCat QQ 客户端...${NC}"
+
+if command -v docker &> /dev/null; then
+    NAPCAT_STATUS=$(docker inspect -f '{{.State.Running}}' napcat 2>/dev/null)
+
+    if [ "$NAPCAT_STATUS" != "true" ]; then
+        echo -e "${YELLOW}🔄 启动 NapCat 容器...${NC}"
+        docker start napcat 2>/dev/null || true
+        sleep 3
+    fi
+
+    NAPCAT_STATUS=$(docker inspect -f '{{.State.Running}}' napcat 2>/dev/null)
+    if [ "$NAPCAT_STATUS" != "true" ]; then
+        echo -e "${YELLOW}⚠️  未检测到可运行的 napcat 容器，跳过 NapCat 检查（仍可先启动 Bot）${NC}"
+        echo -e "${CYAN}💡 你可以稍后自行部署/启动 NapCat，再配置 OneBot 反向 WS 连接到 Bot${NC}"
+        echo
+    else
+        echo -e "${CYAN}📱 检查 NapCat 登录状态...${NC}"
+
+        MAX_RETRIES=3
+        QR_TIMEOUT=120
+
+        retry_count=0
+        LOGIN_SUCCESS=false
+
+        while [ $retry_count -lt $MAX_RETRIES ]; do
+            if [ $retry_count -gt 0 ]; then
+                echo ""
+                echo -e "${YELLOW}🔄 重启 NapCat 容器获取新二维码... (尝试 $((retry_count + 1))/$MAX_RETRIES)${NC}"
+                docker restart napcat >/dev/null 2>&1 || true
+                sleep 5
+            fi
+
+            QR_SHOWN=false
+            START_TIME=$(date +%s)
+
+            while true; do
+                CURRENT_TIME=$(date +%s)
+                ELAPSED=$((CURRENT_TIME - START_TIME))
+                REMAINING=$((QR_TIMEOUT - ELAPSED))
+
+                if [ $ELAPSED -ge $QR_TIMEOUT ]; then
+                    echo ""
+                    echo -e "${YELLOW}⏰ 二维码等待超时 (${QR_TIMEOUT}秒)${NC}"
+                    break
+                fi
+
+                NAPCAT_LOGS=$(docker logs napcat --tail 100 2>&1)
+
+                if echo "$NAPCAT_LOGS" | grep -qE "已启动|接收 <-|OneBot11.*启动|login success|登录成功"; then
+                    echo ""
+                    echo -e "${GREEN}✅ NapCat 已登录成功${NC}"
+                    LOGIN_SUCCESS=true
+                    break 2
+                fi
+
+                if echo "$NAPCAT_LOGS" | grep -qEi "过期|expired|timeout|超时|二维码.*失效|QRCode.*invalid"; then
+                    echo ""
+                    echo -e "${YELLOW}⚠️  二维码已过期！${NC}"
+                    break
+                fi
+
+                if echo "$NAPCAT_LOGS" | grep -q "二维码"; then
+                    if [ "$QR_SHOWN" = false ]; then
+                        echo ""
+                        echo -e "${YELLOW}⚠️  NapCat 需要扫码登录！${NC}"
+                        if [ $retry_count -gt 0 ]; then
+                            echo -e "${CYAN}   (第 $((retry_count + 1)) 次尝试，共 $MAX_RETRIES 次)${NC}"
+                        fi
+                        echo ""
+                        echo -e "${CYAN}📱 请用手机 QQ 扫描以下二维码：${NC}"
+                        echo ""
+                        docker logs napcat --tail 50 2>&1 | grep -A 20 "请扫描下面的二维码" | head -25
+                        echo ""
+                        echo -e "${CYAN}⏳ 等待扫码登录中... (剩余 ${REMAINING} 秒)${NC}"
+                        echo ""
+                        QR_SHOWN=true
+                    else
+                        if [ $((ELAPSED % 10)) -eq 0 ] && [ $ELAPSED -gt 0 ]; then
+                            echo -e "${CYAN}⏳ 等待中... 剩余 ${REMAINING} 秒${NC}"
+                        fi
+                    fi
+                    sleep 5
+                else
+                    echo -e "${CYAN}⏳ NapCat 正在初始化...${NC}"
+                    sleep 2
+                fi
+            done
+
+            retry_count=$((retry_count + 1))
+        done
+
+        if [ "$LOGIN_SUCCESS" != "true" ]; then
+            echo ""
+            echo -e "${YELLOW}⚠️  NapCat 登录未完成（已达到最大重试次数 $MAX_RETRIES 次）${NC}"
+            echo -e "${CYAN}💡 不影响 Bot 启动，你可以稍后手动登录 NapCat：${NC}"
+            echo -e "${CYAN}   docker restart napcat && docker logs -f napcat${NC}"
+        fi
+    fi
+else
+    echo -e "${YELLOW}⚠️ Docker 未安装，跳过 NapCat 检查（仍可先启动 Bot）${NC}"
+fi
+
+echo
+
+# ========== 2. 激活虚拟环境 ==========
+echo -e "${YELLOW}[2/3] 准备 Python 环境...${NC}"
 
 if [ -d ".venv" ]; then
     echo -e "${GREEN}✅ 激活虚拟环境${NC}"
@@ -80,8 +186,8 @@ fi
 
 echo
 
-# ========== 2. 启动 Bot ==========
-echo -e "${YELLOW}[2/2] 启动 Mika Bot...${NC}"
+# ========== 3. 启动 Bot ==========
+echo -e "${YELLOW}[3/3] 启动 Mika Bot...${NC}"
 echo "================================"
 echo
 
@@ -144,7 +250,7 @@ is_bot_process_pid() {
     local pid="$1"
     local cmd
     cmd="$(ps -p "$pid" -o args= 2>/dev/null || true)"
-    echo "$cmd" | grep -Eiq '(bot\.py|nonebot|mika[_-]chat|gemini_chat)'
+    echo "$cmd" | grep -Eiq '(bot\.py|nonebot|mika[_-]chat)'
 }
 
 if is_port_in_use; then

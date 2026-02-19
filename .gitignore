@@ -73,3 +73,9 @@ models/
 tmp/
 temp/
 *.tmp
+
+# WebUI frontend artifacts
+webui/node_modules/
+webui/dist/
+src/mika_chat_core/webui/static/*
+!src/mika_chat_core/webui/static/.gitkeep

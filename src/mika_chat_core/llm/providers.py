@@ -32,8 +32,11 @@ class ProviderCapabilities:
 
 def detect_provider_name(*, configured_provider: str, base_url: str) -> str:
     value = (configured_provider or "").strip().lower()
-    if value in {"openai_compat", "anthropic", "google_genai"}:
+    if value in {"openai_compat", "anthropic", "google_genai", "azure_openai"}:
         return value
+    url_lower = (base_url or "").lower()
+    if "azure" in url_lower and "openai" in url_lower:
+        return "azure_openai"
     # Backward compatibility: unknown value falls back to openai compatible mode.
     return "openai_compat"
 
@@ -62,6 +65,13 @@ def get_provider_capabilities(
             supports_images=True,
             supports_json_object_response=False,
         )
+    elif provider_name == "azure_openai":
+        capabilities = ProviderCapabilities(
+            provider="azure_openai",
+            supports_tools=True,
+            supports_images=True,
+            supports_json_object_response=True,
+        )
     else:
         capabilities = ProviderCapabilities(
             provider="openai_compat",
@@ -88,6 +98,25 @@ def is_google_openai_compat_endpoint(base_url: str) -> bool:
     return "generativelanguage.googleapis.com" in host and "/openai" in path
 
 
+def _normalize_provider_base_url(base_url: str) -> str:
+    value = str(base_url or "").strip()
+    parsed = urlparse(value)
+    scheme = str(parsed.scheme or "").lower()
+    if scheme not in {"http", "https"}:
+        raise ValueError("provider base_url must start with http:// or https://")
+    if not parsed.netloc:
+        raise ValueError("provider base_url must include host")
+    if parsed.query or parsed.fragment:
+        raise ValueError("provider base_url must not include query or fragment")
+    if parsed.params:
+        raise ValueError("provider base_url must not include path params")
+
+    path = str(parsed.path or "").rstrip("/")
+    if path:
+        return f"{scheme}://{parsed.netloc}{path}"
+    return f"{scheme}://{parsed.netloc}"
+
+
 def build_provider_request(
     *,
     provider: str,
@@ -98,10 +127,11 @@ def build_provider_request(
     extra_headers: Optional[Dict[str, str]] = None,
     default_temperature: float,
 ) -> ProviderPreparedRequest:
+    normalized_base_url = _normalize_provider_base_url(base_url)
     provider_name = detect_provider_name(configured_provider=provider, base_url=base_url)
     if provider_name == "anthropic":
         return _build_anthropic_request(
-            base_url=base_url,
+            base_url=normalized_base_url,
             model=model,
             api_key=api_key,
             request_body=request_body,
@@ -110,15 +140,23 @@ def build_provider_request(
         )
     if provider_name == "google_genai":
         return _build_google_genai_request(
-            base_url=base_url,
+            base_url=normalized_base_url,
             model=model,
             api_key=api_key,
             request_body=request_body,
             extra_headers=extra_headers,
             default_temperature=default_temperature,
         )
+    if provider_name == "azure_openai":
+        return _build_azure_openai_request(
+            base_url=normalized_base_url,
+            api_key=api_key,
+            request_body=request_body,
+            extra_headers=extra_headers,
+            default_temperature=default_temperature,
+        )
     return _build_openai_compat_request(
-        base_url=base_url,
+        base_url=normalized_base_url,
         api_key=api_key,
         request_body=request_body,
         extra_headers=extra_headers,
@@ -136,6 +174,8 @@ def parse_provider_response(
         return _parse_anthropic_response(data)
     if provider_name == "google_genai":
         return _parse_google_genai_response(data)
+    if provider_name == "azure_openai":
+        return _parse_openai_compat_response(data)
     return _parse_openai_compat_response(data)
 
 
@@ -191,6 +231,10 @@ def _build_openai_compat_request(
     if "temperature" not in body:
         body["temperature"] = default_temperature
 
+    effective_api_key = str(api_key or "").strip()
+    if not effective_api_key or effective_api_key.lower() in {"ollama", "none", "local"}:
+        effective_api_key = "ollama"
+
     # Keep Google OpenAI endpoint behavior, but do not leak this field to other providers.
     if is_google_openai_compat_endpoint(base_url):
         body["safetySettings"] = [
@@ -201,7 +245,7 @@ def _build_openai_compat_request(
         ]
 
     headers = {
-        "Authorization": f"Bearer {api_key}",
+        "Authorization": f"Bearer {effective_api_key}",
         "Content-Type": "application/json",
     }
     for key, value in (extra_headers or {}).items():
@@ -209,6 +253,35 @@ def _build_openai_compat_request(
 
     return ProviderPreparedRequest(
         provider="openai_compat",
+        url=f"{base_url.rstrip('/')}/chat/completions",
+        headers=headers,
+        json_body=body,
+        params=None,
+    )
+
+
+def _build_azure_openai_request(
+    *,
+    base_url: str,
+    api_key: str,
+    request_body: Dict[str, Any],
+    extra_headers: Optional[Dict[str, str]],
+    default_temperature: float,
+) -> ProviderPreparedRequest:
+    """Azure OpenAI: `api-key` header, URL 由 deployment 路径决定。"""
+    body = copy.deepcopy(request_body)
+    if "temperature" not in body:
+        body["temperature"] = default_temperature
+
+    headers = {
+        "api-key": str(api_key or "").strip(),
+        "Content-Type": "application/json",
+    }
+    for key, value in (extra_headers or {}).items():
+        headers[str(key)] = str(value)
+
+    return ProviderPreparedRequest(
+        provider="azure_openai",
         url=f"{base_url.rstrip('/')}/chat/completions",
         headers=headers,
         json_body=body,

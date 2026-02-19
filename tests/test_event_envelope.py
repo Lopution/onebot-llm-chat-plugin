@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from mika_chat_core.contracts import Author, ContentPart, EventEnvelope
 from mika_chat_core.engine import ChatEngine
-from mika_chat_core.event_envelope import build_event_envelope
+from mika_chat_core.compat.onebot_envelope import build_event_envelope
 
 
 class _Segment:

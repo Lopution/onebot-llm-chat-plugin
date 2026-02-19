@@ -185,3 +185,84 @@ class TestAnalyzeContextStore:
                     assert isinstance(stored_content, str)
                     loaded = json.loads(stored_content)
                     assert loaded[0]["text"] == "Hi"
+
+    async def test_add_message_raises_context_store_write_error_on_db_failure(self):
+        from mika_chat_core.utils.context_store import ContextStoreWriteError, SQLiteContextStore
+
+        store = SQLiteContextStore()
+        with patch(
+            "mika_chat_core.utils.context_store.get_db",
+            new=AsyncMock(side_effect=RuntimeError("db unavailable")),
+        ):
+            with pytest.raises(ContextStoreWriteError):
+                await store.add_message("user123", "user", "hello")
+
+    async def test_build_summary_for_messages_skips_existing_summary_marker(self):
+        from mika_chat_core.utils.context_store import SQLiteContextStore
+
+        class _FakeSummarizer:
+            summarize = AsyncMock(return_value="新的完整摘要")
+
+        store = SQLiteContextStore(
+            summary_enabled=True,
+            context_summarizer=_FakeSummarizer(),
+        )
+        save_summary_mock = AsyncMock()
+        with patch.object(
+            store,
+            "_get_cached_summary",
+            AsyncMock(return_value=("旧摘要", 1)),
+        ), patch.object(
+            store,
+            "_save_cached_summary",
+            save_summary_mock,
+        ), patch.object(
+            store,
+            "_resolve_summary_runtime_config",
+            return_value=("openai_compat", "https://api.example.com", "model-fast", {"api_key": "k"}),
+        ):
+            result = await store._build_summary_for_messages(
+                context_key="group:1",
+                messages=[
+                    {"role": "system", "content": "[历史摘要] 旧摘要"},
+                    {"role": "user", "content": "你好"},
+                    {"role": "assistant", "content": "你好呀"},
+                ],
+            )
+
+        assert result == "新的完整摘要"
+        called_messages = _FakeSummarizer.summarize.await_args.args[0]
+        assert len(called_messages) == 2
+        assert all(
+            not (
+                str(item.get("role") or "") == "system"
+                and str(item.get("content") or "").startswith("[历史摘要]")
+            )
+            for item in called_messages
+        )
+        save_summary_mock.assert_awaited_once_with("group:1", "新的完整摘要", 2)
+
+    async def test_build_summary_for_messages_returns_cached_summary_when_only_marker_messages(self):
+        from mika_chat_core.utils.context_store import SQLiteContextStore
+
+        class _FakeSummarizer:
+            summarize = AsyncMock(return_value="不应被调用")
+
+        store = SQLiteContextStore(
+            summary_enabled=True,
+            context_summarizer=_FakeSummarizer(),
+        )
+        with patch.object(
+            store,
+            "_get_cached_summary",
+            AsyncMock(return_value=("旧摘要", 5)),
+        ):
+            result = await store._build_summary_for_messages(
+                context_key="group:1",
+                messages=[
+                    {"role": "system", "content": "[历史摘要] 旧摘要"},
+                ],
+            )
+
+        assert result == "旧摘要"
+        assert _FakeSummarizer.summarize.await_count == 0

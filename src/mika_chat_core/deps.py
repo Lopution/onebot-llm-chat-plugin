@@ -8,7 +8,6 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from .utils.nb_types import BotT, EventT
 from .runtime import get_client as get_runtime_client
 from .runtime import get_config as get_runtime_config
 from .runtime import get_dep_hook
@@ -28,47 +27,53 @@ def _warn_missing_hook_once(hook_name: str) -> None:
     )
 
 
-def _fallback_chat_history(_bot: BotT, _event: EventT) -> List[Dict[str, Any]]:
+def _fallback_chat_history(*_args: Any, **_kwargs: Any) -> List[Dict[str, Any]]:
     return []
 
 
-def _fallback_user_profile(_bot: BotT, _event: EventT) -> Dict[str, Any]:
+def _fallback_user_profile(*_args: Any, **_kwargs: Any) -> Dict[str, Any]:
     return {}
 
 
-def _fallback_processed_images(_bot: BotT, _event: EventT) -> List[Dict[str, Any]]:
+def _fallback_processed_images(*_args: Any, **_kwargs: Any) -> List[Dict[str, Any]]:
     return []
 
 
-async def get_chat_history(bot: BotT, event: EventT) -> List[Dict[str, Any]]:
+async def get_chat_history(*args: Any, **kwargs: Any) -> List[Dict[str, Any]]:
+    """Deprecated compatibility hook.
+
+    仅为外部历史调用兼容保留；核心链路已迁移为 envelope + ports。
+    """
     hook = get_dep_hook("get_chat_history")
     if hook is None:
         _warn_missing_hook_once("get_chat_history")
-        return _fallback_chat_history(bot, event)
-    return await hook(bot, event)
+        return _fallback_chat_history(*args, **kwargs)
+    return await hook(*args, **kwargs)
 
 
-async def get_user_profile_data(bot: BotT, event: EventT) -> Dict[str, Any]:
+async def get_user_profile_data(*args: Any, **kwargs: Any) -> Dict[str, Any]:
+    """Deprecated compatibility hook."""
     hook = get_dep_hook("get_user_profile_data")
     if hook is None:
         _warn_missing_hook_once("get_user_profile_data")
-        return _fallback_user_profile(bot, event)
-    return await hook(bot, event)
+        return _fallback_user_profile(*args, **kwargs)
+    return await hook(*args, **kwargs)
 
 
-async def get_processed_images(bot: BotT, event: EventT) -> List[Dict[str, Any]]:
+async def get_processed_images(*args: Any, **kwargs: Any) -> List[Dict[str, Any]]:
+    """Deprecated compatibility hook."""
     hook = get_dep_hook("get_processed_images")
     if hook is None:
         _warn_missing_hook_once("get_processed_images")
-        return _fallback_processed_images(bot, event)
-    return await hook(bot, event)
+        return _fallback_processed_images(*args, **kwargs)
+    return await hook(*args, **kwargs)
 
 
-def get_gemini_client_dep():
-    hook = get_dep_hook("get_gemini_client_dep")
+def get_mika_client_dep():
+    hook = get_dep_hook("get_mika_client_dep")
     if hook is not None:
         return hook()
-    _warn_missing_hook_once("get_gemini_client_dep")
+    _warn_missing_hook_once("get_mika_client_dep")
     return get_runtime_client()
 
 
@@ -84,6 +89,6 @@ __all__ = [
     "get_chat_history",
     "get_user_profile_data",
     "get_processed_images",
-    "get_gemini_client_dep",
+    "get_mika_client_dep",
     "get_config",
 ]

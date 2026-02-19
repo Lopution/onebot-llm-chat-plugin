@@ -11,6 +11,18 @@ from .contracts import EventEnvelope, NoopAction, SendMessageAction
 CoreAction = SendMessageAction | NoopAction
 
 
+class CoreServiceError(RuntimeError):
+    """Base exception for core service client failures."""
+
+
+class CoreServiceTimeoutError(CoreServiceError):
+    """Raised when core service request times out."""
+
+
+class CoreServiceRequestError(CoreServiceError):
+    """Raised for non-timeout transport errors when calling core service."""
+
+
 def _parse_action(payload: dict[str, Any]) -> CoreAction:
     action_type = str(payload.get("type", "")).strip().lower()
     if action_type == "send_message":
@@ -55,10 +67,25 @@ class CoreServiceClient:
     ) -> list[CoreAction]:
         url = f"{self.base_url}/v1/events"
         payload = {"envelope": envelope.to_dict(), "dispatch": bool(dispatch)}
-        async with httpx.AsyncClient(timeout=self.timeout_seconds, transport=self.transport) as client:
-            response = await client.post(url, headers=self._headers(), json=payload)
-            response.raise_for_status()
-            data = response.json()
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout_seconds, transport=self.transport) as client:
+                response = await client.post(url, headers=self._headers(), json=payload)
+                response.raise_for_status()
+                data = response.json()
+        except httpx.HTTPStatusError:
+            raise
+        except httpx.ReadTimeout as exc:
+            raise CoreServiceTimeoutError(
+                f"core service request failed: {type(exc).__name__}: {exc}"
+            ) from exc
+        except httpx.RequestError as exc:
+            raise CoreServiceRequestError(
+                f"core service request failed: {type(exc).__name__}: {exc}"
+            ) from exc
+        except ValueError as exc:
+            raise CoreServiceRequestError(
+                f"core service response is not valid JSON: {exc}"
+            ) from exc
 
         raw_actions = list((data or {}).get("actions") or [])
         actions: list[CoreAction] = []
@@ -67,3 +94,28 @@ class CoreServiceClient:
                 raise ValueError("remote core action payload must be object")
             actions.append(_parse_action(item))
         return actions
+
+    async def get_health(self) -> dict[str, Any]:
+        url = f"{self.base_url}/v1/health"
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout_seconds, transport=self.transport) as client:
+                response = await client.get(url, headers=self._headers())
+                response.raise_for_status()
+                data = response.json()
+        except httpx.HTTPStatusError:
+            raise
+        except httpx.ReadTimeout as exc:
+            raise CoreServiceTimeoutError(
+                f"core service request failed: {type(exc).__name__}: {exc}"
+            ) from exc
+        except httpx.RequestError as exc:
+            raise CoreServiceRequestError(
+                f"core service request failed: {type(exc).__name__}: {exc}"
+            ) from exc
+        except ValueError as exc:
+            raise CoreServiceRequestError(
+                f"core service response is not valid JSON: {exc}"
+            ) from exc
+        if not isinstance(data, dict):
+            raise CoreServiceRequestError("core service health payload must be object")
+        return data

@@ -2,7 +2,7 @@
 
 # Mika Bot 🌸
 
-**A multimodal QQ chat bot plugin based on the OneBot protocol, using Gemini models through an OpenAI-compatible API**
+**A multimodal QQ chat bot plugin based on the OneBot protocol, using LLM models through an OpenAI-compatible API**
 
 [English](README_EN.md) | [中文](README.md)
 
@@ -24,7 +24,7 @@
 <td width="50%">
 
 ### 🤖 Intelligent Chat
-Uses Gemini via an OpenAI-compatible API, with multi-turn context support
+Uses an LLM via an OpenAI-compatible API, with multi-turn context support
 
 ### 🔍 Web Search
 Integrated Serper search for up-to-date information
@@ -180,62 +180,69 @@ python3 scripts/config_wizard.py
 
 #### Config Reference
 
-> Note: from this version, prefer `MIKA_LLM_*` / `MIKA_SEARCH_*` as canonical keys for LLM/Search.  
-> Legacy `GEMINI_*` / `SERPER_API_KEY` are still supported for compatibility.
+Use the `MIKA_*` prefix consistently for environment variables.
 
 | Key | Description | Required | Default |
 |-----|-------------|:--------:|---------|
-| `MIKA_LLM_API_KEY` | LLM API key (compatible with legacy `GEMINI_API_KEY`) | ✅ | - |
-| `MIKA_LLM_BASE_URL` | LLM API base URL (proxy/gateway use) | ❌ | - |
-| `MIKA_LLM_PROVIDER` | LLM provider (`openai_compat` / `anthropic` / `google_genai`) | ❌ | `openai_compat` |
-| `MIKA_LLM_MODEL` | Primary model | ❌ | `gemini-3-pro-high` |
-| `MIKA_LLM_FAST_MODEL` | Fast model | ❌ | `gemini-2.5-flash-lite` |
-| `MIKA_MASTER_ID` | Master QQ ID (compatible with legacy `GEMINI_MASTER_ID`) | ✅ | - |
-| `MIKA_GROUP_WHITELIST` | Group whitelist (compatible with legacy `GEMINI_GROUP_WHITELIST`) | ❌ | - |
-| `GEMINI_OFFLINE_SYNC_ENABLED` | Offline sync (non-standard API, off by default) | ❌ | `false` |
-| `GEMINI_CONTEXT_MODE` | Context mode (`legacy`/`structured`) | ❌ | `structured` |
-| `GEMINI_CONTEXT_MAX_TURNS` | Max context turns (applied before raw message count trim) | ❌ | `30` |
-| `GEMINI_CONTEXT_MAX_TOKENS_SOFT` | Soft token threshold for context trimming (estimated) | ❌ | `12000` |
-| `GEMINI_CONTEXT_SUMMARY_ENABLED` | Enable summary compression (disabled by default) | ❌ | `false` |
-| `GEMINI_MULTIMODAL_STRICT` | Strict multimodal sanitation when capability is missing | ❌ | `true` |
-| `GEMINI_QUOTE_IMAGE_CAPTION_ENABLED` | Add caption hint for quoted images (best-effort) | ❌ | `true` |
-| `GEMINI_QUOTE_IMAGE_CAPTION_PROMPT` | Quote-image hint template (supports `{count}`) | ❌ | `[引用图片共{count}张]` |
-| `GEMINI_QUOTE_IMAGE_CAPTION_TIMEOUT_SECONDS` | Quote message parsing timeout (seconds) | ❌ | `3.0` |
-| `GEMINI_LONG_REPLY_IMAGE_FALLBACK_ENABLED` | Enable rendered-image fallback on send failure | ❌ | `true` |
-| `GEMINI_LONG_REPLY_IMAGE_MAX_CHARS` | Max chars for rendered long-reply image | ❌ | `12000` |
-| `GEMINI_LONG_REPLY_IMAGE_MAX_WIDTH` | Rendered image width (px) | ❌ | `960` |
-| `GEMINI_LONG_REPLY_IMAGE_FONT_SIZE` | Rendered image font size | ❌ | `24` |
-| `GEMINI_LONG_MESSAGE_CHUNK_SIZE` | Compatibility-only (not used in main fallback chain) | ❌ | `800` |
-| `GEMINI_EMPTY_REPLY_LOCAL_RETRIES` | Transport-level local retries on empty replies (without replaying full chain) | ❌ | `1` |
-| `GEMINI_EMPTY_REPLY_LOCAL_RETRY_DELAY_SECONDS` | Delay between local empty-reply retries (seconds) | ❌ | `0.4` |
-| `GEMINI_TRANSPORT_TIMEOUT_RETRIES` | Transport-level local retries for timeout only | ❌ | `1` |
-| `GEMINI_TRANSPORT_TIMEOUT_RETRY_DELAY_SECONDS` | Delay between timeout retries (seconds) | ❌ | `0.6` |
-| `GEMINI_EMPTY_REPLY_CONTEXT_DEGRADE_ENABLED` | Enable business-level context degradation on empty replies | ❌ | `false` |
-| `GEMINI_EMPTY_REPLY_CONTEXT_DEGRADE_MAX_LEVEL` | Max degradation level for business-level context retries | ❌ | `2` |
-| `GEMINI_METRICS_PROMETHEUS_ENABLED` | Enable Prometheus text output on `/metrics` | ❌ | `true` |
-| `GEMINI_HEALTH_CHECK_API_PROBE_ENABLED` | Enable active API probe in `/health` | ❌ | `false` |
-| `GEMINI_HEALTH_CHECK_API_PROBE_TIMEOUT_SECONDS` | API health probe timeout (seconds) | ❌ | `3.0` |
-| `GEMINI_HEALTH_CHECK_API_PROBE_TTL_SECONDS` | API health probe cache TTL (seconds) | ❌ | `30` |
-| `GEMINI_CONTEXT_TRACE_ENABLED` | Enable context-build trace logs | ❌ | `false` |
-| `GEMINI_CONTEXT_TRACE_SAMPLE_RATE` | Context trace sampling ratio (0~1) | ❌ | `1.0` |
-| `GEMINI_ACTIVE_REPLY_LTM_ENABLED` | Global gate for proactive LTM-like reply | ❌ | `true` |
-| `GEMINI_ACTIVE_REPLY_PROBABILITY` | Final probability gate for proactive reply (0~1) | ❌ | `1.0` |
-| `GEMINI_ACTIVE_REPLY_WHITELIST` | Group whitelist for proactive reply (empty = no extra limit) | ❌ | `[]` |
-| `MIKA_SEARCH_API_KEY` | Search API key (compatible with `SERPER_API_KEY`) | ❌ | - |
+| `MIKA_API_KEY` | Mika API key | ✅ | - |
+| `MIKA_BASE_URL` | API base URL (for proxy/gateway) | ❌ | - |
+| `MIKA_MODEL` | Primary model | ❌ | `gemini-3-pro-high` |
+| `MIKA_MASTER_ID` | Master QQ ID | ✅ | - |
+| `MIKA_GROUP_WHITELIST` | Group whitelist | ❌ | - |
+| `MIKA_OFFLINE_SYNC_ENABLED` | Offline sync (non-standard API, off by default) | ❌ | `false` |
+| `MIKA_CONTEXT_MODE` | Context mode (`legacy`/`structured`) | ❌ | `structured` |
+| `MIKA_CONTEXT_MAX_TURNS` | Max context turns (applied before raw message count trim) | ❌ | `30` |
+| `MIKA_CONTEXT_MAX_TOKENS_SOFT` | Soft token threshold for context trimming (estimated) | ❌ | `12000` |
+| `MIKA_CONTEXT_SUMMARY_ENABLED` | Enable summary compression (disabled by default) | ❌ | `false` |
+| `MIKA_MULTIMODAL_STRICT` | Strict multimodal sanitation when capability is missing | ❌ | `true` |
+| `MIKA_QUOTE_IMAGE_CAPTION_ENABLED` | Add caption hint for quoted images (best-effort) | ❌ | `true` |
+| `MIKA_QUOTE_IMAGE_CAPTION_PROMPT` | Quote-image hint template (supports `{count}`) | ❌ | `[引用图片共{count}张]` |
+| `MIKA_QUOTE_IMAGE_CAPTION_TIMEOUT_SECONDS` | Quote message parsing timeout (seconds) | ❌ | `3.0` |
+| `MIKA_LONG_REPLY_IMAGE_FALLBACK_ENABLED` | Enable rendered-image fallback on send failure | ❌ | `true` |
+| `MIKA_LONG_REPLY_IMAGE_MAX_CHARS` | Max chars for rendered long-reply image | ❌ | `12000` |
+| `MIKA_LONG_REPLY_IMAGE_MAX_WIDTH` | Rendered image width (px) | ❌ | `960` |
+| `MIKA_LONG_REPLY_IMAGE_FONT_SIZE` | Rendered image font size | ❌ | `24` |
+| `MIKA_LONG_MESSAGE_CHUNK_SIZE` | Compatibility-only (not used in main fallback chain) | ❌ | `800` |
+| `MIKA_EMPTY_REPLY_LOCAL_RETRIES` | Transport-level local retries on empty replies (without replaying full chain) | ❌ | `1` |
+| `MIKA_EMPTY_REPLY_LOCAL_RETRY_DELAY_SECONDS` | Delay between local empty-reply retries (seconds) | ❌ | `0.4` |
+| `MIKA_TRANSPORT_TIMEOUT_RETRIES` | Transport-level local retries for timeout only | ❌ | `1` |
+| `MIKA_TRANSPORT_TIMEOUT_RETRY_DELAY_SECONDS` | Delay between timeout retries (seconds) | ❌ | `0.6` |
+| `MIKA_EMPTY_REPLY_CONTEXT_DEGRADE_ENABLED` | Enable business-level context degradation on empty replies | ❌ | `false` |
+| `MIKA_EMPTY_REPLY_CONTEXT_DEGRADE_MAX_LEVEL` | Max degradation level for business-level context retries | ❌ | `2` |
+| `MIKA_METRICS_PROMETHEUS_ENABLED` | Enable Prometheus text output on `/metrics` | ❌ | `true` |
+| `MIKA_HEALTH_CHECK_API_PROBE_ENABLED` | Enable active API probe in `/health` | ❌ | `false` |
+| `MIKA_HEALTH_CHECK_API_PROBE_TIMEOUT_SECONDS` | API health probe timeout (seconds) | ❌ | `3.0` |
+| `MIKA_HEALTH_CHECK_API_PROBE_TTL_SECONDS` | API health probe cache TTL (seconds) | ❌ | `30` |
+| `MIKA_CONTEXT_TRACE_ENABLED` | Enable context-build trace logs | ❌ | `false` |
+| `MIKA_CONTEXT_TRACE_SAMPLE_RATE` | Context trace sampling ratio (0~1) | ❌ | `1.0` |
+| `MIKA_ACTIVE_REPLY_LTM_ENABLED` | Global gate for proactive LTM-like reply | ❌ | `true` |
+| `MIKA_ACTIVE_REPLY_PROBABILITY` | Final probability gate for proactive reply (0~1) | ❌ | `1.0` |
+| `MIKA_ACTIVE_REPLY_WHITELIST` | Group whitelist for proactive reply (empty = no extra limit) | ❌ | `[]` |
+| `SERPER_API_KEY` | Serper API key | ❌ | - |
 | `MIKA_STRICT_STARTUP` | Strict startup mode (fail-fast on loader errors) | ❌ | `false` |
 
 > 📖 Full config: [`docs/api/config.md`](docs/api/config.md)
 
-### Minimal Custom Prompt Format
+### Custom Prompt (V2)
 
-If you use a custom prompt file, keep at least this minimal structure:
+Default prompt file is `system.yaml`:
 
 ```yaml
-system_prompt: |
-  You are a reliable and concise chat assistant.
+name: "Character Name"
+character_prompt: |
+  Put your role/persona definition here (free text).
+dialogue_examples:
+  - scenario: "Example"
+    user: "User input"
+    bot: "Character reply"
+error_messages:
+  default: "Default error message"
 ```
 
-If prompt structure is incomplete or invalid, the plugin falls back gracefully instead of crashing at startup/runtime.
+Migration note (Breaking Change):
+- Legacy structured keys (`role/personality/instructions/...`) are removed from supported schema.
+- Legacy `system_prompt` is no longer a formal entry field.
+- If `name` or `character_prompt` is missing, loader falls back to a safe default prompt and emits warning logs.
 
 ### 5. Start your OneBot implementation
 
@@ -287,7 +294,7 @@ mika-chat-core/
 │
 ├── src/mika_chat_core/            # Host-agnostic core module
 │       ├── config.py
-│       ├── gemini_api.py
+│       ├── mika_api.py
 │       ├── handlers.py
 │       ├── matchers.py
 │       ├── lifecycle.py
@@ -309,7 +316,7 @@ mika-chat-core/
 | Document | Description |
 |----------|-------------|
 | [Docs Home](docs/index.md) | Documentation entry |
-| [API Client](docs/api/gemini_api.md) | API client usage |
+| [API Client](docs/api/mika_api.md) | API client usage |
 | [Handlers](docs/api/handlers.md) | Message handling flow |
 | [Search Engine](docs/api/search_engine.md) | Web search module |
 | [Context Store](docs/api/context_store.md) | Context management |
@@ -356,7 +363,7 @@ pytest tests/ -v --cov=src/mika_chat_core --cov-report=html
 
 - [OneBot](https://onebot.dev/) - Unified bot communication protocol
 - [NoneBot2](https://nonebot.dev/) - Async Python bot framework
-- [Google Gemini](https://ai.google.dev/) - Multimodal model provider (through OpenAI-compatible APIs)
+- [Google AI](https://ai.google.dev/) - Multimodal model provider (through OpenAI-compatible APIs)
 - [NapCat](https://github.com/NapNeko/NapCat) - QQ client implementation
 - [AstrBot](https://github.com/Soulter/AstrBot) - Design inspiration for parts of strategy and implementation
 - [Serper](https://serper.dev/) - Search API service

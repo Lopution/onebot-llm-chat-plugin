@@ -20,7 +20,7 @@ profile_extract:
     {existing_profile}
     
     ## 用户信息
-    - QQ号: {qq_id}
+    - 平台用户ID: {platform_user_id}
     - 昵称: {nickname}
     - 场景: {scene}
     

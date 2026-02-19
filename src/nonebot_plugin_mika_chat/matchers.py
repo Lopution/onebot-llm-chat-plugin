@@ -14,21 +14,34 @@
 
 from nonebot import on_message, on_command, get_plugin_config
 from nonebot import logger as log
-import random
 import time
+from typing import Any
 
 from mika_chat_core.settings import Config
 from mika_chat_core.handlers import parse_message_with_mentions
-from mika_chat_core.runtime import get_config as get_runtime_config
+from mika_chat_core.runtime import (
+    get_client as get_runtime_client,
+    get_config as get_runtime_config,
+)
 from mika_chat_core.utils.image_processor import extract_images, resolve_image_urls
 from mika_chat_core.utils.recent_images import get_image_cache
-from mika_chat_core.group_state import heat_monitor, get_proactive_cooldowns, get_proactive_message_counts
+from mika_chat_core.group_state import (
+    get_proactive_cooldowns,
+    get_proactive_message_counts,
+    heat_monitor,
+    touch_proactive_group,
+)
 from mika_chat_core.metrics import metrics
-from mika_chat_core.event_envelope import build_event_envelope
+from mika_chat_core.compat.onebot_envelope import (
+    build_event_envelope,
+    build_event_envelope_from_event,
+)
+from mika_chat_core.matchers import check_proactive as check_proactive_core
 from mika_chat_core.semantic_transcript import build_context_record_text, summarize_envelope
 from mika_chat_core.engine import ChatEngine
-from mika_chat_core.core_service_client import CoreServiceClient
-from mika_chat_core.utils.event_context import build_event_context, build_event_context_from_event
+from mika_chat_core.core_service_client import CoreServiceClient, CoreServiceTimeoutError
+from mika_chat_core.utils.event_context import build_event_context
+from .safe_api import safe_send
 from .runtime_ports_nb import get_runtime_ports_bundle
 from nonebot.adapters import Bot, Event
 from mika_chat_core.contracts import EventEnvelope
@@ -45,6 +58,9 @@ async def check_at_me_anywhere(bot: Bot, event: Event) -> bool:
     1. 首先检查 event.to_me（adapter 已处理的首尾 @）
     2. 再检查 event.original_message 中是否有 @ 在非首尾位置
     """
+    if _is_self_message_event(bot, event):
+        return False
+
     ctx = build_event_context(bot, event)
     if not ctx.is_group:
         return False
@@ -84,9 +100,66 @@ def _get_plugin_config() -> Config:
         return get_plugin_config(Config)
 
 
-# 获取配置
-plugin_config = _get_plugin_config()
+class _PluginConfigProxy:
+    """Always resolve latest runtime config to avoid stale module-level cache."""
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(_get_plugin_config(), name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name.startswith("_"):
+            object.__setattr__(self, name, value)
+            return
+        setattr(_get_plugin_config(), name, value)
+
+
+plugin_config = _PluginConfigProxy()
 runtime_ports = get_runtime_ports_bundle()
+REMOTE_FAILURE_REPLY_TEXT = "服务暂时不可用，请稍后再试。"
+
+
+def _is_message_sent_event(event: Event) -> bool:
+    post_type = str(getattr(event, "post_type", "") or "").strip().lower()
+    if post_type == "message_sent":
+        return True
+    message_sent_type = str(getattr(event, "message_sent_type", "") or "").strip().lower()
+    return message_sent_type == "self"
+
+
+def _is_self_message_event(bot: Bot, event: Event) -> bool:
+    if _is_message_sent_event(event):
+        return True
+
+    self_id = str(getattr(bot, "self_id", "") or "").strip()
+    if not self_id:
+        return False
+
+    sender = getattr(event, "sender", None)
+    if isinstance(sender, dict):
+        sender_id = str(sender.get("user_id", "") or "").strip()
+    else:
+        sender_id = str(getattr(sender, "user_id", "") or "").strip()
+    if sender_id and sender_id == self_id:
+        return True
+
+    event_user_id = str(getattr(event, "user_id", "") or "").strip()
+    return bool(event_user_id and event_user_id == self_id)
+
+
+async def _send_remote_failure_reply(bot: Bot, event: Event, *, envelope: EventEnvelope) -> None:
+    intent_value = str(envelope.meta.get("intent") or "").strip().lower()
+    if intent_value not in {"private", "group", "reset"}:
+        return
+    if _is_self_message_event(bot, event):
+        return
+
+    await safe_send(
+        bot,
+        event,
+        REMOTE_FAILURE_REPLY_TEXT,
+        reply_message=True,
+        at_sender=False,
+    )
 
 
 def _build_traced_event_envelope(bot: Bot, event: Event, *, source: str) -> EventEnvelope | None:
@@ -128,19 +201,25 @@ async def _handle_event_with_runtime_mode(
 ) -> None:
     runtime_ports.register_event(envelope, bot=bot, event=event)
     runtime_cfg = plugin_config.get_core_runtime_config()
-    mode = str(runtime_cfg["mode"] or "embedded").strip().lower()
-
-    if mode == "remote":
-        try:
-            await _execute_remote_core_event(envelope)
-            return
-        except Exception as exc:
-            log.warning(f"[Adapter->Core][remote] failed, fallback_embedded | err={exc}")
+    mode = str(runtime_cfg["mode"] or "remote").strip().lower()
+    if mode != "remote":
+        log.error(f"[Adapter->Core] invalid runtime mode: {mode!r} (remote-only build)")
+        return
 
     try:
-        await ChatEngine.handle_event(envelope, runtime_ports, plugin_config, dispatch=True)
+        await _execute_remote_core_event(envelope)
+    except CoreServiceTimeoutError as exc:
+        log.warning(
+            f"[Adapter->Core][remote] request timeout, skip immediate fallback reply | "
+            f"session={envelope.session_id} | message={envelope.message_id or '?'} | "
+            f"err_type={type(exc).__name__}"
+        )
     except Exception as exc:
-        log.exception(f"[Adapter->Core] handle_event_failed_without_fallback | err={exc}")
+        log.exception(
+            f"[Adapter->Core][remote] failed without embedded fallback | "
+            f"err_type={type(exc).__name__} | err={exc!r}"
+        )
+        await _send_remote_failure_reply(bot, event, envelope=envelope)
 
 
 # ==================== 指令匹配器 ====================
@@ -166,6 +245,8 @@ async def _handle_reset(bot: Bot, event: Event):
 # ==================== 消息匹配器 ====================
 
 async def _is_private_message(bot: Bot, event: Event) -> bool:
+    if _is_self_message_event(bot, event):
+        return False
     ctx = build_event_context(bot, event)
     return bool(ctx.user_id) and not ctx.is_group
 
@@ -177,6 +258,8 @@ private_chat = on_message(rule=_is_private_message, priority=10, block=False)
 @private_chat.handle()
 async def _handle_private(bot: Bot, event: Event):
     """私聊消息处理"""
+    if _is_self_message_event(bot, event):
+        return
     envelope = _build_traced_event_envelope(bot, event, source="private_chat")
     if envelope is None:
         envelope = build_event_envelope(bot, event, protocol="onebot")
@@ -195,6 +278,8 @@ group_chat = on_message(rule=check_at_me_anywhere, priority=10, block=False)
 @group_chat.handle()
 async def _handle_group(bot: Bot, event: Event):
     """群聊消息处理（@机器人时触发）"""
+    if _is_self_message_event(bot, event):
+        return
     envelope = _build_traced_event_envelope(bot, event, source="group_chat")
     if envelope is None:
         envelope = build_event_envelope(bot, event, protocol="onebot")
@@ -212,166 +297,23 @@ _proactive_cooldowns = get_proactive_cooldowns()
 _proactive_message_counts = get_proactive_message_counts()
 
 async def check_proactive(event: Event) -> bool:
-    """检查是否触发主动发言 (二级触发：感知层)"""
-    # rule 阶段没有 bot 参数，统一通过 event-only 上下文提取，避免适配器字段差异。
-    ctx = build_event_context_from_event(event, platform="onebot")
-    group_id_str = str(ctx.group_id or "")
-    user_id_str = str(ctx.user_id or "")
-
-    if not group_id_str:
+    """检查是否触发主动发言（复用 core 判定逻辑）。"""
+    if _is_message_sent_event(event):
         return False
 
-    if not bool(getattr(plugin_config, "gemini_active_reply_ltm_enabled", True)):
-        return False
-
-    active_reply_whitelist = getattr(plugin_config, "gemini_active_reply_whitelist", []) or []
-    if active_reply_whitelist:
-        allowed = {str(x) for x in active_reply_whitelist}
-        if group_id_str not in allowed:
-            return False
-
-    active_reply_probability = float(
-        getattr(plugin_config, "gemini_active_reply_probability", 1.0) or 1.0
+    envelope = build_event_envelope_from_event(
+        event,
+        protocol="onebot",
+        platform="onebot",
     )
-
-    def _pass_active_probability(reason: str) -> bool:
-        if active_reply_probability >= 1:
-            return True
-        if random.random() <= max(0.0, active_reply_probability):
-            return True
-        log.debug(
-            f"[主动发言][感知层] ActiveReply概率过滤 | reason={reason} | group={group_id_str} | "
-            f"active_reply_probability={active_reply_probability:.3f}"
-        )
+    if not str(envelope.meta.get("group_id") or "").strip():
         return False
 
-    # ===== Debug：关键决策因子采样（仅在真正触发/被过滤时输出） =====
-
-    # 1. 如果已经 @了机器人，不触发主动发言
-    if ctx.is_tome:
-        return False
-
-    # 2. 检查群白名单
-    if plugin_config.gemini_group_whitelist:
-        allowed = {str(x) for x in plugin_config.gemini_group_whitelist}
-        if group_id_str not in allowed:
-            return False
-        
-    # 3. 感知层判断
-    text = ctx.plaintext or ""
-
-    # 图片消息：允许绕过短消息过滤（用户要求不改图片逻辑）
     try:
-        has_image = any(seg.type == "image" for seg in getattr(event, "message", []))
-    except Exception:
-        has_image = False
-
-    # 3.1 关键词检测 (Stage 1)
-    # [优化] 大小写不敏感匹配
-    text_lower = text.lower()
-    if any(k.lower() in text_lower for k in plugin_config.gemini_proactive_keywords):
-        # ===== 关键词触发：保持原逻辑（只受 keyword_cooldown 影响） =====
-        last_time = _proactive_cooldowns.get(group_id_str, 0)
-        current_time = time.monotonic()
-        min_keyword_cooldown = max(1, int(plugin_config.gemini_proactive_keyword_cooldown))
-        if current_time - last_time < min_keyword_cooldown:
-            log.info(
-                f"[主动发言][感知层] 触发被冷却拦截 | reason=keyword | group={group_id_str} | user={user_id_str} | "
-                f"has_image={has_image} | text_len={len(text)} | cooldown_s={min_keyword_cooldown}"
-            )
-            return False
-
-        if not _pass_active_probability("keyword"):
-            return False
-
-        metrics.proactive_trigger_total += 1
-        log.info(
-            f"[主动发言][感知层] ✅触发进入判决 | reason=keyword | group={group_id_str} | user={user_id_str} | "
-            f"has_image={has_image} | text_len={len(text)} | text='{text[:60]}'"
-        )
-        return True
-
-    # 若主动发言概率为 0，则关闭“非关键词”的语义/热度通道，避免无意义计算与模型加载
-    if plugin_config.gemini_proactive_rate <= 0:
+        return bool(await check_proactive_core(envelope))
+    except Exception as exc:
+        log.debug(f"[主动发言][感知层] core 判定异常: {exc}")
         return False
-
-    # ===== 非关键词触发：按用户确认的新 gate =====
-    # 规则：必须同时满足【热度达标 + 冷却时间满足 + 消息条数满足】才会触发语义模型相似度判断；
-    # 且必须语义命中才会进入 LLM 判决。
-
-    # 忽略过短消息 (除非包含图片)
-    if len(text) <= plugin_config.gemini_proactive_ignore_len and not has_image:
-        return False
-
-    # 1) 热度门槛（不达标直接不触发；避免“热度通道”单独触发）
-    heat = heat_monitor.get_heat(group_id_str)
-    if heat < plugin_config.gemini_heat_threshold:
-        return False
-
-    # 2) 冷却时间
-    last_time = _proactive_cooldowns.get(group_id_str, 0)
-    current_time = time.monotonic()
-    if current_time - last_time < plugin_config.gemini_proactive_cooldown:
-        log.debug(
-            f"[主动发言][感知层] 触发被冷却拦截 | reason=heat_gate | group={group_id_str} | user={user_id_str} | "
-            f"since_last={current_time - last_time:.1f}s | cooldown_s={plugin_config.gemini_proactive_cooldown}"
-        )
-        return False
-
-    # 3) 消息条数冷却
-    message_count = _proactive_message_counts.get(group_id_str, 0)
-    if message_count < plugin_config.gemini_proactive_cooldown_messages:
-        log.debug(
-            f"[主动发言][感知层] 触发被消息条数冷却拦截 | reason=heat_gate | group={group_id_str} | "
-            f"count={message_count} < need={plugin_config.gemini_proactive_cooldown_messages}"
-        )
-        return False
-
-    # 4) 语义话题命中（必须）
-    has_topic = False
-    semantic_topic = ""
-    semantic_score = 0.0
-    if text:
-        try:
-            from .utils.semantic_matcher import semantic_matcher
-
-            is_match, topic, score = semantic_matcher.check_similarity(text)
-            semantic_topic = topic or ""
-            semantic_score = float(score or 0.0)
-            if is_match:
-                has_topic = True
-        except Exception as e:
-            log.debug(f"[主动发言] 语义匹配异常: {e}")
-            has_topic = False
-
-    if not has_topic:
-        log.debug(
-            f"[主动发言][感知层] 语义未命中，终止 | group={group_id_str} | user={user_id_str} | "
-            f"has_image={has_image} | text_len={len(text)} | heat={heat}/{plugin_config.gemini_heat_threshold} | "
-            f"best_score={semantic_score:.3f}"
-        )
-        return False
-
-    trigger_reason = f"semantic({semantic_topic}:{semantic_score:.2f})"
-
-    # 5) 概率过滤（保持原行为：最终决定是否进入 LLM 判决）
-    if random.random() > plugin_config.gemini_proactive_rate:
-        log.debug(
-            f"[主动发言][感知层] 触发被概率过滤 | reason={trigger_reason} | group={group_id_str} | "
-            f"rate={plugin_config.gemini_proactive_rate}"
-        )
-        return False
-
-    if not _pass_active_probability(trigger_reason):
-        return False
-
-    metrics.proactive_trigger_total += 1
-    log.info(
-        f"[主动发言][感知层] ✅触发进入判决 | reason={trigger_reason} | group={group_id_str} | user={user_id_str} | "
-        f"has_image={has_image} | text_len={len(text)} | heat={heat}/{plugin_config.gemini_heat_threshold} | "
-        f"msg_count={message_count}/{plugin_config.gemini_proactive_cooldown_messages} | text='{text[:60]}'"
-    )
-    return True
 
 # 优先级 98 (低于普通聊天 10，高于图片缓存 99)
 proactive_chat = on_message(rule=check_proactive, priority=98, block=False)
@@ -379,7 +321,10 @@ proactive_chat = on_message(rule=check_proactive, priority=98, block=False)
 @proactive_chat.handle()
 async def _handle_proactive(bot: Bot, event: Event):
     """主动发言处理 (二级触发：认知层)"""
-    from mika_chat_core.deps import get_gemini_client_dep
+    envelope = _build_traced_event_envelope(bot, event, source="proactive_group")
+    if envelope is None:
+        envelope = build_event_envelope(bot, event, protocol="onebot")
+
     ctx = build_event_context(bot, event)
     if not ctx.is_group or not ctx.group_id:
         return
@@ -392,7 +337,7 @@ async def _handle_proactive(bot: Bot, event: Event):
     parsed_text = ""
     reply_images: list[str] = []
     try:
-        parsed_text, reply_images = await parse_message_with_mentions(bot, event)
+        parsed_text, reply_images = await parse_message_with_mentions(envelope)
         parsed_text = (parsed_text or "").strip()
     except Exception as e:
         log.debug(f"[主动发言][@解析] parse_message_with_mentions 失败，回退 plaintext: {e}")
@@ -426,12 +371,13 @@ async def _handle_proactive(bot: Bot, event: Event):
     # 即使 LLM 判决失败也会触发冷却，避免短时间内重复调用 API
     _proactive_cooldowns[group_id] = time.monotonic()
     _proactive_message_counts[group_id] = 0
+    touch_proactive_group(group_id)
     
     # 1. 使用 LLM 进行意图判决
-    gemini_client = get_gemini_client_dep()
+    mika_client = get_runtime_client()
     
     # 获取上下文（对于群聊，group_id 是 context key 的主要部分，user_id 可以使用当前发言者）
-    context = await gemini_client.get_context(str(ctx.user_id), group_id)
+    context = await mika_client.get_context(str(ctx.user_id), group_id)
     # 把当前消息拼进去（因为 context_store 还没存这条新消息）
     # 注意：handle_group 是会存的，但我们现在是 proactive，还没经过 handle_group
     # 为了判决准确，我们需要构造包含当前消息的上下文
@@ -444,7 +390,7 @@ async def _handle_proactive(bot: Bot, event: Event):
     log.info(f"[主动发言] 感知层触发 | group={group_id} | heat={heat}")
     
     # 调用判决
-    result = await gemini_client.judge_proactive_intent(temp_context, heat)
+    result = await mika_client.judge_proactive_intent(temp_context, heat)
     
     if not result.get("should_reply"):
         metrics.proactive_reject_total += 1
@@ -456,9 +402,6 @@ async def _handle_proactive(bot: Bot, event: Event):
     
     # 3. 将生成权交给主 Handler (Actor)
     # 不再注入额外主动发言系统提示：让模型基于真实上下文自然回应触发消息
-    envelope = _build_traced_event_envelope(bot, event, source="proactive_group")
-    if envelope is None:
-        envelope = build_event_envelope(bot, event, protocol="onebot")
     envelope.meta["intent"] = "group"
     envelope.meta["is_proactive"] = True
     await _handle_event_with_runtime_mode(
@@ -484,26 +427,31 @@ async def _cache_images(bot: Bot, event: Event):
     from nonebot import logger as log
     
     ctx = build_event_context(bot, event)
+    if _is_self_message_event(bot, event):
+        return
     if not ctx.is_group or not ctx.group_id:
         return
 
     group_id = str(ctx.group_id)
     heat_monitor.record_message(group_id)
     _proactive_message_counts[group_id] = _proactive_message_counts.get(group_id, 0) + 1
+    touch_proactive_group(group_id)
     
     # 2. 图片缓存逻辑...
     log.debug(f"[消息监听] group={ctx.group_id} | user={ctx.user_id}")
     
     # 检查群组白名单
-    if plugin_config.gemini_group_whitelist:
-        allowed = {str(x) for x in plugin_config.gemini_group_whitelist}
+    if plugin_config.mika_group_whitelist:
+        allowed = {str(x) for x in plugin_config.mika_group_whitelist}
         if str(ctx.group_id) not in allowed:
             return
     
     # 提取图片
     original_message = getattr(event, "original_message", None) or []
     image_urls = await resolve_image_urls(
-        bot, original_message, int(plugin_config.gemini_max_images)
+        original_message,
+        int(plugin_config.mika_max_images),
+        platform_api=runtime_ports.platform_api,
     )
 
     envelope = build_event_envelope(bot, event, protocol="onebot")
@@ -531,10 +479,8 @@ async def _cache_images(bot: Bot, event: Event):
 
     # [Context Recorder] 记录语义化文本上下文（引用/@/图片占位）
     # 赋予 Bot "听觉"，即使不回复也能记住对话关系
-    from mika_chat_core.deps import get_gemini_client_dep
-
     try:
-        client = get_gemini_client_dep()
+        client = get_runtime_client()
         history = await client.get_context(str(ctx.user_id), str(ctx.group_id))
         recent_ids = {m.get("message_id") for m in history[-20:] if m.get("message_id")}
 
@@ -549,7 +495,7 @@ async def _cache_images(bot: Bot, event: Event):
 
         if needs_rich_parse:
             try:
-                parsed_text, _ = await parse_message_with_mentions(bot, event)
+                parsed_text, _ = await parse_message_with_mentions(envelope)
                 record_text = (parsed_text or "").strip()
             except Exception as e:
                 log.warning(f"[上下文记录] 富文本解析失败，使用降级占位: {e}")

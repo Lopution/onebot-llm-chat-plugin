@@ -45,8 +45,8 @@ if (-not (Test-Path ".env") -and -not (Test-Path ".env.prod")) {
         Copy-Item ".env.example" ".env" -Force
         Write-Host "✅ 已生成 .env（来自 .env.example）"
         Write-Host "⚠️  请先编辑 .env，至少填写："
-        Write-Host "   - GEMINI_API_KEY（或 GEMINI_API_KEY_LIST）"
-        Write-Host "   - GEMINI_MASTER_ID"
+        Write-Host "   - MIKA_API_KEY（或 MIKA_API_KEY_LIST）"
+        Write-Host "   - MIKA_MASTER_ID"
         Write-Host ""
         Write-Host "编辑完成后重新运行 start.ps1 即可"
         exit 0
@@ -66,18 +66,18 @@ if (Test-Path ".env.prod") {
 }
 
 if ($configCheckFile) {
-    if (Select-String -Path $configCheckFile -Pattern '^GEMINI_MASTER_ID=0$' -Quiet) {
-        Write-Host "⚠️  检测到 $configCheckFile 中 GEMINI_MASTER_ID 仍为 0（示例值）"
-        Write-Host "💡 请编辑 $configCheckFile，设置为你的 QQ 号，例如：GEMINI_MASTER_ID=123456789"
+    if (Select-String -Path $configCheckFile -Pattern '^MIKA_MASTER_ID=0$' -Quiet) {
+        Write-Host "⚠️  检测到 $configCheckFile 中 MIKA_MASTER_ID 仍为 0（示例值）"
+        Write-Host "💡 请编辑 $configCheckFile，设置为你的 QQ 号，例如：MIKA_MASTER_ID=123456789"
         exit 0
     }
 
-    if (Select-String -Path $configCheckFile -Pattern '^GEMINI_API_KEY=\"\"$' -Quiet) {
-        $hasKeyList = Select-String -Path $configCheckFile -Pattern '^GEMINI_API_KEY_LIST=' -Quiet
-        $keyListEmpty = Select-String -Path $configCheckFile -Pattern '^GEMINI_API_KEY_LIST=\[\s*\]$' -Quiet
+    if (Select-String -Path $configCheckFile -Pattern '^MIKA_API_KEY=\"\"$' -Quiet) {
+        $hasKeyList = Select-String -Path $configCheckFile -Pattern '^MIKA_API_KEY_LIST=' -Quiet
+        $keyListEmpty = Select-String -Path $configCheckFile -Pattern '^MIKA_API_KEY_LIST=\[\s*\]$' -Quiet
         if (-not $hasKeyList -or $keyListEmpty) {
-            Write-Host "⚠️  检测到 $configCheckFile 中 GEMINI_API_KEY 仍为空（示例值）"
-            Write-Host "💡 请编辑 $configCheckFile，填写 GEMINI_API_KEY 或 GEMINI_API_KEY_LIST"
+            Write-Host "⚠️  检测到 $configCheckFile 中 MIKA_API_KEY 仍为空（示例值）"
+            Write-Host "💡 请编辑 $configCheckFile，填写 MIKA_API_KEY 或 MIKA_API_KEY_LIST"
             exit 0
         }
     }
