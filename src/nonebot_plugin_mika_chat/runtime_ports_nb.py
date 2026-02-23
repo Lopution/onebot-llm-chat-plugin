@@ -74,9 +74,15 @@ class NoneBotRuntimePort(OutboundMessagePort, InboundEventPort, PlatformApiPort)
             platform_name="onebot",
         )
     )
+    _default_platform_bot: Any = None
 
     def capabilities(self) -> PlatformCapabilities:
         return self._capabilities
+
+    def set_default_platform_bot(self, bot: Any | None) -> None:
+        """Set fallback bot for platform API reads (history/member lookup only)."""
+        with self._index_lock:
+            self._default_platform_bot = bot
 
     def _get_single_runtime_ref(self) -> Optional[Tuple[Any, Any, float]]:
         with self._index_lock:
@@ -164,6 +170,19 @@ class NoneBotRuntimePort(OutboundMessagePort, InboundEventPort, PlatformApiPort)
             self._by_session_id.move_to_end(key)
             bot, _, _ = runtime_ref
             return bot
+
+    def _resolve_platform_bot_for_group(self, conversation_id: str) -> Any | None:
+        """Resolve bot for group-level platform reads.
+
+        Prefer strict session mapping, and only fallback to default bot set on
+        bot-connect lifecycle. This keeps send-path strict while restoring
+        startup offline-sync history fetch.
+        """
+        bot = self.resolve_bot_for_session(f"group:{conversation_id}")
+        if bot is not None:
+            return bot
+        with self._index_lock:
+            return self._default_platform_bot
 
     async def send_message(self, action: SendMessageAction) -> dict[str, Any]:
         runtime_ref = self._resolve_for_action(action)
@@ -329,8 +348,7 @@ class NoneBotRuntimePort(OutboundMessagePort, InboundEventPort, PlatformApiPort)
         conversation_id: str,
         limit: int = 20,
     ) -> Optional[list[dict[str, Any]]]:
-        key = f"group:{conversation_id}"
-        bot = self.resolve_bot_for_session(key)
+        bot = self._resolve_platform_bot_for_group(conversation_id)
         if bot is None:
             return None
 
@@ -361,7 +379,7 @@ class NoneBotRuntimePort(OutboundMessagePort, InboundEventPort, PlatformApiPort)
         conversation_id: str,
         user_id: str,
     ) -> Optional[dict[str, Any]]:
-        bot = self.resolve_bot_for_session(f"group:{conversation_id}")
+        bot = self._resolve_platform_bot_for_group(conversation_id)
         if bot is None:
             return None
 

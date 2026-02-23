@@ -130,6 +130,13 @@ async def on_bot_connect(bot: Bot):
     log.success(f"Bot {bot.self_id} 已上线")
     config = runtime_state.config or get_runtime_config()
 
+    try:
+        from .runtime_ports_nb import get_runtime_ports_bundle
+
+        get_runtime_ports_bundle().platform_api.set_default_platform_bot(bot)
+    except Exception as exc:
+        log.warning(f"设置默认 PlatformApi bot 失败（已忽略）: {exc}")
+
     # 在适配层注册离线消息同步入口，避免核心模块直接依赖 NoneBot 事件装饰器。
     try:
         from mika_chat_core.handlers import sync_offline_messages

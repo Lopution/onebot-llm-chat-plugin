@@ -56,6 +56,11 @@ async def pre_search_raw(
     group_id: Optional[str] = None,
 ) -> str:
     """预执行搜索。"""
+    presearch_enabled = bool(getattr(plugin_cfg, "mika_search_presearch_enabled", True))
+    if not presearch_enabled:
+        log_obj.debug(f"[req:{request_id}] 预搜索总开关关闭，跳过预搜索")
+        return ""
+
     if not enable_tools or not tool_handlers.get("web_search"):
         return ""
 

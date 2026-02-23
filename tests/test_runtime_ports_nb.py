@@ -114,6 +114,33 @@ async def test_runtime_port_fetch_conversation_history(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_runtime_port_fetch_conversation_history_uses_default_bot(monkeypatch):
+    monkeypatch.setattr(runtime_ports_nb, "EVENT_INDEX_MAX_ENTRIES", 10)
+    monkeypatch.setattr(runtime_ports_nb, "EVENT_INDEX_TTL_SECONDS", 9999.0)
+
+    calls: list[tuple[object, str, dict[str, object]]] = []
+
+    async def _fake_safe_call_api(bot: object, api: str, **data: object):
+        calls.append((bot, api, data))
+        if api == "get_group_msg_history":
+            return {"messages": [{"message_id": "m-default"}]}
+        return None
+
+    monkeypatch.setattr(runtime_ports_nb, "safe_call_api", _fake_safe_call_api)
+
+    port = runtime_ports_nb.NoneBotRuntimePort()
+    default_bot = SimpleNamespace(self_id="84")
+    port.set_default_platform_bot(default_bot)
+
+    messages = await port.fetch_conversation_history("10001", limit=3)
+    assert messages == [{"message_id": "m-default"}]
+    assert calls[0][0] is default_bot
+    assert calls[0][1] == "get_group_msg_history"
+    assert calls[0][2]["group_id"] == 10001
+    assert calls[0][2]["message_count"] == 3
+
+
+@pytest.mark.asyncio
 async def test_runtime_port_get_member_info_and_resolve_file(monkeypatch):
     monkeypatch.setattr(runtime_ports_nb, "EVENT_INDEX_MAX_ENTRIES", 10)
     monkeypatch.setattr(runtime_ports_nb, "EVENT_INDEX_TTL_SECONDS", 9999.0)

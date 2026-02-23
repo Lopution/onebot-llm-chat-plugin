@@ -109,7 +109,10 @@ class ConfigValidationError(Exception):
 class Config(BaseModel):
     """Mika 插件配置"""
 
-    model_config = ConfigDict(extra="forbid")
+    # NoneBot 会把全局配置字典整体传入插件配置模型；
+    # 这里必须忽略无关键，否则会把 driver/host/port 等宿主字段误判为非法。
+    # 旧键切断由 _ensure_removed_legacy_* 显式校验负责。
+    model_config = ConfigDict(extra="ignore")
     
     # API 配置（单一入口）
     llm_provider: str = "openai_compat"  # openai_compat | anthropic | google_genai
@@ -228,6 +231,15 @@ class Config(BaseModel):
             return data
 
         payload = dict(data)
+        for legacy_key, new_key in _REMOVED_LEGACY_KEYS:
+            if legacy_key not in payload:
+                continue
+            if payload.get(legacy_key) in (None, "", [], {}):
+                continue
+            raise ValueError(
+                f"检测到已移除的配置键 {legacy_key}，请改用 {new_key}。"
+            )
+
         for field_name in cls.__annotations__.keys():
             if not field_name.startswith("mika_"):
                 continue
@@ -1121,6 +1133,8 @@ class Config(BaseModel):
     mika_search_max_injection_results: int = 6
 
     # ==================== 外置搜索 LLM Gate 配置 ====================
+    # 预搜索总开关：关闭后不会在主请求前自动外搜（关键词触发/智能分类/LLM gate 全部停用）
+    mika_search_presearch_enabled: bool = True
     # 是否启用“全量 LLM 判定 gate”：低信号/本地时间过滤后，每条消息都先调用 LLM 判 needs_search
     mika_search_llm_gate_enabled: bool = False
     # LLM 判定失败时回退策略：
