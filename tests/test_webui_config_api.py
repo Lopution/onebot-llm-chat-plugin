@@ -139,7 +139,8 @@ def test_webui_config_reload_from_env_file(monkeypatch, tmp_path: Path):
 
 
 def test_webui_config_export_masks_secrets_by_default():
-    config = _make_config(llm_api_key="real-secret-key-1")
+    real_key = "real-secret-key-1234567890"
+    config = _make_config(llm_api_key=real_key)
     app = FastAPI()
     app.include_router(create_webui_router(settings_getter=lambda: config))
     client = TestClient(app)
@@ -153,7 +154,7 @@ def test_webui_config_export_masks_secrets_by_default():
     response = client.get("/webui/api/config/export", params={"include_secrets": "true"})
     assert response.status_code == 200
     body = response.json()
-    assert body["data"]["config"]["llm_api_key"] == "real-secret-key-1"
+    assert body["data"]["config"]["llm_api_key"] == real_key
 
 
 def test_webui_config_import_writes_env_and_applies_runtime(monkeypatch, tmp_path: Path):

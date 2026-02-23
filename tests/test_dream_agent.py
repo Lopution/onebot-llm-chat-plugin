@@ -75,10 +75,32 @@ async def test_dream_agent_merge_duplicate_topics(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_dream_scheduler_triggers_after_idle():
+async def test_dream_scheduler_triggers_after_idle(monkeypatch):
     scheduler = DreamScheduler()
     run_mock = AsyncMock(return_value={"merged": 0, "deleted": 0, "updated": 1})
     scheduler._agent.run_session = run_mock  # type: ignore[attr-defined]
+    scheduled_tasks: list[asyncio.Task[None]] = []
+    real_create_task = asyncio.create_task
+
+    def _track_task(coro):
+        task = real_create_task(coro)
+        scheduled_tasks.append(task)
+        return task
+
+    monkeypatch.setattr(asyncio, "create_task", _track_task)
+    monotonic_call_count = 0
+
+    def _fake_monotonic() -> float:
+        nonlocal monotonic_call_count
+        monotonic_call_count += 1
+        if monotonic_call_count == 1:
+            return 100.0
+        return 170.0
+
+    monkeypatch.setattr(
+        "mika_chat_core.memory.dream_agent.time.monotonic",
+        _fake_monotonic,
+    )
 
     await scheduler.on_session_activity(
         session_key="group:1",
@@ -88,10 +110,7 @@ async def test_dream_scheduler_triggers_after_idle():
         request_id="r1",
     )
     assert run_mock.await_count == 0
-
-    # 手动注入旧活动时间，触发 idle 检测通过
-    import time
-    scheduler._last_activity["group:1"] = time.monotonic() - 70  # noqa: SLF001
+    assert len(scheduled_tasks) == 0
 
     await scheduler.on_session_activity(
         session_key="group:1",
@@ -100,5 +119,6 @@ async def test_dream_scheduler_triggers_after_idle():
         max_iterations=3,
         request_id="r2",
     )
-    await asyncio.sleep(0.01)
+    assert len(scheduled_tasks) == 1
+    await asyncio.gather(*scheduled_tasks)
     assert run_mock.await_count == 1

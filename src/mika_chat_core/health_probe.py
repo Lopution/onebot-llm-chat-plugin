@@ -102,7 +102,8 @@ async def get_cached_api_probe(config: Config) -> Dict[str, Any]:
 
     ttl_seconds = max(1, int(observability["health_api_probe_ttl_seconds"]))
     now = time.monotonic()
-    if (now - float(_state.checked_at or 0.0)) < ttl_seconds:
+    checked_at = float(_state.checked_at or 0.0)
+    if checked_at > 0 and (now - checked_at) < ttl_seconds:
         return {
             "status": str(_state.status),
             "detail": str(_state.detail),
