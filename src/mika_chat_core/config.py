@@ -433,60 +433,8 @@ class Config(BaseModel):
             raise ValueError("mika_message_split_max_chunks 必须大于等于 2")
         return v
     
-    @field_validator('llm_api_key')
-    @classmethod
-    def validate_api_key(cls, v: str) -> str:
-        """验证 API Key 格式"""
-        if not v:
-            return v  # 允许为空，因为可能使用 api_key_list
-
-        # 先去除首尾空白（允许用户在 env 里不小心写了空格）
-        v = v.strip()
-        
-        # 检查是否为占位符值
-        if _is_api_key_placeholder(v):
-            raise ValueError("API Key 看起来是占位符，请配置真实的 API Key")
-        
-        # Mika API Key 通常以 'AI' 开头，长度约 39 字符
-        # 测试/中转场景下 key 可能更短；这里保持最小长度校验但放宽至 25。
-        if len(v) < 25:
-            raise ValueError("API Key 长度不符合要求")
-        
-        # 检查是否包含空格（中间不允许有任何空白字符）
-        if re.search(r'\s', v):
-            raise ValueError("API Key 不应包含空格")
-
-        return v
-    
-    @field_validator('llm_api_key_list')
-    @classmethod
-    def validate_api_key_list(cls, v: List[str]) -> List[str]:
-        """验证 API Key 列表"""
-        validated_keys = []
-        for i, key in enumerate(v):
-            key = key.strip()
-            if not key:
-                continue  # 跳过空字符串
-
-            if _is_api_key_placeholder(key):
-                raise ValueError(f"API Key #{i+1} 看起来是占位符，请配置真实的 API Key")
-
-            if len(key) < 25:
-                raise ValueError(f"API Key #{i+1} 长度过短（当前 {len(key)} 字符）")
-            if re.search(r'\s', key):
-                raise ValueError(f"API Key #{i+1} 不应包含空格")
-            validated_keys.append(key)
-        return validated_keys
-    
-    @field_validator('llm_base_url')
-    @classmethod
-    def validate_base_url(cls, v: str) -> str:
-        """验证 Base URL 格式"""
-        if not v:
-            raise ValueError("Base URL 不能为空")
-        if not v.startswith(('http://', 'https://')):
-            raise ValueError("Base URL 必须以 http:// 或 https:// 开头")
-        return v.rstrip('/')  # 统一去除尾部斜杠
+    # NOTE: llm_api_key / llm_api_key_list / llm_base_url 的验证逻辑
+    # 统一在下方 validate_llm_* 系列函数中处理，此处不再重复定义。
 
     @field_validator("mika_context_mode")
     @classmethod

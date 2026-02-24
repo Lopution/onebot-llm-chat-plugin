@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import time
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
-from .context_schema import normalize_content
+from ..context_schema import normalize_content
 
 
 @dataclass
@@ -23,6 +24,7 @@ class AddMessageDeps:
     compress_context_caller: Callable[[List[Dict[str, Any]], str], Awaitable[List[Dict[str, Any]]]]
     prepare_snapshot_messages_caller: Callable[[List[Dict[str, Any]]], List[Dict[str, Any]]]
     cache_setter: Callable[[str, List[Dict[str, Any]]], None]
+    cache_deleter: Callable[[str], None]
     get_db_fn: Callable[[], Awaitable[Any]]
     log_obj: Any
     context_write_error_cls: type[Exception]
@@ -148,7 +150,7 @@ async def add_message_flow(
     tool_calls: Optional[List[Dict[str, Any]]],
     tool_call_id: Optional[str],
 ) -> None:
-    messages = await deps.get_context_caller(user_id, group_id)
+    messages = copy.deepcopy(await deps.get_context_caller(user_id, group_id))
     message, normalized_content, effective_timestamp = build_message_record(
         role=role,
         content=content,
@@ -166,7 +168,6 @@ async def add_message_flow(
             context_key=context_key,
         )
         snapshot_messages = deps.prepare_snapshot_messages_caller(messages)
-        deps.cache_setter(context_key, snapshot_messages)
         await _persist_snapshot_and_archive(
             deps=deps,
             context_key=context_key,
@@ -177,7 +178,9 @@ async def add_message_flow(
             normalized_content=normalized_content,
             snapshot_messages=snapshot_messages,
         )
+        deps.cache_setter(context_key, snapshot_messages)
     except Exception as exc:
+        deps.cache_deleter(context_key)
         deps.log_obj.error(f"保存上下文失败: {exc}", exc_info=True)
         raise deps.context_write_error_cls(
             f"context write failed | key={context_key} | role={role} | message_id={message_id or ''}"

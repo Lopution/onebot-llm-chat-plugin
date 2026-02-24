@@ -312,7 +312,7 @@ class TestClassifyJsonModeAndQuerySanitize:
         }
 
         with patch("httpx.AsyncClient") as mock_client_class, patch(
-            "mika_chat_core.utils.search_classifier.plugin_config.llm_provider",
+            "mika_chat_core.utils.search_classifier_llm.plugin_config.llm_provider",
             "anthropic",
         ):
             mock_client = AsyncMock()

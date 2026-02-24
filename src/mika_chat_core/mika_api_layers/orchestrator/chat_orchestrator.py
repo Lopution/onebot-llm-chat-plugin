@@ -284,13 +284,18 @@ async def run_chat_main_loop(
                 {"role": "user", "content": original_content},
                 {"role": "assistant", "content": reply},
             ]
-            asyncio.create_task(
+            from ...runtime import get_task_supervisor
+
+            get_task_supervisor().spawn(
                 client._extract_and_store_memories(
                     messages=extract_messages,
                     user_id=user_id,
                     group_id=group_id,
                     request_id=request_id,
-                )
+                ),
+                name="memory_extract",
+                owner="chat_postprocess",
+                key=f"mem:{session_key_for_extract}",
             )
 
     if (
@@ -301,17 +306,21 @@ async def run_chat_main_loop(
         try:
             summary_messages = await client._get_context_async(user_id, group_id)
         except Exception:
+            log.debug("topic_summary context fetch failed, using empty", exc_info=True)
             summary_messages = []
         if summary_messages:
             summary_llm_cfg = plugin_cfg.get_llm_config()
             summary_session_key = client._memory_session_key(user_id, group_id)
-            asyncio.create_task(
+            get_task_supervisor().spawn(
                 client._run_topic_summary(
                     session_key=summary_session_key,
                     messages=list(summary_messages),
                     llm_cfg=summary_llm_cfg,
                     request_id=request_id,
-                )
+                ),
+                name="topic_summary",
+                owner="chat_postprocess",
+                key=f"topic:{summary_session_key}",
             )
 
     if bool(getattr(plugin_cfg, "mika_dream_enabled", False)):

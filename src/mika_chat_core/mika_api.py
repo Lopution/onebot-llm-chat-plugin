@@ -146,39 +146,28 @@ except ImportError:
     ImageProcessor = None  # type: ignore[assignment]
     ImageProcessError = None  # type: ignore[assignment]
 
-
-# ==================== Magic-number constants ====================
-# 说明：仅将散落的硬编码数值提取为“命名常量/配置项”，不改变默认行为。
-UUID_SHORT_ID_LENGTH = 8
-
-# 内存上下文：允许的最大历史条数 = max_context * 2（与原逻辑一致）
-CONTEXT_HISTORY_MULTIPLIER = 2
-
-# 诊断/日志预览长度
-CONTEXT_DIAGNOSTIC_TAIL_COUNT = 3
-HISTORY_MESSAGE_PREVIEW_CHARS = 80
-API_CONTENT_DEBUG_MIN_CHARS = 200
-API_CONTENT_DEBUG_PREVIEW_CHARS = 500
-RAW_MODEL_REPLY_PREVIEW_CHARS = 300
-ERROR_RESPONSE_BODY_PREVIEW_CHARS = 500
-
-# chat 默认重试与降级
-DEFAULT_CHAT_RETRY_COUNT = 2
-MAX_CONTEXT_DEGRADATION_LEVEL = 2
-EMPTY_REPLY_RETRY_DELAY_SECONDS = 0.5
-
-# 指数退避：wait_time = 2 ** (2 - retry_count)
-SERVER_ERROR_RETRY_BACKOFF_BASE = 2
-SERVER_ERROR_RETRY_EXPONENT_OFFSET = 2
-
-# 主动发言判决：日志截断
-PROACTIVE_JUDGE_ERROR_PREVIEW_CHARS = 100
-PROACTIVE_JUDGE_RAW_CONTENT_SHORT_PREVIEW_CHARS = 100
-PROACTIVE_JUDGE_RAW_CONTENT_ERROR_PREVIEW_CHARS = 200
-PROACTIVE_JUDGE_SERVER_RESPONSE_PREVIEW_CHARS = 500
-MEMORY_SESSION_COUNTER_MAX_SIZE = 2048
-TOOL_SCHEMA_AUTO_THRESHOLD_DEFAULT = 10
-TOOL_SCHEMA_FALLBACK_TTL_DEFAULT = 600
+from .constants.mika_client import (
+    API_CONTENT_DEBUG_MIN_CHARS,
+    API_CONTENT_DEBUG_PREVIEW_CHARS,
+    CONTEXT_DIAGNOSTIC_TAIL_COUNT,
+    CONTEXT_HISTORY_MULTIPLIER,
+    DEFAULT_CHAT_RETRY_COUNT,
+    EMPTY_REPLY_RETRY_DELAY_SECONDS,
+    ERROR_RESPONSE_BODY_PREVIEW_CHARS,
+    HISTORY_MESSAGE_PREVIEW_CHARS,
+    MAX_CONTEXT_DEGRADATION_LEVEL,
+    MEMORY_SESSION_COUNTER_MAX_SIZE,
+    PROACTIVE_JUDGE_ERROR_PREVIEW_CHARS,
+    PROACTIVE_JUDGE_RAW_CONTENT_ERROR_PREVIEW_CHARS,
+    PROACTIVE_JUDGE_RAW_CONTENT_SHORT_PREVIEW_CHARS,
+    PROACTIVE_JUDGE_SERVER_RESPONSE_PREVIEW_CHARS,
+    RAW_MODEL_REPLY_PREVIEW_CHARS,
+    SERVER_ERROR_RETRY_BACKOFF_BASE,
+    SERVER_ERROR_RETRY_EXPONENT_OFFSET,
+    TOOL_SCHEMA_AUTO_THRESHOLD_DEFAULT,
+    TOOL_SCHEMA_FALLBACK_TTL_DEFAULT,
+    UUID_SHORT_ID_LENGTH,
+)
 
 
 class MikaClient:
@@ -357,7 +346,7 @@ class MikaClient:
             if resolved:
                 return resolved
         except Exception:
-            pass
+            log.debug("resolve_task_model(%s) failed, using fallback", task_name, exc_info=True)
 
         source_cfg = llm_cfg if isinstance(llm_cfg, dict) else plugin_config.get_llm_config()
         fallback = str(source_cfg.get("fast_model") or source_cfg.get("model") or self.model).strip()

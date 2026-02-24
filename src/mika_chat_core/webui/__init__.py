@@ -8,6 +8,7 @@ from fastapi import APIRouter
 
 from ..config import Config
 from ..runtime import get_config as get_runtime_config
+from .api_auth import create_auth_router
 from .api_config import create_config_router
 from .api_dashboard import create_dashboard_router
 from .api_backup import create_backup_router
@@ -43,6 +44,7 @@ def create_webui_router(
         base_path if base_path is not None else getattr(config, "mika_webui_base_path", "/webui")
     )
     router = APIRouter(prefix=f"{resolved_base_path}/api", tags=["mika-webui"])
+    router.include_router(create_auth_router(settings_getter=settings_getter))
     router.include_router(create_dashboard_router(settings_getter=settings_getter))
     router.include_router(create_log_router(settings_getter=settings_getter))
     router.include_router(create_config_router(settings_getter=settings_getter))

@@ -5,8 +5,8 @@ import {
   importConfig,
   reloadConfig,
   updateConfig,
-  type ConfigSection,
-} from '../api/client'
+} from '../api/modules/config'
+import type { ConfigSection } from '../api/types'
 
 export const useConfigStore = defineStore('config', {
   state: () => ({

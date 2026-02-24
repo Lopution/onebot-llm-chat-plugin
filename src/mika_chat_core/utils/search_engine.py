@@ -148,23 +148,20 @@ _http_client_lock_loop_id: Optional[int] = None
 # 搜索结果缓存（避免短时间内重复搜索）
 # 格式: {query_hash: (result, timestamp)}
 _search_cache: Dict[str, Tuple[str, float]] = {}
-# 默认值（可由 lifecycle.configure_search_cache 在启动时覆写）
-CACHE_TTL_SECONDS = 60  # 缓存有效期：1分钟（时效性查询需要更短缓存）
-MAX_CACHE_SIZE = 100  # 最大缓存条目数
+from ..constants.search import (
+    CACHE_TTL_SECONDS,
+    MAX_CACHE_SIZE,
+    QUERY_PREVIEW_CHARS,
+    SNIPPET_PREVIEW_CHARS,
+    LOG_SEPARATOR_WIDTH,
+    MIN_INJECTION_RESULTS,
+    MAX_INJECTION_RESULTS,
+    DEFAULT_INJECTION_RESULTS,
+)
 
 # Serper 搜索 query 增强
 DEFAULT_TIME_KEYWORDS = ["最新", "今天", "现在", "目前", "刚刚", "最近"]
 DEFAULT_ENHANCE_SUFFIX = " 最新"
-
-# 搜索结果日志预览
-QUERY_PREVIEW_CHARS = 30
-SNIPPET_PREVIEW_CHARS = 100
-LOG_SEPARATOR_WIDTH = 50
-
-# 注入结果条数限制范围（安全兜底）
-MIN_INJECTION_RESULTS = 1
-MAX_INJECTION_RESULTS = 10
-DEFAULT_INJECTION_RESULTS = 6
 
 
 # ============================================================

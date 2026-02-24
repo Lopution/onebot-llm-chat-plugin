@@ -8,7 +8,7 @@
     </el-card>
 
     <el-card>
-      <el-table :data="personas" v-loading="loading" size="small">
+      <el-table :data="store.items" v-loading="store.loading" size="small">
         <el-table-column prop="id" label="ID" width="72" />
         <el-table-column prop="name" label="名称" min-width="140" />
         <el-table-column label="状态" width="120">
@@ -30,14 +30,10 @@
             <el-space>
               <el-button size="small" @click="openEdit(row)">编辑</el-button>
               <el-button
-                size="small"
-                type="success"
-                plain
+                size="small" type="success" plain
                 :disabled="row.is_active"
                 @click="activate(row.id)"
-              >
-                设为启用
-              </el-button>
+              >设为启用</el-button>
               <el-popconfirm title="确认删除该人设？" @confirm="remove(row.id)">
                 <template #reference>
                   <el-button size="small" type="danger" plain>删除</el-button>
@@ -74,113 +70,50 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import {
-  activatePersona,
-  createPersona,
-  deletePersona,
-  listPersonas,
-  type Persona,
-  updatePersona,
-} from '../api/client'
+import { usePersonaStore } from '../stores/persona'
+import type { Persona } from '../api/types'
 
-type PersonaForm = {
-  id?: number
-  name: string
-  character_prompt: string
-  is_active: boolean
-}
+type PersonaForm = { id?: number; name: string; character_prompt: string; is_active: boolean }
 
-const loading = ref(false)
-const personas = ref<Persona[]>([])
+const store = usePersonaStore()
 const dialogVisible = ref(false)
 const dialogTitle = ref('新建人设')
 const form = ref<PersonaForm>({ name: '', character_prompt: '', is_active: false })
 
 const previewPrompt = (text: string) => {
   const normalized = String(text || '').trim()
-  if (normalized.length <= 120) return normalized
-  return `${normalized.slice(0, 120)}...`
+  return normalized.length <= 120 ? normalized : `${normalized.slice(0, 120)}...`
 }
 
-const resetForm = () => {
-  form.value = { name: '', character_prompt: '', is_active: false }
-}
+const resetForm = () => { form.value = { name: '', character_prompt: '', is_active: false } }
 
-const refresh = async () => {
-  loading.value = true
-  try {
-    personas.value = await listPersonas()
-  } catch (error) {
-    ElMessage.error((error as Error).message || '加载失败')
-  } finally {
-    loading.value = false
-  }
-}
-
-const openCreate = () => {
-  dialogTitle.value = '新建人设'
-  resetForm()
-  dialogVisible.value = true
-}
+const openCreate = () => { dialogTitle.value = '新建人设'; resetForm(); dialogVisible.value = true }
 
 const openEdit = (persona: Persona) => {
   dialogTitle.value = '编辑人设'
-  form.value = {
-    id: persona.id,
-    name: persona.name,
-    character_prompt: persona.character_prompt,
-    is_active: !!persona.is_active,
-  }
+  form.value = { id: persona.id, name: persona.name, character_prompt: persona.character_prompt, is_active: !!persona.is_active }
   dialogVisible.value = true
 }
 
 const submitPersona = async () => {
-  const payload = {
-    name: form.value.name.trim(),
-    character_prompt: form.value.character_prompt.trim(),
-    is_active: !!form.value.is_active,
-  }
-  if (!payload.name || !payload.character_prompt) {
-    ElMessage.warning('名称和角色定义不能为空')
-    return
-  }
+  const payload = { name: form.value.name.trim(), character_prompt: form.value.character_prompt.trim(), is_active: !!form.value.is_active }
+  if (!payload.name || !payload.character_prompt) { ElMessage.warning('名称和角色定义不能为空'); return }
   try {
-    if (form.value.id) {
-      await updatePersona(form.value.id, payload)
-      ElMessage.success('人设已更新')
-    } else {
-      await createPersona(payload)
-      ElMessage.success('人设已创建')
-    }
+    if (form.value.id) { await store.update(form.value.id, payload); ElMessage.success('人设已更新') }
+    else { await store.create(payload); ElMessage.success('人设已创建') }
     dialogVisible.value = false
-    await refresh()
-  } catch (error) {
-    ElMessage.error((error as Error).message || '保存失败')
-  }
+  } catch (error) { ElMessage.error((error as Error).message || '保存失败') }
 }
 
 const activate = async (id: number) => {
-  try {
-    await activatePersona(id)
-    ElMessage.success('已切换启用人设')
-    await refresh()
-  } catch (error) {
-    ElMessage.error((error as Error).message || '切换失败')
-  }
+  try { await store.activate(id); ElMessage.success('已切换启用人设') }
+  catch (error) { ElMessage.error((error as Error).message || '切换失败') }
 }
 
 const remove = async (id: number) => {
-  try {
-    await deletePersona(id)
-    ElMessage.success('已删除')
-    await refresh()
-  } catch (error) {
-    ElMessage.error((error as Error).message || '删除失败')
-  }
+  try { await store.remove(id); ElMessage.success('已删除') }
+  catch (error) { ElMessage.error((error as Error).message || '删除失败') }
 }
 
-onMounted(() => {
-  void refresh()
-})
+onMounted(() => store.load())
 </script>
-

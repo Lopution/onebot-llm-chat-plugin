@@ -15,15 +15,15 @@ import json
 import re
 from typing import List, Dict, Any, Optional, Tuple, TypedDict, Union
 
-from ..infra.logging import logger as log
+from ...infra.logging import logger as log
 
-from .context_cache import LRUCache
-from .context_manager import ContextManager
-from .context_summarizer import ContextSummarizer
-from .context_compress import compress_context_for_safety as _compress_context_for_safety
-from .context_compress import compress_message_content as _compress_message_content
-from .context_compress import sanitize_text_for_safety as _sanitize_text_for_safety
-from .context_store_session_ops import (
+from ..context_cache import LRUCache
+from ..context_manager import ContextManager
+from ..context_summarizer import ContextSummarizer
+from ..context_compress import compress_context_for_safety as _compress_context_for_safety
+from ..context_compress import compress_message_content as _compress_message_content
+from ..context_compress import sanitize_text_for_safety as _sanitize_text_for_safety
+from .session_queries import (
     clear_session as service_clear_session,
     get_all_keys as service_get_all_keys,
     get_session_stats as service_get_session_stats,
@@ -31,7 +31,7 @@ from .context_store_session_ops import (
     list_sessions as service_list_sessions,
     preview_text as service_preview_text,
 )
-from .context_store_summary_ops import (
+from .summary_service import (
     build_key_info_summary as service_build_key_info_summary,
     build_summary_for_messages as service_build_summary_for_messages,
     extract_key_info_from_history as service_extract_key_info_from_history,
@@ -39,34 +39,28 @@ from .context_store_summary_ops import (
     resolve_summary_runtime_config as service_resolve_summary_runtime_config,
     save_cached_summary as service_save_cached_summary,
 )
-from .context_store_write_ops import (
+from .write_pipeline import (
     AddMessageDeps,
     add_message_flow as service_add_message_flow,
 )
-from .context_schema import normalize_content
-from .context_db import DB_PATH as _CONTEXT_DB_PATH
-from .context_db import get_db, get_db_path, init_database, close_database
-from .session_lock import SessionLockManager
-from ..runtime import get_config as get_runtime_config
-
-# 内存缓存最大条目数（越小越省内存）
-MAX_CACHE_SIZE: int = 200
-
-# ==================== Magic-number constants ====================
-NICKNAME_MAX_LENGTH = 12
-
-# KEY_INFO_PATTERNS 的长度限制
-KEY_INFO_IDENTITY_MIN_CHARS = 2
-KEY_INFO_IDENTITY_MAX_CHARS = 10
-KEY_INFO_OCCUPATION_MIN_CHARS = 2
-KEY_INFO_OCCUPATION_MAX_CHARS = 15
-KEY_INFO_PREFERENCE_MIN_CHARS = 2
-KEY_INFO_PREFERENCE_MAX_CHARS = 20
-KEY_INFO_EXTRACTED_VALUE_MIN_CHARS = 2
-KEY_INFO_EXTRACTED_VALUE_MAX_CHARS = 20
-
-# 上下文压缩：保留最近 max_context * 2 条（与原逻辑一致）
-CONTEXT_MESSAGE_MULTIPLIER = 2
+from ..context_schema import normalize_content
+from ..context_db import DB_PATH as _CONTEXT_DB_PATH
+from ..context_db import get_db, get_db_path, init_database, close_database
+from ..session_lock import SessionLockManager
+from ...runtime import get_config as get_runtime_config
+from ...constants.context import (
+    MAX_CACHE_SIZE,
+    NICKNAME_MAX_LENGTH,
+    KEY_INFO_IDENTITY_MIN_CHARS,
+    KEY_INFO_IDENTITY_MAX_CHARS,
+    KEY_INFO_OCCUPATION_MIN_CHARS,
+    KEY_INFO_OCCUPATION_MAX_CHARS,
+    KEY_INFO_PREFERENCE_MIN_CHARS,
+    KEY_INFO_PREFERENCE_MAX_CHARS,
+    KEY_INFO_EXTRACTED_VALUE_MIN_CHARS,
+    KEY_INFO_EXTRACTED_VALUE_MAX_CHARS,
+    CONTEXT_MESSAGE_MULTIPLIER,
+)
 
 # 兼容旧测试/外部补丁入口：context_store.DB_PATH
 # 实际数据库路径解析与覆盖由 context_db 统一管理。
@@ -426,6 +420,7 @@ class SQLiteContextStore:
                     compress_context_caller=self._compress_context,
                     prepare_snapshot_messages_caller=self._prepare_snapshot_messages,
                     cache_setter=self._cache.set,
+                    cache_deleter=self._cache.delete,
                     get_db_fn=get_db,
                     log_obj=log,
                     context_write_error_cls=ContextStoreWriteError,

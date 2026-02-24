@@ -39,7 +39,7 @@
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, ref } from 'vue'
-import { buildBackupExportUrl, importBackup } from '../api/client'
+import { buildBackupExportUrl, importBackup } from '../api/modules/backup'
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFile = ref<File | null>(null)
@@ -47,8 +47,8 @@ const applyRuntime = ref(true)
 const importing = ref(false)
 const selectedFileName = computed(() => selectedFile.value?.name || '')
 
-const exportBackup = () => {
-  const url = buildBackupExportUrl()
+const exportBackup = async () => {
+  const url = await buildBackupExportUrl()
   const anchor = document.createElement('a')
   anchor.href = url
   anchor.click()

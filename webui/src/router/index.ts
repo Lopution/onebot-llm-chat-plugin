@@ -1,7 +1,11 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { getWebUiBasePath } from '../api/http'
+
+const webUiBasePath = getWebUiBasePath()
+const historyBase = webUiBasePath === '/' ? '/' : `${webUiBasePath}/`
 
 const router = createRouter({
-  history: createWebHistory('/webui/'),
+  history: createWebHistory(historyBase),
   routes: [
     { path: '/', redirect: '/dashboard' },
     { path: '/dashboard', component: () => import('../views/DashboardView.vue') },

@@ -1,0 +1,56 @@
+/**
+ * Design tokens for Mika WebUI.
+ *
+ * These CSS custom properties provide a semantic abstraction over
+ * Element Plus variables, making theme changes a single-file edit.
+ */
+
+:root {
+  /* --- Spacing --- */
+  --mika-spacing-xs: 4px;
+  --mika-spacing-sm: 8px;
+  --mika-spacing-md: 12px;
+  --mika-spacing-lg: 16px;
+  --mika-spacing-xl: 24px;
+
+  /* --- Typography --- */
+  --mika-font-size-xs: 12px;
+  --mika-font-size-sm: 13px;
+  --mika-font-size-base: 14px;
+  --mika-font-size-lg: 16px;
+  --mika-font-size-xl: 20px;
+  --mika-font-weight-normal: 400;
+  --mika-font-weight-semibold: 600;
+  --mika-font-weight-bold: 700;
+
+  /* --- Layout --- */
+  --mika-sidebar-width: 220px;
+  --mika-header-height: 60px;
+  --mika-border-radius: 6px;
+  --mika-content-padding: 16px;
+
+  /* --- Colors (semantic aliases for Element Plus) --- */
+  --mika-color-primary: var(--el-color-primary, #409eff);
+  --mika-color-success: var(--el-color-success, #67c23a);
+  --mika-color-warning: var(--el-color-warning, #e6a23c);
+  --mika-color-danger: var(--el-color-danger, #f56c6c);
+  --mika-color-info: var(--el-color-info, #909399);
+  --mika-color-text-primary: var(--el-text-color-primary, #303133);
+  --mika-color-text-secondary: var(--el-text-color-secondary, #909399);
+  --mika-color-border: var(--el-border-color, #dcdfe6);
+  --mika-color-bg: var(--el-bg-color, #ffffff);
+  --mika-color-bg-page: var(--el-bg-color-page, #f2f3f5);
+
+  /* --- Shadows --- */
+  --mika-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --mika-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.1);
+
+  /* --- Transitions --- */
+  --mika-transition-fast: 0.15s ease;
+  --mika-transition-normal: 0.25s ease;
+
+  /* --- Chat-specific --- */
+  --mika-chat-bg: #fafafa;
+  --mika-chat-min-height: 360px;
+  --mika-chat-max-height: 520px;
+}

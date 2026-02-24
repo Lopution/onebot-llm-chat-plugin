@@ -20,7 +20,7 @@ from typing import Any, Dict, Optional
 import httpx
 from nonebot import get_driver
 
-from mika_chat_core.settings import Config
+from mika_chat_core.config import Config
 from mika_chat_core.core_service import create_core_service_router
 from mika_chat_core.mika_api import MikaClient
 from mika_chat_core.runtime import (
@@ -59,19 +59,21 @@ STARTUP_NOTIFY_MESSAGE = "Mika 上线啦~ ☆"
 PROMPT_FILE_DEFAULT = "mika.yaml"
 DATE_FORMAT_FALLBACK = "%Y年%m月%d日"
 
-HEALTH_ENDPOINT_PATH = "/health"
-METRICS_ENDPOINT_PATH = "/metrics"
-CORE_EVENTS_ENDPOINT_PATH = "/v1/events"
+from mika_chat_core.constants.runtime import (
+    HEALTH_ENDPOINT_PATH,
+    METRICS_ENDPOINT_PATH,
+    CORE_EVENTS_ENDPOINT_PATH,
+    METRICS_PROMETHEUS_CONTENT_TYPE,
+    API_VALIDATE_TIMEOUT_SECONDS,
+    API_VALIDATE_SUCCESS_STATUS,
+    API_VALIDATE_UNAUTHORIZED_STATUS,
+    API_VALIDATE_FORBIDDEN_STATUS,
+)
+
 PLUGIN_VERSION = "1.0.0"
 
 IMAGE_CACHE_GAP_MULTIPLIER = 2
 BASE_URL_RSTRIP_CHAR = "/"
-
-API_VALIDATE_TIMEOUT_SECONDS = 10.0
-API_VALIDATE_SUCCESS_STATUS = 200
-API_VALIDATE_UNAUTHORIZED_STATUS = 401
-API_VALIDATE_FORBIDDEN_STATUS = 403
-METRICS_PROMETHEUS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
 
 # 获取驱动器
 driver = get_driver()
@@ -102,9 +104,14 @@ def set_plugin_config(config: Config):
 
 def get_plugin_config() -> Config:
     """获取插件配置（必须在初始化后使用）。"""
-    if runtime_state.config is not None:
-        return runtime_state.config
-    return get_runtime_config()
+    try:
+        config = get_runtime_config()
+        runtime_state.config = config
+        return config
+    except Exception:
+        if runtime_state.config is not None:
+            return runtime_state.config
+        raise
 
 
 def get_mika_client() -> MikaClient:
@@ -529,7 +536,17 @@ async def validate_api_connection():
 async def close_mika():
     """关闭时清理资源"""
     log.info("正在关闭 Mika Chat 插件...")
-    
+
+    # 优先关闭后台任务，避免悬挂协程访问已关闭的资源
+    try:
+        from mika_chat_core.runtime import get_task_supervisor
+
+        supervisor = get_task_supervisor()
+        await supervisor.shutdown(timeout_seconds=5.0)
+        log.debug(f"后台任务已全部回收 (剩余活跃: {supervisor.active_count})")
+    except Exception as e:
+        log.debug(f"关闭后台任务监管器失败(忽略): {e}")
+
     if runtime_state.client:
         await runtime_state.client.close()
         runtime_state.client = None

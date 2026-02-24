@@ -2,8 +2,8 @@
   <div>
     <h2 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 600">仪表盘</h2>
     <el-space wrap style="margin-bottom: 16px">
-      <el-tag :type="dashboard.health.status === 'ok' ? 'success' : 'danger'">
-        状态: {{ dashboard.health.status || '-' }}
+      <el-tag :type="healthTagType">
+        状态: {{ dashboard.health.health_status || dashboard.health.status || '-' }}
       </el-tag>
       <el-tag>DB: {{ dashboard.health.database || '-' }}</el-tag>
       <el-tag>Client: {{ dashboard.health.mika_client || '-' }}</el-tag>
@@ -57,6 +57,13 @@ import { useDashboardStore } from '../stores/dashboard'
 
 const dashboard = useDashboardStore()
 
+const healthTagType = computed(() => {
+  const status = String(dashboard.health.health_status || dashboard.health.status || '').toLowerCase()
+  if (status === 'healthy' || status === 'ok') return 'success'
+  if (status === 'degraded') return 'warning'
+  return 'danger'
+})
+
 const recentTimeline = computed(() => {
   const points = dashboard.timeline || []
   return points.slice(-12).reverse()
@@ -74,17 +81,3 @@ onMounted(async () => {
   await dashboard.refresh()
 })
 </script>
-
-<style scoped>
-.stat-label {
-  font-size: 13px;
-  color: var(--el-text-color-secondary);
-  margin-bottom: 4px;
-}
-
-.stat-value {
-  font-size: 24px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-}
-</style>

@@ -19,7 +19,7 @@ from mika_chat_core.runtime import (
     get_config as get_runtime_config,
     get_platform_api_port as get_runtime_platform_api_port,
 )
-from mika_chat_core.settings import Config
+from mika_chat_core.config import Config
 from mika_chat_core.utils.event_context import build_event_context
 
 

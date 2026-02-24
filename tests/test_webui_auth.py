@@ -10,6 +10,7 @@ TestClient = testclient.TestClient
 
 from mika_chat_core.config import Config
 from mika_chat_core.webui import create_webui_router
+from mika_chat_core.webui.auth_ticket import configure_ticket_store, get_ticket_store
 
 
 def _make_config(**overrides: object) -> Config:
@@ -60,3 +61,46 @@ def test_webui_auth_denies_non_loopback_without_token(monkeypatch):
     monkeypatch.setattr("mika_chat_core.webui.auth._is_loopback_client", lambda _host: False)
     response = client.get("/webui/api/dashboard/health")
     assert response.status_code == 403
+
+
+def test_webui_auth_ticket_can_authenticate_follow_up_request():
+    configure_ticket_store(ttl_seconds=60, single_use=True, max_active=50)
+    config = _make_config(mika_webui_token="secret-token")
+    app = FastAPI()
+    app.include_router(create_webui_router(settings_getter=lambda: config))
+    client = TestClient(app)
+
+    issue = client.post(
+        "/webui/api/auth/ticket",
+        json={"scope": "general"},
+        headers={"Authorization": "Bearer secret-token"},
+    )
+    assert issue.status_code == 200
+    ticket = issue.json()["data"]["ticket"]
+
+    allowed = client.get(f"/webui/api/dashboard/health?ticket={ticket}&scope=general")
+    assert allowed.status_code == 200
+
+    # ticket 默认单次可用，重复使用应失败
+    denied = client.get(f"/webui/api/dashboard/health?ticket={ticket}&scope=general")
+    assert denied.status_code == 401
+
+
+def test_webui_auth_ticket_binds_client_host():
+    configure_ticket_store(ttl_seconds=60, single_use=True, max_active=50)
+    config = _make_config(mika_webui_token="secret-token")
+    app = FastAPI()
+    app.include_router(create_webui_router(settings_getter=lambda: config))
+    client = TestClient(app)
+
+    issue = client.post(
+        "/webui/api/auth/ticket",
+        json={"scope": "general"},
+        headers={"Authorization": "Bearer secret-token"},
+    )
+    assert issue.status_code == 200
+    ticket = issue.json()["data"]["ticket"]
+
+    store = get_ticket_store()
+    assert store.consume(ticket, scope="general", client_host="other-host") is False
+    assert store.consume(ticket, scope="general", client_host="testclient") is True

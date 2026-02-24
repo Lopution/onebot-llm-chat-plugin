@@ -134,7 +134,7 @@ async def build_prompt_context_values(
             if summary:
                 context["user_profile"] = str(summary)
         except Exception:
-            pass
+            log.debug("user_profile injection failed, skipping", exc_info=True)
 
     return context
 

@@ -10,6 +10,7 @@ from fastapi import Header, HTTPException, Request
 from ..config import Config
 from ..core_service import _extract_auth_token, _is_loopback_client, _tokens_match
 from ..runtime import get_config as get_runtime_config
+from .auth_ticket import get_ticket_store
 
 log = logging.getLogger(__name__)
 _query_token_deprecation_warned = False
@@ -29,6 +30,16 @@ def create_webui_auth_dependency(
         config = settings_getter()
         required_token = str(getattr(config, "mika_webui_token", "") or "").strip()
         provided_token = _extract_auth_token(authorization, x_mika_webui_token)
+
+        # Try ticket-based auth (for SSE/WS/download channels)
+        if not provided_token:
+            ticket = str(request.query_params.get("ticket", "") or "").strip()
+            if ticket:
+                scope = str(request.query_params.get("scope", "general") or "general").strip()
+                client_host = str(getattr(request.client, "host", "") or "").strip()
+                if get_ticket_store().consume(ticket, scope=scope, client_host=client_host):
+                    return  # ticket valid
+
         # Keep query-token fallback for backward compatibility, but prioritize headers.
         query_token = ""
         if not provided_token:
@@ -40,7 +51,7 @@ def create_webui_auth_dependency(
                 _query_token_deprecation_warned = True
                 log.warning(
                     "webui query token 已进入兼容期，请尽快改用 Authorization "
-                    "或 X-Mika-WebUI-Token 头。"
+                    "或 X-Mika-WebUI-Token 头，或使用 ticket 方案。"
                 )
 
         if required_token:

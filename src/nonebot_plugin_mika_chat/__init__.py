@@ -14,7 +14,7 @@ from mika_chat_core.runtime import (
     set_platform_api_port as set_runtime_platform_api_port,
     set_tool_override as set_runtime_tool_override,
 )
-from mika_chat_core.settings import Config
+from mika_chat_core.config import Config
 
 try:
     from nonebot.plugin import PluginMetadata

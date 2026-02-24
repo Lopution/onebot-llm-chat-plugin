@@ -46,7 +46,7 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { buildLogSseUrl, getLogHistory } from '../api/client'
+import { buildLogSseUrlWithTicket, getLogHistory } from '../api/modules/log'
 
 type LogItem = {
   id: number
@@ -106,6 +106,13 @@ const pushLog = (item: LogItem) => {
   }
   if (item.id > 0) {
     seenLogIds.add(item.id)
+    if (seenLogIds.size > MAX_VISIBLE_LOGS * 2) {
+      const entries = Array.from(seenLogIds)
+      const toRemove = entries.slice(0, entries.length - MAX_VISIBLE_LOGS)
+      for (const id of toRemove) {
+        seenLogIds.delete(id)
+      }
+    }
   }
   pendingLogs.push(item)
   scheduleFlush()
@@ -137,9 +144,10 @@ const disconnect = () => {
   connected.value = false
 }
 
-const connect = () => {
+const connect = async () => {
   disconnect()
-  const source = new EventSource(buildLogSseUrl(minLevel.value))
+  const url = await buildLogSseUrlWithTicket(minLevel.value)
+  const source = new EventSource(url)
   eventSource = source
   source.onopen = () => {
     connected.value = true

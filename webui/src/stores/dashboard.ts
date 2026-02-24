@@ -4,8 +4,8 @@ import {
   getDashboardMetrics,
   getDashboardStats,
   getDashboardTimeline,
-  type DashboardTimelinePoint,
-} from '../api/client'
+} from '../api/modules/dashboard'
+import type { DashboardTimelinePoint } from '../api/types'
 
 export const useDashboardStore = defineStore('dashboard', {
   state: () => ({

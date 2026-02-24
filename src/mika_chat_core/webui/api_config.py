@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Union, get_args, get_origin
+
+_log = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends
 
@@ -690,6 +693,16 @@ def _build_config_from_env_file(env_path: Path, current_config: Config) -> Confi
     return Config(**payload)
 
 
+def _sync_config_instance(target: Config, source: Config) -> None:
+    """Copy validated values from source config into target config object."""
+    for field_name in Config.__annotations__.keys():
+        value = getattr(source, field_name, None)
+        try:
+            setattr(target, field_name, value)
+        except Exception:
+            object.__setattr__(target, field_name, value)
+
+
 def _export_config_values(config: Config, *, include_secrets: bool) -> Dict[str, Any]:
     exported: Dict[str, Any] = {}
     for key in Config.__annotations__.keys():
@@ -775,7 +788,8 @@ def create_config_router(
             try:
                 setattr(config, key, value)
             except Exception:
-                pass
+                _log.debug("setattr(%s, %s) failed, skipping", type(config).__name__, key, exc_info=True)
+        set_runtime_config(config)
 
         return BaseRouteHelper.ok(
             {
@@ -793,7 +807,8 @@ def create_config_router(
             new_config = _build_config_from_env_file(env_path, current_config)
         except Exception as exc:
             return BaseRouteHelper.error_response(f"reload failed: {exc}")
-        set_runtime_config(new_config)
+        _sync_config_instance(current_config, new_config)
+        set_runtime_config(current_config)
         return BaseRouteHelper.ok(
             {
                 "ok": True,
@@ -842,6 +857,7 @@ def create_config_router(
                     setattr(config, key, value)
                 except Exception:
                     pass
+            set_runtime_config(config)
 
         return BaseRouteHelper.ok(
             {

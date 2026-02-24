@@ -104,6 +104,7 @@ async def stream_api_request_flow(
                 try:
                     data = json.loads(payload)
                 except Exception:
+                    log.debug("SSE: skipping non-JSON payload: %s", payload[:80])
                     continue
                 choices = data.get("choices") or []
                 choice = choices[0] if isinstance(choices, list) and choices else {}

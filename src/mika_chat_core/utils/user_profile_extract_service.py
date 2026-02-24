@@ -34,12 +34,11 @@ from .user_profile_merge import (
     merge_profile_delta,
     build_provenance_extra_info,
 )
-
-
-# ==================== Magic-number constants ====================
-GLOBAL_RATE_LIMIT_WINDOW_SECONDS = 60.0
-GLOBAL_RATE_LIMIT_TIMESTAMPS_MAXLEN = 2000
-GLOBAL_RATE_LIMIT_SLEEP_SECONDS = 10
+from ..constants.profile_extract import (
+    GLOBAL_RATE_LIMIT_WINDOW_SECONDS,
+    GLOBAL_RATE_LIMIT_TIMESTAMPS_MAXLEN,
+    GLOBAL_RATE_LIMIT_SLEEP_SECONDS,
+)
 
 
 _TRIGGER_KEYWORDS = [
@@ -195,7 +194,14 @@ class UserProfileExtractService:
 
         # per-user 队列上限：通过 buffer 长度和 inflight 简化控制
         state.inflight = True
-        asyncio.create_task(self._extract_task(platform_user_id=platform_user_id, nickname=nickname, group_id=group_id))
+        from ..runtime import get_task_supervisor
+
+        get_task_supervisor().spawn(
+            self._extract_task(platform_user_id=platform_user_id, nickname=nickname, group_id=group_id),
+            name="profile_extract",
+            owner="profile_extract",
+            key=platform_user_id,
+        )
 
     def _global_rate_limited(self) -> bool:
         limit = max(1, int(plugin_config.profile_extract_max_calls_per_minute))

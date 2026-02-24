@@ -82,7 +82,7 @@ class TestConfigValidation:
             Config(llm_api_key=invalid_api_key_with_space)
         
         error_msg = str(exc_info.value)
-        assert "空格" in error_msg
+        assert "空格" in error_msg or "空白" in error_msg
     
     def test_config_strips_api_key_whitespace(self, valid_api_key: str):
         """测试 API Key 首尾空格会被自动去除"""
@@ -161,16 +161,16 @@ class TestConfigBaseUrl:
         error_msg = str(exc_info.value)
         assert "http" in error_msg.lower()
     
-    def test_empty_base_url_raises_error(self, valid_api_key: str):
-        """测试空 Base URL 抛出错误"""
+    def test_empty_base_url_allowed(self, valid_api_key: str):
+        """测试空 Base URL 被允许（归一化为空字符串）"""
         from mika_chat_core.config import Config
-        
-        with pytest.raises(ValidationError):
-            Config(
-                llm_api_key=valid_api_key,
-                llm_base_url="",
-                mika_master_id=123456789
-            )
+
+        config = Config(
+            llm_api_key=valid_api_key,
+            llm_base_url="",
+            mika_master_id=123456789
+        )
+        assert config.llm_base_url == ""
 
 
 class TestConfigDefaults:
@@ -455,7 +455,7 @@ class TestConfigApiKeyList:
             Config(llm_api_key_list=key_list, mika_master_id=123456789)
         
         error_msg = str(exc_info.value)
-        assert "空格" in error_msg
+        assert "空格" in error_msg or "空白" in error_msg
 
 
 class TestConfigEffectiveKeys:

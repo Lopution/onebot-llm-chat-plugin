@@ -82,8 +82,8 @@ async def test_dream_scheduler_triggers_after_idle(monkeypatch):
     scheduled_tasks: list[asyncio.Task[None]] = []
     real_create_task = asyncio.create_task
 
-    def _track_task(coro):
-        task = real_create_task(coro)
+    def _track_task(coro, **kwargs):
+        task = real_create_task(coro, **kwargs)
         scheduled_tasks.append(task)
         return task
 

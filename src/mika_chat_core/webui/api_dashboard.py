@@ -129,7 +129,8 @@ def create_dashboard_router(
 
         return BaseRouteHelper.ok(
             {
-                "status": overall_status,
+                "health_status": overall_status,
+                "status": "ok" if overall_status == "healthy" else overall_status,
                 "database": db_status,
                 "mika_client": client_status,
                 "api_probe": api_probe,

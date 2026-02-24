@@ -220,6 +220,7 @@ class PersonaManager:
             conn.close()
             return self._row_to_persona(row)
         except Exception:
+            log.debug("get_active_persona DB query failed", exc_info=True)
             return None
 
     async def create_persona(

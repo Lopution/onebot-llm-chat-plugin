@@ -17,7 +17,7 @@ from nonebot import logger as log
 import time
 from typing import Any
 
-from mika_chat_core.settings import Config
+from mika_chat_core.config import Config
 from mika_chat_core.handlers import parse_message_with_mentions
 from mika_chat_core.runtime import (
     get_client as get_runtime_client,

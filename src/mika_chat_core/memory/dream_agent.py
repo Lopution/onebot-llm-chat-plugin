@@ -220,9 +220,14 @@ class DreamScheduler:
             finally:
                 self._run_lock.release(session)
 
-        import asyncio
+        from ..runtime import get_task_supervisor
 
-        asyncio.create_task(_run())
+        get_task_supervisor().spawn(
+            _run(),
+            name="dream_run",
+            owner="dream_scheduler",
+            key=session,
+        )
 
 
 _dream_scheduler: DreamScheduler | None = None

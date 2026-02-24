@@ -42,6 +42,7 @@ from .utils.event_context import build_event_context_from_envelope
 from .utils.text_image_renderer import render_text_to_png_bytes
 from .utils.message_splitter import split_message_text
 from .security.content_safety import apply_content_safety_filter
+from .error_policy import swallow as _swallow
 from .handlers_flow import FlowDeps, run_group_locked_flow, run_private_locked_flow
 from .handlers_parse import parse_envelope_with_mentions as service_parse_envelope_with_mentions
 from .handlers_history_image import (
@@ -104,7 +105,7 @@ def _resolve_llm_cfg(plugin_config: Config) -> dict[str, Any]:
             if isinstance(resolved, dict):
                 return dict(resolved)
         except Exception:
-            pass
+            _swallow("get_llm_config() failed, falling back to attr-based config", exc_info=True)
 
     provider = str(_cfg(plugin_config, "llm_provider", "openai_compat") or "openai_compat").strip().lower()
     base_url = str(_cfg(plugin_config, "llm_base_url", "") or "").strip().rstrip("/")
@@ -293,7 +294,11 @@ def get_user_profile_store():
     return _get()
 
 def _handle_task_exception(task: asyncio.Task[Any]) -> None:
-    """处理后台任务的异常，防止异常被静默忽略"""
+    """处理后台任务的异常，防止异常被静默忽略。
+
+    .. deprecated::
+        由 TaskSupervisor 统一管理，保留仅为兼容外部引用。
+    """
     if task.done() and not task.cancelled():
         exc = task.exception()
         if exc:
@@ -302,8 +307,13 @@ def _handle_task_exception(task: asyncio.Task[Any]) -> None:
 
 async def sync_offline_messages() -> None:
     """Bot 启动时同步离线期间的群聊消息（后台异步执行）。"""
-    task = asyncio.create_task(_sync_offline_messages_task())
-    task.add_done_callback(_handle_task_exception)
+    from .runtime import get_task_supervisor
+
+    get_task_supervisor().spawn(
+        _sync_offline_messages_task(),
+        name="sync_offline_messages",
+        owner="startup",
+    )
 
 
 async def _sync_offline_messages_task() -> None:

@@ -28,7 +28,7 @@ async def test_ingest_and_search_knowledge_tools(monkeypatch, tmp_path):
         mika_knowledge_chunk_max_chars=80,
         mika_knowledge_chunk_overlap_chars=8,
     )
-    monkeypatch.setattr("mika_chat_core.tools.get_runtime_config", lambda: cfg)
+    monkeypatch.setattr("mika_chat_core.tools_builtin._knowledge.get_runtime_config", lambda: cfg)
 
     class _FakeSemantic:
         def encode(self, text: str):
@@ -72,7 +72,7 @@ async def test_search_knowledge_disabled(monkeypatch):
         mika_knowledge_search_top_k=5,
         mika_knowledge_min_similarity=0.5,
     )
-    monkeypatch.setattr("mika_chat_core.tools.get_runtime_config", lambda: cfg)
+    monkeypatch.setattr("mika_chat_core.tools_builtin._knowledge.get_runtime_config", lambda: cfg)
     from mika_chat_core.tools import handle_search_knowledge
 
     resp = await handle_search_knowledge({"query": "测试"})

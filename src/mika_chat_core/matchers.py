@@ -26,7 +26,7 @@ from mika_chat_core.runtime import (
     get_platform_api_port as get_runtime_platform_api_port,
 )
 from mika_chat_core.semantic_transcript import build_context_record_text, summarize_envelope
-from mika_chat_core.settings import Config
+from mika_chat_core.config import Config
 from mika_chat_core.utils.event_context import build_event_context_from_envelope
 from mika_chat_core.utils.recent_images import get_image_cache
 
@@ -34,10 +34,13 @@ from .infra.logging import logger as log
 
 
 def _get_plugin_config() -> Config:
-    try:
-        return get_runtime_config()
-    except Exception:
-        return Config(llm_api_key="test-api-key-12345678901234567890", mika_master_id="1")
+    cfg = get_runtime_config()
+    if cfg is None:
+        raise RuntimeError(
+            "runtime config is not initialized; "
+            "ensure set_runtime_config() is called before using matchers"
+        )
+    return cfg
 
 
 class _PluginConfigProxy:

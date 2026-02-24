@@ -136,6 +136,9 @@ def test_webui_config_reload_from_env_file(monkeypatch, tmp_path: Path):
     runtime_cfg = get_runtime_config()
     assert runtime_cfg.llm_provider == "anthropic"
     assert runtime_cfg.mika_webui_enabled is False
+    # reload 应同步到当前 settings_getter 返回的配置对象，避免“重载成功但仍用旧值”
+    assert config.llm_provider == "anthropic"
+    assert config.mika_webui_enabled is False
 
 
 def test_webui_config_export_masks_secrets_by_default():
