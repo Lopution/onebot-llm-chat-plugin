@@ -2,7 +2,7 @@
 
 # Mika Bot 🌸
 
-**基于 OneBot 协议、使用 OpenAI 兼容格式 API 调用 Gemini 模型的多模态智能 QQ 聊天机器人插件**
+**基于 OneBot 协议、使用 OpenAI 兼容格式 API 调用 LLM 模型的多模态智能 QQ 聊天机器人插件**
 
 [中文](README.md) | [English](README_EN.md)
 
@@ -24,7 +24,7 @@
 <td width="50%">
 
 ### 🤖 智能对话
-通过 OpenAI 兼容格式 API 调用 Gemini 模型，支持多轮上下文
+通过 OpenAI 兼容格式 API 调用 LLM 模型，支持多轮上下文
 
 ### 🔍 联网搜索
 集成 Serper API 搜索引擎，可获取实时信息
@@ -179,57 +179,69 @@ python3 scripts/config_wizard.py
 
 #### 配置项说明
 
+统一使用 `MIKA_*` 前缀配置环境变量。
+
 | 配置项 | 说明 | 必填 | 默认值 |
 |--------|------|:----:|--------|
-| `GEMINI_API_KEY` | Gemini API Key | ✅ | - |
-| `GEMINI_BASE_URL` | API 基础地址（使用中转时填写） | ❌ | - |
-| `GEMINI_MODEL` | 主模型名称 | ❌ | `gemini-3-pro-high` |
-| `GEMINI_MASTER_ID` | 主人 QQ 号 | ✅ | - |
-| `GEMINI_GROUP_WHITELIST` | 群组白名单 | ❌ | - |
-| `GEMINI_OFFLINE_SYNC_ENABLED` | 离线同步（非标准 API，默认关闭） | ❌ | `false` |
-| `GEMINI_CONTEXT_MODE` | 上下文模式（`legacy`/`structured`） | ❌ | `structured` |
-| `GEMINI_CONTEXT_MAX_TURNS` | 上下文最大轮次（先于按条数截断） | ❌ | `30` |
-| `GEMINI_CONTEXT_MAX_TOKENS_SOFT` | 上下文软 token 阈值（估算） | ❌ | `12000` |
-| `GEMINI_CONTEXT_SUMMARY_ENABLED` | 启用摘要压缩（默认关闭） | ❌ | `false` |
-| `GEMINI_MULTIMODAL_STRICT` | 多模态严格模式（不支持时自动清洗） | ❌ | `true` |
-| `GEMINI_QUOTE_IMAGE_CAPTION_ENABLED` | 引用消息图片注释（best-effort） | ❌ | `true` |
-| `GEMINI_QUOTE_IMAGE_CAPTION_PROMPT` | 引用图片提示模板（支持 `{count}` 占位符） | ❌ | `[引用图片共{count}张]` |
-| `GEMINI_QUOTE_IMAGE_CAPTION_TIMEOUT_SECONDS` | 引用消息解析超时（秒） | ❌ | `3.0` |
-| `GEMINI_LONG_REPLY_IMAGE_FALLBACK_ENABLED` | 发送失败后启用图片渲染兜底 | ❌ | `true` |
-| `GEMINI_LONG_REPLY_IMAGE_MAX_CHARS` | 长回复渲染图片的最大字符数 | ❌ | `12000` |
-| `GEMINI_LONG_REPLY_IMAGE_MAX_WIDTH` | 长回复渲染图片宽度（像素） | ❌ | `960` |
-| `GEMINI_LONG_REPLY_IMAGE_FONT_SIZE` | 长回复渲染图片字号 | ❌ | `24` |
-| `GEMINI_LONG_MESSAGE_CHUNK_SIZE` | 兼容保留（当前主链路不再使用） | ❌ | `800` |
-| `GEMINI_EMPTY_REPLY_LOCAL_RETRIES` | 空回复传输层本地重试次数（不重跑整链路） | ❌ | `1` |
-| `GEMINI_EMPTY_REPLY_LOCAL_RETRY_DELAY_SECONDS` | 空回复本地重试间隔（秒） | ❌ | `0.4` |
-| `GEMINI_TRANSPORT_TIMEOUT_RETRIES` | 传输层超时本地重试次数（仅超时） | ❌ | `1` |
-| `GEMINI_TRANSPORT_TIMEOUT_RETRY_DELAY_SECONDS` | 传输层超时重试间隔（秒） | ❌ | `0.6` |
-| `GEMINI_EMPTY_REPLY_CONTEXT_DEGRADE_ENABLED` | 空回复时启用业务级上下文降级 | ❌ | `false` |
-| `GEMINI_EMPTY_REPLY_CONTEXT_DEGRADE_MAX_LEVEL` | 业务级上下文降级最大层级 | ❌ | `2` |
-| `GEMINI_METRICS_PROMETHEUS_ENABLED` | 启用 `/metrics` Prometheus 文本导出 | ❌ | `true` |
-| `GEMINI_HEALTH_CHECK_API_PROBE_ENABLED` | 在 `/health` 启用 API 主动探测 | ❌ | `false` |
-| `GEMINI_HEALTH_CHECK_API_PROBE_TIMEOUT_SECONDS` | 健康探测超时（秒） | ❌ | `3.0` |
-| `GEMINI_HEALTH_CHECK_API_PROBE_TTL_SECONDS` | 健康探测结果缓存 TTL（秒） | ❌ | `30` |
-| `GEMINI_CONTEXT_TRACE_ENABLED` | 上下文构建 trace 日志开关 | ❌ | `false` |
-| `GEMINI_CONTEXT_TRACE_SAMPLE_RATE` | 上下文 trace 采样率（0~1） | ❌ | `1.0` |
-| `GEMINI_ACTIVE_REPLY_LTM_ENABLED` | 主动回复 LTM 门控总开关 | ❌ | `true` |
-| `GEMINI_ACTIVE_REPLY_PROBABILITY` | 主动回复最终概率门控（0~1） | ❌ | `1.0` |
-| `GEMINI_ACTIVE_REPLY_WHITELIST` | 允许主动回复的群白名单（空=不额外限制） | ❌ | `[]` |
+| `MIKA_API_KEY` | Mika API Key | ✅ | - |
+| `MIKA_BASE_URL` | API 基础地址（使用中转时填写） | ❌ | - |
+| `MIKA_MODEL` | 主模型名称 | ❌ | `gemini-3-pro-high` |
+| `MIKA_MASTER_ID` | 主人 QQ 号 | ✅ | - |
+| `MIKA_GROUP_WHITELIST` | 群组白名单 | ❌ | - |
+| `MIKA_OFFLINE_SYNC_ENABLED` | 离线同步（非标准 API，默认关闭） | ❌ | `false` |
+| `MIKA_CONTEXT_MODE` | 上下文模式（`legacy`/`structured`） | ❌ | `structured` |
+| `MIKA_CONTEXT_MAX_TURNS` | 上下文最大轮次（先于按条数截断） | ❌ | `30` |
+| `MIKA_CONTEXT_MAX_TOKENS_SOFT` | 上下文软 token 阈值（估算） | ❌ | `12000` |
+| `MIKA_CONTEXT_SUMMARY_ENABLED` | 启用摘要压缩（默认关闭） | ❌ | `false` |
+| `MIKA_MULTIMODAL_STRICT` | 多模态严格模式（不支持时自动清洗） | ❌ | `true` |
+| `MIKA_QUOTE_IMAGE_CAPTION_ENABLED` | 引用消息图片注释（best-effort） | ❌ | `true` |
+| `MIKA_QUOTE_IMAGE_CAPTION_PROMPT` | 引用图片提示模板（支持 `{count}` 占位符） | ❌ | `[引用图片共{count}张]` |
+| `MIKA_QUOTE_IMAGE_CAPTION_TIMEOUT_SECONDS` | 引用消息解析超时（秒） | ❌ | `3.0` |
+| `MIKA_LONG_REPLY_IMAGE_FALLBACK_ENABLED` | 发送失败后启用图片渲染兜底 | ❌ | `true` |
+| `MIKA_LONG_REPLY_IMAGE_MAX_CHARS` | 长回复渲染图片的最大字符数 | ❌ | `12000` |
+| `MIKA_LONG_REPLY_IMAGE_MAX_WIDTH` | 长回复渲染图片宽度（像素） | ❌ | `960` |
+| `MIKA_LONG_REPLY_IMAGE_FONT_SIZE` | 长回复渲染图片字号 | ❌ | `24` |
+| `MIKA_LONG_MESSAGE_CHUNK_SIZE` | 兼容保留（当前主链路不再使用） | ❌ | `800` |
+| `MIKA_EMPTY_REPLY_LOCAL_RETRIES` | 空回复传输层本地重试次数（不重跑整链路） | ❌ | `1` |
+| `MIKA_EMPTY_REPLY_LOCAL_RETRY_DELAY_SECONDS` | 空回复本地重试间隔（秒） | ❌ | `0.4` |
+| `MIKA_TRANSPORT_TIMEOUT_RETRIES` | 传输层超时本地重试次数（仅超时） | ❌ | `1` |
+| `MIKA_TRANSPORT_TIMEOUT_RETRY_DELAY_SECONDS` | 传输层超时重试间隔（秒） | ❌ | `0.6` |
+| `MIKA_EMPTY_REPLY_CONTEXT_DEGRADE_ENABLED` | 空回复时启用业务级上下文降级 | ❌ | `false` |
+| `MIKA_EMPTY_REPLY_CONTEXT_DEGRADE_MAX_LEVEL` | 业务级上下文降级最大层级 | ❌ | `2` |
+| `MIKA_METRICS_PROMETHEUS_ENABLED` | 启用 `/metrics` Prometheus 文本导出 | ❌ | `true` |
+| `MIKA_HEALTH_CHECK_API_PROBE_ENABLED` | 在 `/health` 启用 API 主动探测 | ❌ | `false` |
+| `MIKA_HEALTH_CHECK_API_PROBE_TIMEOUT_SECONDS` | 健康探测超时（秒） | ❌ | `3.0` |
+| `MIKA_HEALTH_CHECK_API_PROBE_TTL_SECONDS` | 健康探测结果缓存 TTL（秒） | ❌ | `30` |
+| `MIKA_CONTEXT_TRACE_ENABLED` | 上下文构建 trace 日志开关 | ❌ | `false` |
+| `MIKA_CONTEXT_TRACE_SAMPLE_RATE` | 上下文 trace 采样率（0~1） | ❌ | `1.0` |
+| `MIKA_ACTIVE_REPLY_LTM_ENABLED` | 主动回复 LTM 门控总开关 | ❌ | `true` |
+| `MIKA_ACTIVE_REPLY_PROBABILITY` | 主动回复最终概率门控（0~1） | ❌ | `1.0` |
+| `MIKA_ACTIVE_REPLY_WHITELIST` | 允许主动回复的群白名单（空=不额外限制） | ❌ | `[]` |
 | `SERPER_API_KEY` | Serper 搜索 API Key | ❌ | - |
 | `MIKA_STRICT_STARTUP` | 严格启动模式（加载失败直接退出） | ❌ | `false` |
 
 > 📖 完整配置说明请参阅 [`docs/api/config.md`](docs/api/config.md)
 
-### 自定义 Prompt 最小格式
+### 自定义 Prompt（V2）
 
-当你使用自定义 prompt 文件时，建议至少保留一个最小可用模板：
+默认使用 `system.yaml`，格式为：
 
 ```yaml
-system_prompt: |
-  你是一个可靠、简洁的聊天助手。
+name: "角色名"
+character_prompt: |
+  在这里写角色定义（自由文本）
+dialogue_examples:
+  - scenario: "示例"
+    user: "用户输入"
+    bot: "角色回复"
+error_messages:
+  default: "默认错误提示"
 ```
 
-如果文件结构不完整或字段类型错误，插件会按内置降级逻辑回退，避免启动或运行时直接崩溃。
+迁移说明（Breaking Change）：
+- 旧结构化字段（`role/personality/instructions/...`）已下线，不再保证兼容。
+- 旧 `system_prompt` 字段不再作为正式入口。
+- 缺少 `name` 或 `character_prompt` 时会回退到安全默认提示词，并记录告警日志。
 
 ### 5. 启动你的 OneBot 实现（按你的部署方式）
 
@@ -281,7 +293,7 @@ mika-chat-core/
 │
 ├── src/mika_chat_core/            # 中立核心模块（宿主无关）
 │       ├── config.py      # 配置管理
-│       ├── gemini_api.py  # OpenAI 兼容格式 API 客户端
+│       ├── mika_api.py  # OpenAI 兼容格式 API 客户端
 │       ├── handlers.py    # 消息处理器
 │       ├── matchers.py    # 消息匹配器
 │       ├── lifecycle.py   # 生命周期管理
@@ -303,7 +315,7 @@ mika-chat-core/
 | 文档 | 说明 |
 |------|------|
 | [API 文档首页](docs/index.md) | 文档入口 |
-| [API 客户端](docs/api/gemini_api.md) | API 客户端使用说明 |
+| [API 客户端](docs/api/mika_api.md) | API 客户端使用说明 |
 | [消息处理器](docs/api/handlers.md) | 消息处理逻辑 |
 | [搜索引擎](docs/api/search_engine.md) | 联网搜索功能 |
 | [上下文存储](docs/api/context_store.md) | 上下文管理 |
@@ -352,7 +364,7 @@ pytest tests/ -v --cov=src/mika_chat_core --cov-report=html
 
 - [OneBot](https://onebot.dev/) - 统一的聊天机器人通信协议
 - [NoneBot2](https://nonebot.dev/) - 优秀的 Python 异步机器人框架
-- [Google Gemini](https://ai.google.dev/) - 强大的多模态 AI 模型（通过 OpenAI 兼容格式调用）
+- [Google AI](https://ai.google.dev/) - 强大的多模态 AI 模型（通过 OpenAI 兼容格式调用）
 - [NapCat](https://github.com/NapNeko/NapCat) - 稳定的 QQ 客户端实现
 - [AstrBot](https://github.com/Soulter/AstrBot) - 部分思路和实现细节参考（AGPLv3）
 - [Serper](https://serper.dev/) - 搜索 API 服务

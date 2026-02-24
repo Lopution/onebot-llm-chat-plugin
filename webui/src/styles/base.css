@@ -1,0 +1,54 @@
+/**
+ * Global base styles for Mika WebUI.
+ *
+ * Consumes tokens from tokens.css and provides sensible defaults.
+ */
+
+@import './tokens.css';
+
+/* Page-level heading style */
+.page-title {
+  margin: 0 0 var(--mika-spacing-md) 0;
+  font-size: var(--mika-font-size-xl);
+  font-weight: var(--mika-font-weight-semibold);
+}
+
+/* Stat cards in Dashboard */
+.stat-label {
+  font-size: var(--mika-font-size-sm);
+  color: var(--mika-color-text-secondary);
+  margin-bottom: var(--mika-spacing-xs);
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: var(--mika-font-weight-semibold);
+  color: var(--mika-color-text-primary);
+}
+
+/* Chat box (LiveChatView) */
+.chat-box {
+  border: 1px solid var(--mika-color-border);
+  border-radius: var(--mika-border-radius);
+  min-height: var(--mika-chat-min-height);
+  max-height: var(--mika-chat-max-height);
+  overflow-y: auto;
+  padding: 10px;
+  background: var(--mika-chat-bg);
+}
+
+.chat-item {
+  margin-bottom: var(--mika-spacing-sm);
+}
+
+.chat-time {
+  margin-left: var(--mika-spacing-sm);
+  font-size: var(--mika-font-size-xs);
+  color: var(--mika-color-text-secondary);
+}
+
+.chat-text {
+  margin-top: var(--mika-spacing-xs);
+  white-space: pre-wrap;
+  line-height: 1.5;
+}

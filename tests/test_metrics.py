@@ -15,11 +15,11 @@ def test_metrics_to_prometheus_basic():
 
     text = metrics.to_prometheus(plugin_version="1.2.3")
 
-    assert "# TYPE gemini_chat_requests_total counter" in text
-    assert "gemini_chat_requests_total 3" in text
-    assert 'gemini_chat_api_empty_reply_reason_total{reason="provider_empty"} 2' in text
-    assert 'gemini_chat_api_transport_error_total{reason="timeout"} 1' in text
-    assert 'gemini_chat_build_info{version="1.2.3"} 1' in text
+    assert "# TYPE mika_chat_requests_total counter" in text
+    assert "mika_chat_requests_total 3" in text
+    assert 'mika_chat_api_empty_reply_reason_total{reason="provider_empty"} 2' in text
+    assert 'mika_chat_api_transport_error_total{reason="timeout"} 1' in text
+    assert 'mika_chat_build_info{version="1.2.3"} 1' in text
 
 
 def test_metrics_to_prometheus_escapes_labels():
@@ -33,4 +33,4 @@ def test_metrics_to_prometheus_escapes_labels():
     assert '\\"' in text
     assert "\\\\" in text
     assert "\\n" in text
-    assert 'gemini_chat_build_info{version="v\\"1"} 1' in text
+    assert 'mika_chat_build_info{version="v\\"1"} 1' in text

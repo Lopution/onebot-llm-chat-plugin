@@ -4,11 +4,11 @@
 
 ## 项目简介
 
-Mika Bot 是一个基于 OneBot 协议的 QQ 聊天机器人，通过 OpenAI 兼容格式 API 调用 Gemini 模型进行智能对话。
+Mika Bot 是一个基于 OneBot 协议的 QQ 聊天机器人，通过 OpenAI 兼容格式 API 调用 LLM 模型进行智能对话。
 
 ### 主要特性
 
-- 🤖 **智能对话**: 通过 OpenAI 兼容格式 API 调用 Gemini 模型
+- 🤖 **智能对话**: 通过 OpenAI 兼容格式 API 调用 LLM 模型
 - 🔍 **联网搜索**: 集成 Serper API 搜索引擎，可获取实时信息
 - 💾 **上下文记忆**: 基于 SQLite 的对话上下文持久化存储
 - 📝 **多轮对话**: 支持连续多轮对话，保持上下文连贯
@@ -35,7 +35,7 @@ pip install -e .
 复制 `.env.example` 为 `.env` 并填写配置：
 
 ```env
-GEMINI_API_KEY=your_api_key_here
+MIKA_API_KEY=your_api_key_here
 ```
 
 ### 启动机器人
@@ -50,13 +50,12 @@ python bot.py
 |------|------|
 | [`mika_chat_core`](../src/mika_chat_core) | 中立核心模块（宿主无关） |
 | [`nonebot_plugin_mika_chat`](../src/nonebot_plugin_mika_chat) | NoneBot 适配层（当前默认入口） |
-| [`gemini_api`](api/gemini_api.md) | API 客户端封装 |
+| [`mika_api`](api/mika_api.md) | API 客户端封装 |
 | [`handlers`](api/handlers.md) | 消息处理器 |
 | [`search_engine`](api/search_engine.md) | Serper API 搜索引擎 (Google Search) |
 | [`context_store`](api/context_store.md) | 对话上下文存储 |
 | [`config`](api/config.md) | 配置管理 |
 | [`release-process`](release-process.md) | 版本发布流程 |
-| [`git-sop`](git-sop.md) | Git 分支与版本管理 SOP |
 
 ## 架构设计
 
@@ -64,7 +63,7 @@ python bot.py
 src/
 ├── mika_chat_core/              # 中立核心模块
 │   ├── config.py
-│   ├── gemini_api.py
+│   ├── mika_api.py
 │   ├── handlers.py
 │   └── ...
 └── nonebot_plugin_mika_chat/    # NoneBot 适配层（薄入口）

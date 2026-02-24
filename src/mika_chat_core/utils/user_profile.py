@@ -2,7 +2,7 @@
 
 提供用户档案的持久化存储与查询功能：
 - 持久化存储用户信息（姓名、身份、偏好等）
-- 支持按 QQ 号查询用户档案
+- 支持按 平台用户ID查询用户档案
 - 自动从对话中提取并更新用户信息
 - 生成用户档案摘要用于注入系统提示词
 
@@ -16,6 +16,7 @@ import asyncio
 import aiosqlite
 import json
 import re
+import copy
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -92,11 +93,61 @@ class UserProfileStore:
         # 内存缓存（LRU，避免长期运行无界增长）
         cache_size = max(
             1,
-            int(getattr(plugin_config, "gemini_user_profile_cache_max_size", 256) or 256),
+            int(getattr(plugin_config, "mika_user_profile_cache_max_size", 256) or 256),
         )
         self._cache: LRUCache = LRUCache(max_size=cache_size)
         # 写锁：避免并发写入导致 "database is locked" 或覆盖彼此的更新
         self._write_lock: asyncio.Lock = asyncio.Lock()
+        self._profile_id_column = "platform_user_id"
+        self._event_id_column = "platform_user_id"
+
+    @staticmethod
+    def _normalize_platform_user_id(
+        platform_user_id: Optional[str] = None,
+        *,
+        legacy_qq_id: Optional[str] = None,
+    ) -> str:
+        resolved = str(platform_user_id or legacy_qq_id or "").strip()
+        return resolved
+
+    @staticmethod
+    async def _read_table_columns(db: aiosqlite.Connection, table_name: str) -> set[str]:
+        columns: set[str] = set()
+        async with db.execute(f"PRAGMA table_info({table_name})") as cursor:
+            rows = await cursor.fetchall()
+            for row in rows:
+                try:
+                    columns.add(str(row[1]))
+                except Exception:
+                    continue
+        return columns
+
+    async def _migrate_legacy_id_columns(self, db: aiosqlite.Connection) -> None:
+        profile_columns = await self._read_table_columns(db, "user_profiles")
+        if "platform_user_id" not in profile_columns and "qq_id" in profile_columns:
+            try:
+                await db.execute("ALTER TABLE user_profiles RENAME COLUMN qq_id TO platform_user_id")
+                log.info("用户档案表字段迁移完成 | user_profiles.qq_id -> platform_user_id")
+            except Exception as exc:
+                log.warning(f"用户档案字段迁移失败，回退 legacy 列名 qq_id: {exc}")
+
+        event_columns = await self._read_table_columns(db, "user_profile_events")
+        if "platform_user_id" not in event_columns and "qq_id" in event_columns:
+            try:
+                await db.execute("ALTER TABLE user_profile_events RENAME COLUMN qq_id TO platform_user_id")
+                log.info("用户档案审计表字段迁移完成 | user_profile_events.qq_id -> platform_user_id")
+            except Exception as exc:
+                log.warning(f"用户档案审计字段迁移失败，回退 legacy 列名 qq_id: {exc}")
+
+        # 刷新列名探测（兼容迁移失败或旧 SQLite）
+        profile_columns = await self._read_table_columns(db, "user_profiles")
+        self._profile_id_column = (
+            "platform_user_id" if "platform_user_id" in profile_columns else "qq_id"
+        )
+        event_columns = await self._read_table_columns(db, "user_profile_events")
+        self._event_id_column = (
+            "platform_user_id" if "platform_user_id" in event_columns else "qq_id"
+        )
     
     async def init_table(self) -> None:
         """初始化用户档案表"""
@@ -109,7 +160,7 @@ class UserProfileStore:
                     # 创建用户档案表
                     await db.execute("""
                         CREATE TABLE IF NOT EXISTS user_profiles (
-                            qq_id TEXT PRIMARY KEY,
+                            platform_user_id TEXT PRIMARY KEY,
                             nickname TEXT,
                             real_name TEXT,
                             identity TEXT,
@@ -129,7 +180,7 @@ class UserProfileStore:
                     await db.execute("""
                         CREATE TABLE IF NOT EXISTS user_profile_events (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            qq_id TEXT NOT NULL,
+                            platform_user_id TEXT NOT NULL,
                             group_id TEXT,
                             scene TEXT,
                             input_messages TEXT,
@@ -140,15 +191,15 @@ class UserProfileStore:
                         )
                     """)
 
-                    await db.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_user_profile_events_qq_id
-                        ON user_profile_events(qq_id)
-                    """)
-                    
-                    # 创建索引
-                    await db.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_user_qq_id ON user_profiles(qq_id)
-                    """)
+                    await self._migrate_legacy_id_columns(db)
+
+                    # 创建索引（按当前可用 id 列）
+                    await db.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_user_profile_events_id ON user_profile_events({self._event_id_column})"
+                    )
+                    await db.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_user_profile_id ON user_profiles({self._profile_id_column})"
+                    )
                     
                     await db.commit()
                 self._initialized = True
@@ -201,20 +252,25 @@ class UserProfileStore:
     
     async def update_from_message(
         self,
-        qq_id: str,
-        content: str,
-        nickname: Optional[str] = None
+        platform_user_id: str = "",
+        content: str = "",
+        nickname: Optional[str] = None,
+        qq_id: Optional[str] = None,
     ) -> bool:
         """从消息中提取信息并更新用户档案
         
         Args:
-            qq_id: 用户 QQ 号
+            platform_user_id: 平台用户ID
             content: 消息内容
             nickname: 用户昵称（可选）
             
         Returns:
             是否有更新
         """
+        resolved_user_id = self._normalize_platform_user_id(platform_user_id, legacy_qq_id=qq_id)
+        if not resolved_user_id:
+            return False
+
         await self.init_table()
         
         # 提取信息
@@ -227,30 +283,35 @@ class UserProfileStore:
             info["nickname"] = nickname
         
         # 更新档案
-        return await self.update_profile(qq_id, info)
+        return await self.update_profile(resolved_user_id, info)
     
     async def update_profile(
         self,
-        qq_id: str,
-        info: Dict[str, Any]
+        platform_user_id: str = "",
+        info: Dict[str, Any] = None,
+        qq_id: Optional[str] = None,
     ) -> bool:
         """更新用户档案
         
         Args:
-            qq_id: 用户 QQ 号
+            platform_user_id: 平台用户ID
             info: 要更新的信息
             
         Returns:
             是否成功
         """
+        resolved_user_id = self._normalize_platform_user_id(platform_user_id, legacy_qq_id=qq_id)
+        if not resolved_user_id:
+            return False
+
         await self.init_table()
-        
+
         if not info:
             return False
         
         try:
             # 获取现有档案
-            existing = await self.get_profile(qq_id)
+            existing = await self.get_profile(resolved_user_id)
             
             # 合并偏好列表
             if "preferences" in info:
@@ -333,13 +394,16 @@ class UserProfileStore:
                 async with _open_db() as db:
                     # 尝试更新
                     if existing:
-                        sql = f"UPDATE user_profiles SET {', '.join(update_parts)} WHERE qq_id = ?"
-                        values.append(qq_id)
+                        sql = (
+                            f"UPDATE user_profiles SET {', '.join(update_parts)} "
+                            f"WHERE {self._profile_id_column} = ?"
+                        )
+                        values.append(resolved_user_id)
                         await db.execute(sql, values)
                     else:
                         # 插入新记录
-                        insert_fields = ["qq_id"] + [f for f in fields if f in info]
-                        insert_values = [qq_id] + [info[f] for f in fields if f in info]
+                        insert_fields = [self._profile_id_column] + [f for f in fields if f in info]
+                        insert_values = [resolved_user_id] + [info[f] for f in fields if f in info]
                         placeholders = ", ".join(["?"] * len(insert_values))
                         sql = f"INSERT INTO user_profiles ({', '.join(insert_fields)}) VALUES ({placeholders})"
                         await db.execute(sql, insert_values)
@@ -347,37 +411,41 @@ class UserProfileStore:
                     await db.commit()
             
             # 写后简单失效：避免 cache 中出现 JSON 字符串/解析类型混用
-            self._cache.delete(qq_id)
-            
-            log.info(f"用户档案已更新 | qq_id={qq_id} | fields={list(info.keys())}")
+            self._cache.delete(resolved_user_id)
+
+            log.info(f"用户档案已更新 | platform_user_id={resolved_user_id} | fields={list(info.keys())}")
             return True
             
         except Exception as e:
             log.error(f"更新用户档案失败: {e}", exc_info=True)
             return False
     
-    async def get_profile(self, qq_id: str) -> Dict[str, Any]:
+    async def get_profile(self, platform_user_id: str = "", qq_id: Optional[str] = None) -> Dict[str, Any]:
         """获取用户档案
         
         Args:
-            qq_id: 用户 QQ 号
+            platform_user_id: 平台用户ID
             
         Returns:
             用户档案字典，不存在则返回空字典
         """
+        resolved_user_id = self._normalize_platform_user_id(platform_user_id, legacy_qq_id=qq_id)
+        if not resolved_user_id:
+            return {}
+
         await self.init_table()
         
         # 检查缓存
-        cached = self._cache.get(qq_id)
+        cached = self._cache.get(resolved_user_id)
         if cached is not None:
-            # LRUCache 返回的是原对象引用，这里 copy() 防止调用方修改缓存
-            return cached.copy()
+            # 返回深拷贝，避免调用方修改嵌套对象（list/dict）污染缓存
+            return copy.deepcopy(cached)
         
         try:
             async with _open_db(row_factory=aiosqlite.Row) as db:
                 async with db.execute(
-                    "SELECT * FROM user_profiles WHERE qq_id = ?",
-                    (qq_id,)
+                    f"SELECT * FROM user_profiles WHERE {self._profile_id_column} = ?",
+                    (resolved_user_id,)
                 ) as cursor:
                     row = await cursor.fetchone()
                     if row:
@@ -391,23 +459,106 @@ class UserProfileStore:
                                     profile[field] = {} if field == "extra_info" else []
                         
                         # 缓存
-                        self._cache.set(qq_id, profile)
-                        return profile.copy()
+                        self._cache.set(resolved_user_id, profile)
+                        return copy.deepcopy(profile)
         except Exception as e:
             log.error(f"获取用户档案失败: {e}", exc_info=True)
         
         return {}
+
+    async def list_profiles(
+        self,
+        *,
+        page: int = 1,
+        page_size: int = 20,
+        query: str = "",
+    ) -> Dict[str, Any]:
+        await self.init_table()
+
+        safe_page = max(1, int(page or 1))
+        safe_size = max(1, min(int(page_size or 20), 100))
+        offset = (safe_page - 1) * safe_size
+        keyword = str(query or "").strip()
+
+        where_sql = ""
+        where_args: list[Any] = []
+        if keyword:
+            like_value = f"%{keyword}%"
+            where_sql = (
+                "WHERE "
+                f"{self._profile_id_column} LIKE ? "
+                "OR nickname LIKE ? "
+                "OR real_name LIKE ? "
+                "OR identity LIKE ? "
+                "OR occupation LIKE ? "
+                "OR location LIKE ?"
+            )
+            where_args = [like_value] * 6
+
+        try:
+            async with _open_db(row_factory=aiosqlite.Row) as db:
+                count_sql = f"SELECT COUNT(*) AS total FROM user_profiles {where_sql}"
+                async with db.execute(count_sql, where_args) as cursor:
+                    count_row = await cursor.fetchone()
+                total = int(count_row["total"] if count_row else 0)
+
+                list_sql = f"""
+                    SELECT {self._profile_id_column} AS platform_user_id,
+                           nickname, real_name, identity, occupation, age, location, birthday,
+                           preferences, dislikes, extra_info, created_at, updated_at
+                    FROM user_profiles
+                    {where_sql}
+                    ORDER BY updated_at DESC
+                    LIMIT ? OFFSET ?
+                """
+                async with db.execute(list_sql, [*where_args, safe_size, offset]) as cursor:
+                    rows = await cursor.fetchall()
+
+            items: list[Dict[str, Any]] = []
+            for row in rows:
+                item = dict(row)
+                for field in ["preferences", "dislikes", "extra_info"]:
+                    raw_value = item.get(field)
+                    if isinstance(raw_value, str) and raw_value:
+                        try:
+                            item[field] = json.loads(raw_value)
+                        except json.JSONDecodeError:
+                            item[field] = {} if field == "extra_info" else []
+                    elif raw_value in (None, ""):
+                        item[field] = {} if field == "extra_info" else []
+                items.append(item)
+
+            return {
+                "items": items,
+                "total": total,
+                "page": safe_page,
+                "page_size": safe_size,
+                "query": keyword,
+            }
+        except Exception as e:
+            log.error(f"列出用户档案失败: {e}", exc_info=True)
+            return {
+                "items": [],
+                "total": 0,
+                "page": safe_page,
+                "page_size": safe_size,
+                "query": keyword,
+            }
     
-    async def get_profile_summary(self, qq_id: str) -> str:
+    async def get_profile_summary(self, platform_user_id: str = "", qq_id: Optional[str] = None) -> str:
         """获取用户档案摘要
         
         Args:
-            qq_id: 用户 QQ 号
+            platform_user_id: 平台用户ID
             
         Returns:
             格式化的摘要字符串，用于注入系统提示词
         """
-        profile = await self.get_profile(qq_id)
+        resolved_user_id = self._normalize_platform_user_id(platform_user_id, legacy_qq_id=qq_id)
+        if not resolved_user_id:
+            return ""
+
+        profile = await self.get_profile(resolved_user_id)
         
         if not profile:
             return ""
@@ -444,49 +595,53 @@ class UserProfileStore:
         if not parts:
             return ""
         
-        return f"用户({qq_id}): {', '.join(parts)}"
+        return f"用户({resolved_user_id}): {', '.join(parts)}"
     
-    async def get_all_profiles_summary(self, qq_ids: List[str]) -> str:
+    async def get_all_profiles_summary(self, platform_user_ids: List[str]) -> str:
         """获取多个用户的档案摘要
         
         Args:
-            qq_ids: 用户 QQ 号列表
+            platform_user_ids: 平台用户ID列表
             
         Returns:
             合并的摘要字符串
         """
         summaries = []
-        for qq_id in qq_ids:
-            summary = await self.get_profile_summary(qq_id)
+        for platform_user_id in platform_user_ids:
+            summary = await self.get_profile_summary(platform_user_id)
             if summary:
                 summaries.append(summary)
         
         return "\n".join(summaries)
     
-    async def clear_profile(self, qq_id: str) -> bool:
+    async def clear_profile(self, platform_user_id: str = "", qq_id: Optional[str] = None) -> bool:
         """清除用户档案
         
         Args:
-            qq_id: 用户 QQ 号
+            platform_user_id: 平台用户ID
             
         Returns:
             是否成功
         """
+        resolved_user_id = self._normalize_platform_user_id(platform_user_id, legacy_qq_id=qq_id)
+        if not resolved_user_id:
+            return False
+
         await self.init_table()
         
         try:
             async with self._write_lock:
                 async with _open_db() as db:
                     await db.execute(
-                        "DELETE FROM user_profiles WHERE qq_id = ?",
-                        (qq_id,)
+                        f"DELETE FROM user_profiles WHERE {self._profile_id_column} = ?",
+                        (resolved_user_id,)
                     )
                     await db.commit()
             
             # 清除缓存
-            self._cache.delete(qq_id)
-            
-            log.info(f"用户档案已清除 | qq_id={qq_id}")
+            self._cache.delete(resolved_user_id)
+
+            log.info(f"用户档案已清除 | platform_user_id={resolved_user_id}")
             return True
         except Exception as e:
             log.error(f"清除用户档案失败: {e}", exc_info=True)
@@ -495,15 +650,20 @@ class UserProfileStore:
     async def add_audit_event(
         self,
         *,
-        qq_id: str,
-        group_id: Optional[str],
-        scene: str,
-        input_messages: List[Dict[str, Any]],
-        llm_output: Dict[str, Any],
-        merge_result: Dict[str, Any],
-        applied_fields: Dict[str, Any],
+        platform_user_id: str = "",
+        group_id: Optional[str] = None,
+        scene: str = "",
+        input_messages: Optional[List[Dict[str, Any]]] = None,
+        llm_output: Optional[Dict[str, Any]] = None,
+        merge_result: Optional[Dict[str, Any]] = None,
+        applied_fields: Optional[Dict[str, Any]] = None,
+        qq_id: Optional[str] = None,
     ) -> None:
         """写入 user_profile_events 审计表（失败不抛出，避免影响主流程）。"""
+        resolved_user_id = self._normalize_platform_user_id(platform_user_id, legacy_qq_id=qq_id)
+        if not resolved_user_id:
+            return
+
         await self.init_table()
         try:
             async with self._write_lock:
@@ -511,17 +671,17 @@ class UserProfileStore:
                     await db.execute(
                         """
                         INSERT INTO user_profile_events (
-                            qq_id, group_id, scene, input_messages, llm_output, merge_result, applied_fields
+                            {id_col}, group_id, scene, input_messages, llm_output, merge_result, applied_fields
                         ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                        """,
+                        """.format(id_col=self._event_id_column),
                         (
-                            qq_id,
+                            resolved_user_id,
                             group_id,
                             scene,
-                            json.dumps(input_messages, ensure_ascii=False),
-                            json.dumps(llm_output, ensure_ascii=False),
-                            json.dumps(merge_result, ensure_ascii=False),
-                            json.dumps(applied_fields, ensure_ascii=False),
+                            json.dumps(input_messages or [], ensure_ascii=False),
+                            json.dumps(llm_output or {}, ensure_ascii=False),
+                            json.dumps(merge_result or {}, ensure_ascii=False),
+                            json.dumps(applied_fields or {}, ensure_ascii=False),
                         ),
                     )
                     await db.commit()

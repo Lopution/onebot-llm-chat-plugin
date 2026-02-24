@@ -34,12 +34,11 @@ from .user_profile_merge import (
     merge_profile_delta,
     build_provenance_extra_info,
 )
-
-
-# ==================== Magic-number constants ====================
-GLOBAL_RATE_LIMIT_WINDOW_SECONDS = 60.0
-GLOBAL_RATE_LIMIT_TIMESTAMPS_MAXLEN = 2000
-GLOBAL_RATE_LIMIT_SLEEP_SECONDS = 10
+from ..constants.profile_extract import (
+    GLOBAL_RATE_LIMIT_WINDOW_SECONDS,
+    GLOBAL_RATE_LIMIT_TIMESTAMPS_MAXLEN,
+    GLOBAL_RATE_LIMIT_SLEEP_SECONDS,
+)
 
 
 _TRIGGER_KEYWORDS = [
@@ -109,7 +108,7 @@ class UserProfileExtractService:
     def ingest_message(
         self,
         *,
-        qq_id: str,
+        platform_user_id: str,
         nickname: str,
         content: str,
         message_id: Optional[str] = None,
@@ -128,7 +127,7 @@ class UserProfileExtractService:
             return
 
         now = time.time()
-        state = self._states.get(qq_id)
+        state = self._states.get(platform_user_id)
         if state is None:
             state = _UserState(
                 buffer=[],
@@ -137,7 +136,7 @@ class UserProfileExtractService:
                 last_seen_ts=now,
                 inflight=False,
             )
-            self._states[qq_id] = state
+            self._states[platform_user_id] = state
         else:
             state.last_seen_ts = now
 
@@ -161,14 +160,14 @@ class UserProfileExtractService:
         # 防止长期运行无界增长：在 ingest 侧做一次轻量 prune
         self._prune_states(now=now)
 
-        if not self._should_trigger(qq_id=qq_id, content=content):
+        if not self._should_trigger(platform_user_id=platform_user_id, content=content):
             return
 
-        self._schedule_extract(qq_id=qq_id, nickname=nickname, group_id=group_id)
+        self._schedule_extract(platform_user_id=platform_user_id, nickname=nickname, group_id=group_id)
 
-    def _should_trigger(self, *, qq_id: str, content: str) -> bool:
+    def _should_trigger(self, *, platform_user_id: str, content: str) -> bool:
         """两级门控：关键词触发 + 每 N 条兜底触发。"""
-        state = self._states.get(qq_id)
+        state = self._states.get(platform_user_id)
         if state is None:
             return False
 
@@ -186,8 +185,8 @@ class UserProfileExtractService:
         every_n = max(1, int(plugin_config.profile_extract_every_n_messages))
         return state.msg_count % every_n == 0
 
-    def _schedule_extract(self, *, qq_id: str, nickname: str, group_id: Optional[str]) -> None:
-        state = self._states.get(qq_id)
+    def _schedule_extract(self, *, platform_user_id: str, nickname: str, group_id: Optional[str]) -> None:
+        state = self._states.get(platform_user_id)
         if state is None:
             return
         if state.inflight:
@@ -195,7 +194,14 @@ class UserProfileExtractService:
 
         # per-user 队列上限：通过 buffer 长度和 inflight 简化控制
         state.inflight = True
-        asyncio.create_task(self._extract_task(qq_id=qq_id, nickname=nickname, group_id=group_id))
+        from ..runtime import get_task_supervisor
+
+        get_task_supervisor().spawn(
+            self._extract_task(platform_user_id=platform_user_id, nickname=nickname, group_id=group_id),
+            name="profile_extract",
+            owner="profile_extract",
+            key=platform_user_id,
+        )
 
     def _global_rate_limited(self) -> bool:
         limit = max(1, int(plugin_config.profile_extract_max_calls_per_minute))
@@ -233,10 +239,10 @@ class UserProfileExtractService:
                 continue
             self._states.pop(uid, None)
 
-    async def _extract_task(self, *, qq_id: str, nickname: str, group_id: Optional[str]) -> None:
-        lock = self._lock_manager.get_lock(qq_id)
+    async def _extract_task(self, *, platform_user_id: str, nickname: str, group_id: Optional[str]) -> None:
+        lock = self._lock_manager.get_lock(platform_user_id)
         async with lock:
-            state = self._states.get(qq_id)
+            state = self._states.get(platform_user_id)
             if state is None:
                 return
 
@@ -257,7 +263,7 @@ class UserProfileExtractService:
                     return
 
                 store = get_user_profile_store()
-                existing = await store.get_profile(qq_id)
+                existing = await store.get_profile(platform_user_id)
                 existing_extra = existing.get("extra_info") or {}
 
                 pending_overrides = {}
@@ -269,7 +275,7 @@ class UserProfileExtractService:
 
                 # 调用 LLM
                 llm_result = await extract_profile_with_llm(
-                    qq_id=qq_id,
+                    platform_user_id=platform_user_id,
                     nickname=nickname,
                     messages=buffer,
                     existing_profile=existing,
@@ -277,10 +283,10 @@ class UserProfileExtractService:
                 )
 
                 if not llm_result.success:
-                    log.warning(f"[ProfileExtract] 抽取失败 | qq_id={qq_id} | err={llm_result.error}")
+                    log.warning(f"[ProfileExtract] 抽取失败 | platform_user_id={platform_user_id} | err={llm_result.error}")
                     if plugin_config.profile_extract_store_audit_events:
                         await store.add_audit_event(
-                            qq_id=qq_id,
+                            platform_user_id=platform_user_id,
                             group_id=str(group_id) if group_id is not None else None,
                             scene="group" if group_id is not None else "private",
                             input_messages=buffer,
@@ -291,10 +297,10 @@ class UserProfileExtractService:
                     return
 
                 if llm_result.no_update:
-                    log.debug(f"[ProfileExtract] 无更新 | qq_id={qq_id}")
+                    log.debug(f"[ProfileExtract] 无更新 | platform_user_id={platform_user_id}")
                     if plugin_config.profile_extract_store_audit_events:
                         await store.add_audit_event(
-                            qq_id=qq_id,
+                            platform_user_id=platform_user_id,
                             group_id=str(group_id) if group_id is not None else None,
                             scene="group" if group_id is not None else "private",
                             input_messages=buffer,
@@ -314,7 +320,7 @@ class UserProfileExtractService:
                     threshold_new=float(plugin_config.profile_extract_threshold_new_field),
                     threshold_override=float(plugin_config.profile_extract_threshold_override_field),
                     require_repeat=bool(plugin_config.profile_extract_override_requires_repeat),
-                    extractor_model=plugin_config.profile_extract_model or plugin_config.gemini_fast_model,
+                    extractor_model=plugin_config.profile_extract_model or plugin_config.llm_fast_model,
                 )
 
                 update_fields: Dict[str, Any] = {}
@@ -341,11 +347,11 @@ class UserProfileExtractService:
                 applied = {}
                 if update_fields:
                     applied = update_fields.copy()
-                    await store.update_profile(qq_id, update_fields)
+                    await store.update_profile(platform_user_id, update_fields)
 
                 if plugin_config.profile_extract_store_audit_events:
                     await store.add_audit_event(
-                        qq_id=qq_id,
+                        platform_user_id=platform_user_id,
                         group_id=str(group_id) if group_id is not None else None,
                         scene="group" if group_id is not None else "private",
                         input_messages=buffer,
@@ -356,17 +362,17 @@ class UserProfileExtractService:
 
                 state.last_extract_ts = time.time()
                 log.info(
-                    f"[ProfileExtract] 完成 | qq_id={qq_id} | applied={list(merge_res.merged_fields.keys())} | pending={list(new_pending.keys())}"
+                    f"[ProfileExtract] 完成 | platform_user_id={platform_user_id} | applied={list(merge_res.merged_fields.keys())} | pending={list(new_pending.keys())}"
                 )
 
             except Exception as e:
                 # 兜底：避免 create_task 的异常逃逸（Task exception was never retrieved）
                 # 注意：inflight 释放仍由 finally 保障。
-                log.error(f"[ProfileExtract] 后台任务异常 | qq_id={qq_id} | err={e}", exc_info=True)
+                log.error(f"[ProfileExtract] 后台任务异常 | platform_user_id={platform_user_id} | err={e}", exc_info=True)
 
             finally:
                 # 释放 inflight
-                state = self._states.get(qq_id)
+                state = self._states.get(platform_user_id)
                 if state is not None:
                     state.inflight = False
                     # 后台任务结束后再 prune 一次，避免 state 长期堆积

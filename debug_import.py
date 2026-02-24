@@ -14,10 +14,10 @@ except Exception as e:
 
 print("Importing logic...")
 try:
-    from mika_chat_core.gemini_api import GeminiClient
-    print("GeminiClient imported.")
+    from mika_chat_core.mika_api import MikaClient
+    print("MikaClient imported.")
 except Exception as e:
-    print(f"Failed to import GeminiClient: {e}")
+    print(f"Failed to import MikaClient: {e}")
 
 print("Importing tools (simulating lazy import)...")
 try:

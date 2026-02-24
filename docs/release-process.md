@@ -33,11 +33,40 @@
 
 建议为 `main` 开启分支保护：要求 PR + CI（tests.yml 的 pytest matrix）通过后才允许合并。
 
+建议把以下 3 项作为 `main` 的必检状态（Required checks）：
+
+- `pytest (3.10)`
+- `pytest (3.11)`
+- `pytest (3.12)`
+
+## Refactor Gates（Stage B-D 收尾门禁）
+
+在宿主解耦阶段（Stage B-D）收尾期间，除常规测试外，还需满足以下门禁：
+
+1. 核心独立性门禁：
+   - `tests/test_core_no_nonebot_imports.py`
+   - `tests/test_core_import_without_host_runtime.py`
+2. 协议语义门禁：
+   - `tests/test_stage_b_protocol_semantics.py`
+3. Core Service 门禁：
+   - `tests/test_core_service.py`
+4. 边界文档一致性门禁：
+   - `docs/api/config.md`
+   - `docs/deploy/onebot.md`
+   - `bot/docs/refactor_direction.md`
+
+收尾证据统一记录在：
+
+- `plans/HOST_DECOUPLING_EXEC_PLAN.md` 的 `Gate Evidence` 小节。
+
 ## Release Steps
 
 推荐按以下步骤发布（适用于 GitHub Actions 自动发布）：
 
 1. 确认 `main` 是干净状态并通过测试：`pytest -q`。
+   - 建议额外确认宿主解耦守卫测试通过：
+     - `tests/test_core_no_nonebot_imports.py`
+     - `tests/test_core_import_without_host_runtime.py`
 2. 更新 `pyproject.toml` 中 `project.version`（只改版本号，不夹带其它大改动）。
 3. （可选）补充发布说明：
    - GitHub Release Notes（自动生成）

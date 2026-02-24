@@ -20,9 +20,9 @@ class TestConfigValidation:
         """测试使用有效 API Key 创建配置"""
         from mika_chat_core.config import Config
         
-        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        config = Config(llm_api_key=valid_api_key, mika_master_id=123456789)
         
-        assert config.gemini_api_key == valid_api_key
+        assert config.llm_api_key == valid_api_key
         assert len(config.get_effective_api_keys()) == 1
     
     def test_config_with_api_key_list(self, valid_api_key: str):
@@ -33,9 +33,9 @@ class TestConfigValidation:
             "AIzaSyTest1234567890abcdefghij",
             "AIzaSyTest0987654321zyxwvutsrq"
         ]
-        config = Config(gemini_api_key_list=key_list, gemini_master_id=123456789)
+        config = Config(llm_api_key_list=key_list, mika_master_id=123456789)
         
-        assert len(config.gemini_api_key_list) == 2
+        assert len(config.llm_api_key_list) == 2
         effective_keys = config.get_effective_api_keys()
         assert len(effective_keys) == 2
     
@@ -45,9 +45,9 @@ class TestConfigValidation:
         
         extra_key = "AIzaSyExtra123456789abcdefghij"
         config = Config(
-            gemini_api_key=valid_api_key,
-            gemini_api_key_list=[extra_key],
-            gemini_master_id=123456789
+            llm_api_key=valid_api_key,
+            llm_api_key_list=[extra_key],
+            mika_master_id=123456789
         )
         
         effective_keys = config.get_effective_api_keys()
@@ -59,17 +59,17 @@ class TestConfigValidation:
         from mika_chat_core.config import Config
         
         with pytest.raises(ValidationError) as exc_info:
-            Config(gemini_api_key="", gemini_api_key_list=[], gemini_master_id=123456789)
+            Config(llm_api_key="", llm_api_key_list=[], mika_master_id=123456789)
         
         error_msg = str(exc_info.value)
-        assert "gemini_api_key" in error_msg or "至少一个" in error_msg
+        assert "LLM_API_KEY" in error_msg or "LLM_API_KEY_LIST" in error_msg
     
     def test_config_with_short_api_key_raises_error(self, invalid_api_key_short: str):
         """测试 API Key 过短时抛出验证错误"""
         from mika_chat_core.config import Config
         
         with pytest.raises(ValidationError) as exc_info:
-            Config(gemini_api_key=invalid_api_key_short)
+            Config(llm_api_key=invalid_api_key_short)
         
         error_msg = str(exc_info.value)
         assert "长度" in error_msg or "短" in error_msg
@@ -79,10 +79,10 @@ class TestConfigValidation:
         from mika_chat_core.config import Config
         
         with pytest.raises(ValidationError) as exc_info:
-            Config(gemini_api_key=invalid_api_key_with_space)
+            Config(llm_api_key=invalid_api_key_with_space)
         
         error_msg = str(exc_info.value)
-        assert "空格" in error_msg
+        assert "空格" in error_msg or "空白" in error_msg
     
     def test_config_strips_api_key_whitespace(self, valid_api_key: str):
         """测试 API Key 首尾空格会被自动去除"""
@@ -91,9 +91,20 @@ class TestConfigValidation:
         key_with_whitespace = f"  {valid_api_key}  "
         # 注意：这里会去除首尾空格但中间不能有空格
         # 根据代码逻辑，首先会 strip()，然后检查空格
-        config = Config(gemini_api_key=f"{valid_api_key}  ", gemini_master_id=123456789)
+        config = Config(llm_api_key=f"{valid_api_key}  ", mika_master_id=123456789)
         
-        assert config.gemini_api_key == valid_api_key
+        assert config.llm_api_key == valid_api_key
+
+    def test_context_mode_plain_alias_maps_to_legacy(self, valid_api_key: str):
+        """测试 plain 兼容值会被映射到 legacy。"""
+        from mika_chat_core.config import Config
+
+        config = Config(
+            llm_api_key=valid_api_key,
+            mika_master_id=123456789,
+            mika_context_mode="plain",
+        )
+        assert config.mika_context_mode == "legacy"
 
 
 class TestConfigBaseUrl:
@@ -104,37 +115,37 @@ class TestConfigBaseUrl:
         from mika_chat_core.config import Config
         
         config = Config(
-            gemini_api_key=valid_api_key,
-            gemini_base_url="https://api.example.com/v1",
-            gemini_master_id=123456789
+            llm_api_key=valid_api_key,
+            llm_base_url="https://api.example.com/v1",
+            mika_master_id=123456789
         )
         
-        assert config.gemini_base_url == "https://api.example.com/v1"
+        assert config.llm_base_url == "https://api.example.com/v1"
     
     def test_valid_http_base_url(self, valid_api_key: str):
         """测试有效的 HTTP Base URL（本地开发用）"""
         from mika_chat_core.config import Config
         
         config = Config(
-            gemini_api_key=valid_api_key,
-            gemini_base_url="http://localhost:8080/api",
-            gemini_master_id=123456789
+            llm_api_key=valid_api_key,
+            llm_base_url="http://localhost:8080/api",
+            mika_master_id=123456789
         )
         
-        assert config.gemini_base_url == "http://localhost:8080/api"
+        assert config.llm_base_url == "http://localhost:8080/api"
     
     def test_base_url_trailing_slash_removed(self, valid_api_key: str):
         """测试 Base URL 尾部斜杠会被去除"""
         from mika_chat_core.config import Config
         
         config = Config(
-            gemini_api_key=valid_api_key,
-            gemini_base_url="https://api.example.com/v1/",
-            gemini_master_id=123456789
+            llm_api_key=valid_api_key,
+            llm_base_url="https://api.example.com/v1/",
+            mika_master_id=123456789
         )
         
-        assert config.gemini_base_url == "https://api.example.com/v1"
-        assert not config.gemini_base_url.endswith("/")
+        assert config.llm_base_url == "https://api.example.com/v1"
+        assert not config.llm_base_url.endswith("/")
     
     def test_invalid_base_url_without_protocol(self, valid_api_key: str):
         """测试没有协议的 Base URL 抛出错误"""
@@ -142,24 +153,24 @@ class TestConfigBaseUrl:
         
         with pytest.raises(ValidationError) as exc_info:
             Config(
-                gemini_api_key=valid_api_key,
-                gemini_base_url="api.example.com/v1",
-                gemini_master_id=123456789
+                llm_api_key=valid_api_key,
+                llm_base_url="api.example.com/v1",
+                mika_master_id=123456789
             )
         
         error_msg = str(exc_info.value)
         assert "http" in error_msg.lower()
     
-    def test_empty_base_url_raises_error(self, valid_api_key: str):
-        """测试空 Base URL 抛出错误"""
+    def test_empty_base_url_allowed(self, valid_api_key: str):
+        """测试空 Base URL 被允许（归一化为空字符串）"""
         from mika_chat_core.config import Config
-        
-        with pytest.raises(ValidationError):
-            Config(
-                gemini_api_key=valid_api_key,
-                gemini_base_url="",
-                gemini_master_id=123456789
-            )
+
+        config = Config(
+            llm_api_key=valid_api_key,
+            llm_base_url="",
+            mika_master_id=123456789
+        )
+        assert config.llm_base_url == ""
 
 
 class TestConfigDefaults:
@@ -169,95 +180,95 @@ class TestConfigDefaults:
         """测试默认模型配置"""
         from mika_chat_core.config import Config
 
-        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        config = Config(llm_api_key=valid_api_key, mika_master_id=123456789)
 
         # 默认主模型应与插件配置保持一致
-        assert config.gemini_model == "gemini-3-pro-high"
+        assert config.llm_model == "gemini-3-pro-high"
     
     def test_default_base_url(self, valid_api_key: str):
         """测试默认 Base URL"""
         from mika_chat_core.config import Config
         
-        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        config = Config(llm_api_key=valid_api_key, mika_master_id=123456789)
         
-        assert "generativelanguage.googleapis.com" in config.gemini_base_url
+        assert "generativelanguage.googleapis.com" in config.llm_base_url
     
     def test_default_max_context(self, valid_api_key: str):
         """测试默认上下文长度"""
         from mika_chat_core.config import Config
         
-        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        config = Config(llm_api_key=valid_api_key, mika_master_id=123456789)
         
-        assert config.gemini_max_context == 40
+        assert config.mika_max_context == 40
     
     def test_default_max_images(self, valid_api_key: str):
         """测试默认最大图片数"""
         from mika_chat_core.config import Config
         
-        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        config = Config(llm_api_key=valid_api_key, mika_master_id=123456789)
         
-        assert config.gemini_max_images == 10
+        assert config.mika_max_images == 10
     
     def test_default_master_name(self, valid_api_key: str):
         """测试默认主人称呼"""
         from mika_chat_core.config import Config
         
-        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        config = Config(llm_api_key=valid_api_key, mika_master_id=123456789)
         
-        assert config.gemini_master_name == "Sensei"
+        assert config.mika_master_name == "Sensei"
     
     def test_default_validate_on_startup(self, valid_api_key: str):
         """测试默认启动验证选项"""
         from mika_chat_core.config import Config
         
-        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        config = Config(llm_api_key=valid_api_key, mika_master_id=123456789)
         
-        assert config.gemini_validate_on_startup is True
+        assert config.mika_validate_on_startup is True
     
     def test_default_forward_threshold(self, valid_api_key: str):
         """测试默认转发阈值"""
         from mika_chat_core.config import Config
         
-        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        config = Config(llm_api_key=valid_api_key, mika_master_id=123456789)
         
-        assert config.gemini_forward_threshold == 300
+        assert config.mika_forward_threshold == 300
 
     def test_default_long_reply_image_fallback(self, valid_api_key: str):
         """测试长回复图片兜底默认配置"""
         from mika_chat_core.config import Config
 
-        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        config = Config(llm_api_key=valid_api_key, mika_master_id=123456789)
 
-        assert config.gemini_long_reply_image_fallback_enabled is True
-        assert config.gemini_long_reply_image_max_chars == 12000
-        assert config.gemini_long_reply_image_max_width == 960
-        assert config.gemini_long_reply_image_font_size == 24
+        assert config.mika_long_reply_image_fallback_enabled is True
+        assert config.mika_long_reply_image_max_chars == 12000
+        assert config.mika_long_reply_image_max_width == 960
+        assert config.mika_long_reply_image_font_size == 24
     
     def test_default_group_whitelist_empty(self, valid_api_key: str):
         """测试默认群白名单为空"""
         from mika_chat_core.config import Config
         
-        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        config = Config(llm_api_key=valid_api_key, mika_master_id=123456789)
         
-        assert config.gemini_group_whitelist == []
+        assert config.mika_group_whitelist == []
 
     def test_default_search_cache_settings(self, valid_api_key: str):
         """测试搜索缓存默认配置"""
         from mika_chat_core.config import Config
 
-        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        config = Config(llm_api_key=valid_api_key, mika_master_id=123456789)
 
-        assert config.gemini_search_cache_ttl_seconds == 60
-        assert config.gemini_search_cache_max_size == 100
+        assert config.mika_search_cache_ttl_seconds == 60
+        assert config.mika_search_cache_max_size == 100
 
     def test_default_external_search_p0_settings(self, valid_api_key: str):
         """测试外置搜索 P0 默认配置"""
         from mika_chat_core.config import Config
 
-        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        config = Config(llm_api_key=valid_api_key, mika_master_id=123456789)
 
-        assert config.gemini_search_min_query_length == 4
-        assert config.gemini_search_max_injection_results == 6
+        assert config.mika_search_min_query_length == 4
+        assert config.mika_search_max_injection_results == 6
 
 
 class TestConfigSectionViews:
@@ -266,56 +277,56 @@ class TestConfigSectionViews:
     def test_get_core_config(self, valid_api_key: str):
         from mika_chat_core.config import Config
 
-        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        config = Config(llm_api_key=valid_api_key, mika_master_id=123456789)
         core = config.get_core_config()
 
         assert core["api_key"] == valid_api_key
-        assert core["model"] == config.gemini_model
-        assert core["max_context"] == config.gemini_max_context
+        assert core["model"] == config.llm_model
+        assert core["max_context"] == config.mika_max_context
 
     def test_get_search_config(self, valid_api_key: str):
         from mika_chat_core.config import Config
 
-        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        config = Config(llm_api_key=valid_api_key, mika_master_id=123456789)
         search = config.get_search_config()
 
-        assert search["cache_ttl_seconds"] == config.gemini_search_cache_ttl_seconds
-        assert search["cache_max_size"] == config.gemini_search_cache_max_size
-        assert search["llm_gate_enabled"] == config.gemini_search_llm_gate_enabled
+        assert search["cache_ttl_seconds"] == config.mika_search_cache_ttl_seconds
+        assert search["cache_max_size"] == config.mika_search_cache_max_size
+        assert search["llm_gate_enabled"] == config.mika_search_llm_gate_enabled
 
     def test_get_image_config(self, valid_api_key: str):
         from mika_chat_core.config import Config
 
-        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        config = Config(llm_api_key=valid_api_key, mika_master_id=123456789)
         image = config.get_image_config()
 
-        assert image["max_images"] == config.gemini_max_images
-        assert image["download_concurrency"] == config.gemini_image_download_concurrency
-        assert image["cache_max_entries"] == config.gemini_image_cache_max_entries
+        assert image["max_images"] == config.mika_max_images
+        assert image["download_concurrency"] == config.mika_image_download_concurrency
+        assert image["cache_max_entries"] == config.mika_image_cache_max_entries
 
     def test_get_proactive_config(self, valid_api_key: str):
         from mika_chat_core.config import Config
 
-        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        config = Config(llm_api_key=valid_api_key, mika_master_id=123456789)
         proactive = config.get_proactive_config()
 
-        assert proactive["rate"] == config.gemini_proactive_rate
-        assert proactive["cooldown_seconds"] == config.gemini_proactive_cooldown
-        assert proactive["heat_threshold"] == config.gemini_heat_threshold
+        assert proactive["rate"] == config.mika_proactive_rate
+        assert proactive["cooldown_seconds"] == config.mika_proactive_cooldown
+        assert proactive["heat_threshold"] == config.mika_heat_threshold
 
     def test_get_observability_config(self, valid_api_key: str):
         from mika_chat_core.config import Config
 
-        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        config = Config(llm_api_key=valid_api_key, mika_master_id=123456789)
         obs = config.get_observability_config()
 
-        assert obs["prometheus_enabled"] == config.gemini_metrics_prometheus_enabled
-        assert obs["health_api_probe_enabled"] == config.gemini_health_check_api_probe_enabled
+        assert obs["prometheus_enabled"] == config.mika_metrics_prometheus_enabled
+        assert obs["health_api_probe_enabled"] == config.mika_health_check_api_probe_enabled
         assert (
             obs["health_api_probe_timeout_seconds"]
-            == config.gemini_health_check_api_probe_timeout_seconds
+            == config.mika_health_check_api_probe_timeout_seconds
         )
-        assert obs["health_api_probe_ttl_seconds"] == config.gemini_health_check_api_probe_ttl_seconds
+        assert obs["health_api_probe_ttl_seconds"] == config.mika_health_check_api_probe_ttl_seconds
 
 
 class TestObservabilityValidation:
@@ -324,20 +335,20 @@ class TestObservabilityValidation:
     def test_default_observability_values(self, valid_api_key: str):
         from mika_chat_core.config import Config
 
-        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
-        assert config.gemini_metrics_prometheus_enabled is True
-        assert config.gemini_health_check_api_probe_enabled is False
-        assert config.gemini_health_check_api_probe_timeout_seconds == 3.0
-        assert config.gemini_health_check_api_probe_ttl_seconds == 30
+        config = Config(llm_api_key=valid_api_key, mika_master_id=123456789)
+        assert config.mika_metrics_prometheus_enabled is True
+        assert config.mika_health_check_api_probe_enabled is False
+        assert config.mika_health_check_api_probe_timeout_seconds == 3.0
+        assert config.mika_health_check_api_probe_ttl_seconds == 30
 
     def test_invalid_health_probe_timeout(self, valid_api_key: str):
         from mika_chat_core.config import Config
 
         with pytest.raises(ValidationError):
             Config(
-                gemini_api_key=valid_api_key,
-                gemini_master_id=123456789,
-                gemini_health_check_api_probe_timeout_seconds=0,
+                llm_api_key=valid_api_key,
+                mika_master_id=123456789,
+                mika_health_check_api_probe_timeout_seconds=0,
             )
 
     def test_invalid_health_probe_ttl(self, valid_api_key: str):
@@ -345,58 +356,58 @@ class TestObservabilityValidation:
 
         with pytest.raises(ValidationError):
             Config(
-                gemini_api_key=valid_api_key,
-                gemini_master_id=123456789,
-                gemini_health_check_api_probe_ttl_seconds=0,
+                llm_api_key=valid_api_key,
+                mika_master_id=123456789,
+                mika_health_check_api_probe_ttl_seconds=0,
             )
 
     def test_default_builtin_search_settings(self, valid_api_key: str):
         """测试内置搜索默认配置"""
         from mika_chat_core.config import Config
 
-        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        config = Config(llm_api_key=valid_api_key, mika_master_id=123456789)
 
-        assert config.gemini_enable_builtin_search is False
+        assert config.mika_enable_builtin_search is False
 
     def test_default_llm_search_gate_settings(self, valid_api_key: str):
         """测试外置搜索 LLM gate 默认配置"""
         from mika_chat_core.config import Config
 
-        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        config = Config(llm_api_key=valid_api_key, mika_master_id=123456789)
 
-        assert config.gemini_search_llm_gate_enabled is False
-        assert config.gemini_search_llm_gate_fallback_mode == "strong_timeliness"
-        assert config.gemini_search_classify_temperature == 0.0
-        assert config.gemini_search_classify_max_tokens == 256
-        assert config.gemini_search_classify_cache_ttl_seconds == 60
-        assert config.gemini_search_classify_cache_max_size == 200
+        assert config.mika_search_llm_gate_enabled is False
+        assert config.mika_search_llm_gate_fallback_mode == "strong_timeliness"
+        assert config.mika_search_classify_temperature == 0.0
+        assert config.mika_search_classify_max_tokens == 256
+        assert config.mika_search_classify_cache_ttl_seconds == 60
+        assert config.mika_search_classify_cache_max_size == 200
 
     def test_default_tool_security_settings(self, valid_api_key: str):
         """测试工具安全默认配置"""
         from mika_chat_core.config import Config
 
-        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        config = Config(llm_api_key=valid_api_key, mika_master_id=123456789)
 
-        assert "web_search" in config.gemini_tool_allowlist
-        assert "fetch_history_images" in config.gemini_tool_allowlist
-        assert config.gemini_tool_result_max_chars == 4000
+        assert "web_search" in config.mika_tool_allowlist
+        assert "fetch_history_images" in config.mika_tool_allowlist
+        assert config.mika_tool_result_max_chars == 4000
 
     def test_default_image_performance_settings(self, valid_api_key: str):
         """测试图片性能默认配置"""
         from mika_chat_core.config import Config
 
-        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        config = Config(llm_api_key=valid_api_key, mika_master_id=123456789)
 
-        assert config.gemini_image_download_concurrency == 3
-        assert config.gemini_image_cache_max_entries == 200
+        assert config.mika_image_download_concurrency == 3
+        assert config.mika_image_cache_max_entries == 200
 
     def test_default_proactive_keyword_cooldown(self, valid_api_key: str):
         """测试关键词冷却默认配置"""
         from mika_chat_core.config import Config
 
-        config = Config(gemini_api_key=valid_api_key, gemini_master_id=123456789)
+        config = Config(llm_api_key=valid_api_key, mika_master_id=123456789)
 
-        assert config.gemini_proactive_keyword_cooldown == 5
+        assert config.mika_proactive_keyword_cooldown == 5
 
 
 class TestConfigApiKeyList:
@@ -412,10 +423,10 @@ class TestConfigApiKeyList:
             "   ",
             "AIzaSyTest0987654321zyxwvutsrq"
         ]
-        config = Config(gemini_api_key_list=key_list, gemini_master_id=123456789)
+        config = Config(llm_api_key_list=key_list, mika_master_id=123456789)
         
         # 空字符串应该被过滤掉
-        assert len(config.gemini_api_key_list) == 2
+        assert len(config.llm_api_key_list) == 2
     
     def test_short_key_in_list_raises_error(self):
         """测试列表中包含过短的 Key 抛出错误"""
@@ -427,7 +438,7 @@ class TestConfigApiKeyList:
         ]
         
         with pytest.raises(ValidationError) as exc_info:
-            Config(gemini_api_key_list=key_list, gemini_master_id=123456789)
+            Config(llm_api_key_list=key_list, mika_master_id=123456789)
         
         error_msg = str(exc_info.value)
         assert "长度" in error_msg or "#2" in error_msg
@@ -441,10 +452,10 @@ class TestConfigApiKeyList:
         ]
         
         with pytest.raises(ValidationError) as exc_info:
-            Config(gemini_api_key_list=key_list, gemini_master_id=123456789)
+            Config(llm_api_key_list=key_list, mika_master_id=123456789)
         
         error_msg = str(exc_info.value)
-        assert "空格" in error_msg
+        assert "空格" in error_msg or "空白" in error_msg
 
 
 class TestConfigEffectiveKeys:
@@ -456,9 +467,9 @@ class TestConfigEffectiveKeys:
         
         same_key = "AIzaSyTest1234567890abcdefghij"
         config = Config(
-            gemini_api_key=same_key,
-            gemini_api_key_list=[same_key, same_key],
-            gemini_master_id=123456789
+            llm_api_key=same_key,
+            llm_api_key_list=[same_key, same_key],
+            mika_master_id=123456789
         )
         
         effective_keys = config.get_effective_api_keys()
@@ -478,9 +489,9 @@ class TestConfigEffectiveKeys:
         ]
         
         config = Config(
-            gemini_api_key=single_key,
-            gemini_api_key_list=list_keys,
-            gemini_master_id=123456789
+            llm_api_key=single_key,
+            llm_api_key_list=list_keys,
+            mika_master_id=123456789
         )
         
         effective_keys = config.get_effective_api_keys()
@@ -488,3 +499,164 @@ class TestConfigEffectiveKeys:
         assert single_key in effective_keys
         for key in list_keys:
             assert key in effective_keys
+
+
+class TestCoreRuntimeRemoteOnly:
+    """Core Runtime 收敛为 remote-only 的配置测试。"""
+
+    def test_core_runtime_defaults_to_remote(self, valid_api_key: str):
+        from mika_chat_core.config import Config
+
+        config = Config(llm_api_key=valid_api_key, mika_master_id=123456789)
+        runtime_cfg = config.get_core_runtime_config()
+
+        assert config.mika_core_runtime_mode == "remote"
+        assert runtime_cfg["mode"] == "remote"
+        assert runtime_cfg["remote_base_url"] == "http://127.0.0.1:8080"
+        assert runtime_cfg["remote_timeout_seconds"] == 60.0
+
+    def test_core_runtime_rejects_embedded_mode(self, valid_api_key: str):
+        from mika_chat_core.config import Config
+
+        with pytest.raises(ValidationError):
+            Config(
+                llm_api_key=valid_api_key,
+                mika_master_id=123456789,
+                mika_core_runtime_mode="embedded",
+            )
+
+    def test_core_runtime_requires_remote_base_url(self, valid_api_key: str):
+        from mika_chat_core.config import Config
+
+        with pytest.raises(ValidationError):
+            Config(
+                llm_api_key=valid_api_key,
+                mika_master_id=123456789,
+                mika_core_remote_base_url="",
+            )
+
+
+class TestMikaEnvAliases:
+    """MIKA_* 环境变量别名测试。"""
+
+    def test_removed_legacy_env_keys_fail_fast(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        valid_api_key: str,
+    ):
+        from mika_chat_core.config import Config
+
+        monkeypatch.setenv("MIKA_API_KEY", valid_api_key)
+        with pytest.raises(ValidationError) as exc_info:
+            Config(llm_api_key=valid_api_key, mika_master_id=123456789)
+        error_msg = str(exc_info.value)
+        assert "MIKA_API_KEY" in error_msg
+        assert "LLM_API_KEY" in error_msg
+
+    def test_mika_field_aliases_apply_from_env(self, monkeypatch: pytest.MonkeyPatch, valid_api_key: str):
+        from mika_chat_core.config import Config
+
+        monkeypatch.setenv("MIKA_MASTER_ID", "123456789")
+        monkeypatch.setenv("MIKA_GROUP_WHITELIST", "[123456789, 987654321]")
+
+        config = Config(llm_api_key=valid_api_key)
+
+        assert config.mika_master_id == "123456789"
+        assert config.mika_group_whitelist == ["123456789", "987654321"]
+
+    def test_group_whitelist_accepts_numeric_list(self, valid_api_key: str):
+        from mika_chat_core.config import Config
+
+        config = Config(
+            llm_api_key=valid_api_key,
+            mika_master_id=123456789,
+            mika_group_whitelist=[2165060557, 1034119139, "860646480"],
+        )
+
+        assert config.mika_group_whitelist == ["2165060557", "1034119139", "860646480"]
+
+    def test_observability_aliases_apply_from_env(self, monkeypatch: pytest.MonkeyPatch, valid_api_key: str):
+        from mika_chat_core.config import Config
+
+        monkeypatch.setenv("MIKA_METRICS_PROMETHEUS_ENABLED", "false")
+        monkeypatch.setenv("MIKA_HEALTH_CHECK_API_PROBE_ENABLED", "true")
+        monkeypatch.setenv("MIKA_HEALTH_CHECK_API_PROBE_TIMEOUT_SECONDS", "4.5")
+        monkeypatch.setenv("MIKA_HEALTH_CHECK_API_PROBE_TTL_SECONDS", "66")
+        monkeypatch.setenv("MIKA_CONTEXT_TRACE_ENABLED", "true")
+        monkeypatch.setenv("MIKA_CONTEXT_TRACE_SAMPLE_RATE", "0.25")
+
+        config = Config(llm_api_key=valid_api_key, mika_master_id=123456789)
+
+        assert config.mika_metrics_prometheus_enabled is False
+        assert config.mika_health_check_api_probe_enabled is True
+        assert config.mika_health_check_api_probe_timeout_seconds == 4.5
+        assert config.mika_health_check_api_probe_ttl_seconds == 66
+        assert config.mika_context_trace_enabled is True
+        assert config.mika_context_trace_sample_rate == 0.25
+
+
+class TestTaskModelResolution:
+    """多任务模型配置解析测试。"""
+
+    def test_task_model_fallback_to_fast_model(self, valid_api_key: str):
+        from mika_chat_core.config import Config
+
+        config = Config(
+            llm_api_key=valid_api_key,
+            mika_master_id=123456789,
+            llm_model="main-model",
+            llm_fast_model="fast-model",
+        )
+
+        task_cfg = config.get_task_model_config()
+        assert task_cfg["filter"] == "fast-model"
+        assert task_cfg["summarizer"] == "fast-model"
+        assert task_cfg["memory"] == "fast-model"
+
+    def test_task_model_prefers_task_specific_override(self, valid_api_key: str):
+        from mika_chat_core.config import Config
+
+        config = Config(
+            llm_api_key=valid_api_key,
+            mika_master_id=123456789,
+            llm_model="main-model",
+            llm_fast_model="fast-model",
+            mika_task_filter_model="filter-model",
+            mika_task_summarizer_model="summary-model",
+        )
+
+        assert config.resolve_task_model("filter") == "filter-model"
+        assert config.resolve_task_model("summarizer") == "summary-model"
+        assert config.resolve_task_model("memory") == "fast-model"
+
+
+class TestMemoryRetrievalConfig:
+    """ReAct 记忆检索配置校验。"""
+
+    def test_memory_retrieval_defaults(self, valid_api_key: str):
+        from mika_chat_core.config import Config
+
+        config = Config(llm_api_key=valid_api_key, mika_master_id=123456789)
+        assert config.mika_memory_retrieval_enabled is False
+        assert config.mika_memory_retrieval_max_iterations == 3
+        assert config.mika_memory_retrieval_timeout == 15.0
+
+    def test_memory_retrieval_iterations_must_be_positive(self, valid_api_key: str):
+        from mika_chat_core.config import Config
+
+        with pytest.raises(ValidationError):
+            Config(
+                llm_api_key=valid_api_key,
+                mika_master_id=123456789,
+                mika_memory_retrieval_max_iterations=0,
+            )
+
+    def test_memory_retrieval_timeout_must_be_positive(self, valid_api_key: str):
+        from mika_chat_core.config import Config
+
+        with pytest.raises(ValidationError):
+            Config(
+                llm_api_key=valid_api_key,
+                mika_master_id=123456789,
+                mika_memory_retrieval_timeout=0.0,
+            )

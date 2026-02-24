@@ -3,7 +3,7 @@
 调用 LLM 从用户消息中抽取档案信息（姓名、身份、偏好等）。
 
 设计原则：
-- 不污染主对话上下文（直接调用 API，不经过 GeminiClient.chat）
+- 不污染主对话上下文（直接调用 API，不经过 MikaClient.chat）
 - 使用快速模型降低成本
 - 强制 JSON 输出格式
 - 健壮的 JSON 解析（支持多种格式容错）
@@ -22,8 +22,13 @@ from datetime import datetime
 from ..infra.logging import logger as log
 
 from ..config import plugin_config
-from ..gemini_api_proactive import extract_json_object
-from ..llm.providers import build_provider_request, detect_provider_name, parse_provider_response
+from ..mika_api_layers.core.proactive import extract_json_object
+from ..llm.providers import (
+    build_provider_request,
+    detect_provider_name,
+    get_provider_capabilities,
+    parse_provider_response,
+)
 from ..utils.prompt_loader import load_prompt_yaml
 
 
@@ -195,7 +200,7 @@ class ProfileExtractResult:
 
 
 async def extract_profile_with_llm(
-    qq_id: str,
+    platform_user_id: str,
     nickname: str,
     messages: List[Dict[str, Any]],
     existing_profile: Dict[str, Any],
@@ -206,7 +211,7 @@ async def extract_profile_with_llm(
     """使用 LLM 从消息中抽取用户档案信息
     
     Args:
-        qq_id: 用户 QQ 号
+        platform_user_id: 平台用户ID
         nickname: 用户昵称
         messages: 该用户最近的消息列表
         existing_profile: 现有档案
@@ -243,7 +248,7 @@ async def extract_profile_with_llm(
     # 构建用户消息
     user_prompt = template.format(
         existing_profile=existing_profile_str,
-        qq_id=qq_id,
+        platform_user_id=platform_user_id,
         nickname=nickname,
         scene=scene,
         messages=messages_str
@@ -251,19 +256,24 @@ async def extract_profile_with_llm(
     
     # 获取 API 配置
     if not api_key:
-        if plugin_config.gemini_api_key_list:
-            api_key = plugin_config.gemini_api_key_list[0]
+        if plugin_config.llm_api_key_list:
+            api_key = plugin_config.llm_api_key_list[0]
         else:
-            api_key = plugin_config.gemini_api_key
+            api_key = plugin_config.llm_api_key
     
-    model = plugin_config.profile_extract_model or plugin_config.gemini_fast_model
+    model = plugin_config.profile_extract_model or plugin_config.llm_fast_model
     temperature = plugin_config.profile_extract_temperature
     max_tokens = plugin_config.profile_extract_max_tokens
     llm_cfg = plugin_config.get_llm_config()
-    base_url = str(llm_cfg.get("base_url") or plugin_config.gemini_base_url)
+    base_url = str(llm_cfg.get("base_url") or plugin_config.llm_base_url)
     provider_name = detect_provider_name(
         configured_provider=str(llm_cfg.get("provider") or "openai_compat"),
         base_url=base_url,
+    )
+    provider_capabilities = get_provider_capabilities(
+        configured_provider=provider_name,
+        base_url=base_url,
+        model=model,
     )
     
     # 构建请求
@@ -275,9 +285,10 @@ async def extract_profile_with_llm(
         ],
         "temperature": temperature,
         "max_tokens": max_tokens,
-        "response_format": {"type": "json_object"},
         "stream": False
     }
+    if provider_capabilities.supports_json_object_response:
+        request_body["response_format"] = {"type": "json_object"}
     
     # 发送请求
     should_close_client = False

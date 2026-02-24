@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from mika_chat_core.gemini_api_messages import PreSearchResult, build_messages, pre_search
+from mika_chat_core.mika_api_layers.core.messages import PreSearchResult, build_messages, pre_search
 
 
 async def _empty_context(*_args, **_kwargs):
@@ -36,10 +36,10 @@ async def test_build_messages_hides_web_search_when_presearch_is_sufficient():
     )
 
     with patch(
-        "mika_chat_core.gemini_api_messages.plugin_config.gemini_tool_allowlist",
+        "mika_chat_core.mika_api_layers.core.messages.plugin_config.mika_tool_allowlist",
         ["web_search", "search_group_history"],
     ), patch(
-        "mika_chat_core.gemini_api_messages.plugin_config.gemini_search_allow_tool_refine",
+        "mika_chat_core.mika_api_layers.core.messages.plugin_config.mika_search_allow_tool_refine",
         True,
     ):
         result = await build_messages(
@@ -48,7 +48,7 @@ async def test_build_messages_hides_web_search_when_presearch_is_sufficient():
             group_id="g1",
             image_urls=None,
             search_result=rich_search_result,
-            model="gemini-test",
+            model="mika-test",
             system_prompt="你是助手",
             available_tools=tools,
             system_injection=None,
@@ -76,10 +76,10 @@ async def test_build_messages_keeps_web_search_when_presearch_is_insufficient():
     weak_search_result = "1. 【A】 摘要: 简短结果"
 
     with patch(
-        "mika_chat_core.gemini_api_messages.plugin_config.gemini_tool_allowlist",
+        "mika_chat_core.mika_api_layers.core.messages.plugin_config.mika_tool_allowlist",
         ["web_search", "search_group_history"],
     ), patch(
-        "mika_chat_core.gemini_api_messages.plugin_config.gemini_search_allow_tool_refine",
+        "mika_chat_core.mika_api_layers.core.messages.plugin_config.mika_search_allow_tool_refine",
         True,
     ):
         result = await build_messages(
@@ -88,7 +88,7 @@ async def test_build_messages_keeps_web_search_when_presearch_is_insufficient():
             group_id="g1",
             image_urls=None,
             search_result=weak_search_result,
-            model="gemini-test",
+            model="mika-test",
             system_prompt="你是助手",
             available_tools=tools,
             system_injection=None,
@@ -112,10 +112,10 @@ async def test_pre_search_return_meta_contains_refine_decision():
     weak_search_result = "1. 【A】 摘要: 简短结果"
 
     with patch(
-        "mika_chat_core.gemini_api_messages.plugin_config.gemini_search_llm_gate_enabled",
+        "mika_chat_core.mika_api_layers.core.messages.plugin_config.mika_search_llm_gate_enabled",
         False,
     ), patch(
-        "mika_chat_core.gemini_api_messages.plugin_config.gemini_search_allow_tool_refine",
+        "mika_chat_core.mika_api_layers.core.messages.plugin_config.mika_search_allow_tool_refine",
         True,
     ), patch(
         "mika_chat_core.utils.search_engine.should_search",

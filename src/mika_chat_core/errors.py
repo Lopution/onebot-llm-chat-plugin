@@ -1,9 +1,9 @@
-"""Gemini API 异常类定义模块。
+"""Mika API 异常类定义模块。
 
-定义 Gemini API 相关的异常类型，用于区分不同的错误场景。
+定义 Mika API 相关的异常类型，用于区分不同的错误场景。
 
 异常层次：
-- GeminiAPIError（基类）
+- MikaAPIError（基类）
   - RateLimitError（429 限流）
   - AuthenticationError（401/403 认证失败）
   - ServerError（5xx 服务端错误）
@@ -20,8 +20,8 @@
 """
 
 
-class GeminiAPIError(Exception):
-    """Gemini API 异常基类
+class MikaAPIError(Exception):
+    """Mika API 异常基类
     
     Attributes:
         message: 错误消息
@@ -35,7 +35,7 @@ class GeminiAPIError(Exception):
         super().__init__(message)
 
 
-class RateLimitError(GeminiAPIError):
+class RateLimitError(MikaAPIError):
     """429 限流错误
     
     当 API 调用频率超过限制时抛出。
@@ -44,7 +44,7 @@ class RateLimitError(GeminiAPIError):
     pass
 
 
-class AuthenticationError(GeminiAPIError):
+class AuthenticationError(MikaAPIError):
     """401/403 认证错误
     
     当 API Key 无效或权限不足时抛出。
@@ -52,7 +52,7 @@ class AuthenticationError(GeminiAPIError):
     pass
 
 
-class ServerError(GeminiAPIError):
+class ServerError(MikaAPIError):
     """5xx 服务端错误
     
     当 API 服务器出现内部错误时抛出。

@@ -20,6 +20,8 @@ plugins:
   - mkdocstrings:
       handlers:
         python:
+          paths:
+            - src
           options:
             show_source: true
             show_root_heading: true
@@ -27,6 +29,8 @@ plugins:
 
 nav:
   - 首页: index.md
+  - 设计:
+    - 重构方向（草案）: refactor_direction.md
   - 部署:
     - WSL2 + 任意 OneBot 实现: deploy/wsl2.md
     - OneBot v11/v12 兼容性: deploy/onebot.md
@@ -35,7 +39,7 @@ nav:
   - 发布说明:
     - v0.1.0: releases/v0.1.0.md
   - API 参考:
-    - API 客户端: api/gemini_api.md
+    - API 客户端: api/mika_api.md
     - 消息处理器: api/handlers.md
     - 搜索引擎: api/search_engine.md
     - 上下文存储: api/context_store.md

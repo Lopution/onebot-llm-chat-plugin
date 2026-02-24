@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List
+from typing import Awaitable, Callable, List, Optional
 
 from .context_schema import (
     ContextMessage,
@@ -37,6 +37,10 @@ class ContextManager:
 
     def process(self, messages: List[dict]) -> List[ContextMessage]:
         normalized = self.normalize(messages)
+        return self._process_normalized(normalized)
+
+    def _process_normalized(self, normalized: List[ContextMessage]) -> List[ContextMessage]:
+        """对已归一化消息执行常规截断。"""
 
         # legacy 模式保留旧语义：只做轻量规范化与硬上限保护
         if self.context_mode == "legacy":
@@ -46,6 +50,67 @@ class ContextManager:
         if self.max_tokens_soft > 0:
             truncated = self._truncate_by_soft_tokens(truncated, self.max_tokens_soft)
         return self._fix_dangling_tool_blocks(truncated)
+
+    async def process_with_summary(
+        self,
+        messages: List[dict],
+        *,
+        summary_builder: Optional[Callable[[List[ContextMessage]], Awaitable[str]]] = None,
+        summary_trigger_turns: Optional[int] = None,
+        summary_max_chars: int = 500,
+    ) -> List[ContextMessage]:
+        """异步上下文处理：超过阈值时用摘要 + 最近轮次。
+
+        默认行为与 `process()` 保持一致，仅在满足以下条件时启用摘要：
+        - `summary_enabled=True`
+        - 提供 `summary_builder`
+        - 轮次超过 `summary_trigger_turns`
+        """
+        normalized = self.normalize(messages)
+        if self.context_mode == "legacy":
+            return normalized
+
+        trigger_turns = max(1, int(summary_trigger_turns or self.max_turns))
+        turns = self._split_turns(normalized)
+        if (
+            not self.summary_enabled
+            or summary_builder is None
+            or len(turns) <= trigger_turns
+        ):
+            return self._process_normalized(normalized)
+
+        keep_turns = max(1, min(self.max_turns, trigger_turns, len(turns)))
+        old_turns = turns[:-keep_turns]
+        recent_turns = turns[-keep_turns:]
+
+        old_messages: List[ContextMessage] = []
+        for turn in old_turns:
+            old_messages.extend(turn)
+
+        recent_messages: List[ContextMessage] = []
+        for turn in recent_turns:
+            recent_messages.extend(turn)
+
+        summary_text = ""
+        try:
+            summary_text = str(await summary_builder(old_messages) or "").strip()
+        except Exception:
+            summary_text = ""
+
+        if not summary_text:
+            return self._process_normalized(normalized)
+
+        if self.max_tokens_soft > 0:
+            recent_messages = self._truncate_by_soft_tokens(recent_messages, self.max_tokens_soft)
+
+        result: List[ContextMessage] = []
+        if summary_text:
+            max_chars = max(50, int(summary_max_chars))
+            if len(summary_text) > max_chars:
+                summary_text = summary_text[:max_chars].rstrip() + "…"
+            result.append({"role": "system", "content": f"[历史摘要] {summary_text}"})
+        result.extend(recent_messages)
+        return self._fix_dangling_tool_blocks(result)
 
     def _split_turns(self, messages: List[ContextMessage]) -> List[List[ContextMessage]]:
         turns: List[List[ContextMessage]] = []
@@ -120,7 +185,7 @@ class ContextManager:
                 # tool 消息前必须已经有一条 user 与 assistant(tool_calls) 语义上下文
                 if not seen_user:
                     continue
-                if not seen_assistant_tool_call and not fixed:
+                if not seen_assistant_tool_call:
                     continue
                 fixed.append(msg)
                 continue

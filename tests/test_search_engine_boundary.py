@@ -160,12 +160,12 @@ class TestSearchClassifierBoundary:
 
     def test_classify_topic_section_type_invalid(self):
         """classify_topic 非 dict 时应降级为空配置"""
-        with patch.object(search_classifier_module, "load_search_prompt", return_value={"classify_topic": "bad"}):
+        with patch("mika_chat_core.utils.prompt_loader.load_search_prompt", return_value={"classify_topic": "bad"}):
             assert search_classifier_module._get_classify_prompt() == ""
             assert search_classifier_module._get_must_search_topics() == []
 
     def test_search_prompt_root_type_invalid(self):
         """search.yaml 根节点非 dict 时应降级为空配置"""
-        with patch.object(search_classifier_module, "load_search_prompt", return_value="bad"):
+        with patch("mika_chat_core.utils.prompt_loader.load_search_prompt", return_value="bad"):
             assert search_classifier_module._get_classify_prompt() == ""
             assert search_classifier_module._get_must_search_topics() == []

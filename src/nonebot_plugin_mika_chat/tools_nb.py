@@ -5,10 +5,21 @@ from __future__ import annotations
 from typing import Any
 
 from nonebot import logger
-from nonebot import get_bot
+try:
+    from nonebot import get_bots
+except ImportError:  # pragma: no cover - tests/stubs fallback
+    from nonebot import get_bot
+
+    def get_bots() -> dict[str, Any]:
+        try:
+            return {"default": get_bot()}
+        except Exception:
+            return {}
 
 from mika_chat_core.config import Config
 from mika_chat_core.runtime import get_config
+from mika_chat_core.utils.media_semantics import placeholder_from_content_part
+from .runtime_ports_nb import get_runtime_ports_bundle
 
 
 async def handle_search_group_history(args: dict, group_id: str) -> str:
@@ -40,7 +51,7 @@ async def handle_search_group_history(args: dict, group_id: str) -> str:
                     if item_type == "text":
                         parts.append(str(item.get("text") or ""))
                     elif item_type == "image_url":
-                        parts.append("[图片]")
+                        parts.append(placeholder_from_content_part(item))
                 return " ".join(p for p in parts if p)
             return str(content or "")
 
@@ -78,10 +89,10 @@ async def handle_fetch_history_images(args: dict, group_id: str = "") -> str:
         plugin_config = get_config()
     except Exception:
         plugin_config = Config(  # type: ignore[call-arg]
-            gemini_api_key="test-api-key-12345678901234567890",
-            gemini_master_id=1,
+            llm_api_key="test-api-key-12345678901234567890",
+            mika_master_id="1",
         )
-    max_allowed = plugin_config.gemini_history_image_two_stage_max
+    max_allowed = plugin_config.mika_history_image_two_stage_max
 
     try:
         group_id_str = str(group_id) if group_id else ""
@@ -99,11 +110,22 @@ async def handle_fetch_history_images(args: dict, group_id: str = "") -> str:
             metrics.history_image_fetch_tool_fail_total += 1
             return json.dumps({"error": "No msg_ids provided", "images": []})
 
-        msg_ids = msg_ids[: max_images + 1]
+        msg_ids = msg_ids[:max_images]
 
         image_cache = get_image_cache()
         processor = get_image_processor()
         result_images = []
+
+        def _resolve_bot_for_group(group_id_value: str):
+            session_key = f"group:{group_id_value}"
+            runtime_bot = get_runtime_ports_bundle().host_events.resolve_bot_for_session(session_key)
+            if runtime_bot is not None:
+                return runtime_bot
+
+            all_bots = list(get_bots().values())
+            if len(all_bots) == 1:
+                return all_bots[0]
+            return None
 
         async def _append_data_url(
             *,
@@ -214,8 +236,19 @@ async def handle_fetch_history_images(args: dict, group_id: str = "") -> str:
                 continue
 
             try:
-                bot = get_bot()
-                msg_data = await bot.get_msg(message_id=int(msg_id))
+                msg_id_int = int(str(msg_id).strip())
+            except (TypeError, ValueError):
+                logger.warning(f"fetch_history_images: 非法 message_id，跳过 | msg_id={msg_id!r}")
+                continue
+
+            try:
+                bot = _resolve_bot_for_group(group_id_str)
+                if bot is None:
+                    logger.warning(
+                        "fetch_history_images: 无法唯一确定 bot 实例（多 Bot/未建立会话映射），跳过 get_msg 回查"
+                    )
+                    continue
+                msg_data = await bot.get_msg(message_id=msg_id_int)
 
                 if not isinstance(msg_data, dict) or not msg_data:
                     logger.warning(f"fetch_history_images: get_msg 返回非 dict 或空 | msg_id={msg_id}")
@@ -301,4 +334,3 @@ async def handle_fetch_history_images(args: dict, group_id: str = "") -> str:
 
         metrics.history_image_fetch_tool_fail_total += 1
         return json.dumps({"error": str(exc), "images": []})
-

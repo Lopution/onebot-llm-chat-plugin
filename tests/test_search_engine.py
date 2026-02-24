@@ -103,7 +103,7 @@ class TestShouldSearch:
         
         assert should_search("现在最好的AI模型是哪个") is True
         assert should_search("GPT和Claude哪个最强") is True
-        assert should_search("推荐一个好用的gemini") is True
+        assert should_search("推荐一个好用的mika") is True
     
     def test_should_search_with_ai_what_is(self):
         """测试 AI 关键词 + '是什么' 组合"""
@@ -293,6 +293,46 @@ class TestClassifyJsonModeAndQuerySanitize:
         second_json = mock_client.post.call_args_list[1].kwargs.get("json")
         assert first_json.get("response_format") == {"type": "json_object"}
         assert "response_format" not in second_json
+
+    @pytest.mark.asyncio
+    async def test_classify_topic_anthropic_skips_json_mode_field(self):
+        """Anthropic 原生 provider 不应发送 response_format。"""
+        from mika_chat_core.utils.search_engine import classify_topic_for_search
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "content": [
+                {
+                    "type": "text",
+                    "text": '{"needs_search": true, "topic": "科技", "search_query": "Claude 4 发布"}',
+                }
+            ],
+            "stop_reason": "end_turn",
+        }
+
+        with patch("httpx.AsyncClient") as mock_client_class, patch(
+            "mika_chat_core.utils.search_classifier_llm.plugin_config.llm_provider",
+            "anthropic",
+        ):
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_client_class.return_value = mock_client
+
+            needs_search, topic, query = await classify_topic_for_search(
+                "Claude 4 什么时候发布",
+                api_key="test-key",
+                base_url="https://api.anthropic.com/v1",
+            )
+
+        assert needs_search is True
+        assert topic == "科技"
+        assert query
+        called_json = mock_client.post.call_args.kwargs.get("json")
+        assert "response_format" not in called_json
+        assert mock_client.post.call_count == 1
     
     @pytest.mark.asyncio
     async def test_classify_topic_opinion(self):
@@ -462,10 +502,10 @@ class TestClassifyFallbackStrongTimeliness:
         }
 
         with patch("httpx.AsyncClient") as mock_client_class, patch(
-            "mika_chat_core.utils.search_engine.plugin_config.gemini_search_classify_cache_ttl_seconds",
+            "mika_chat_core.utils.search_engine.plugin_config.mika_search_classify_cache_ttl_seconds",
             60,
         ), patch(
-            "mika_chat_core.utils.search_engine.plugin_config.gemini_search_classify_cache_max_size",
+            "mika_chat_core.utils.search_engine.plugin_config.mika_search_classify_cache_max_size",
             200,
         ):
             mock_client = AsyncMock()
@@ -916,7 +956,7 @@ class TestTimelinessKeywords:
         assert len(AI_KEYWORDS) > 0
         assert "gpt" in AI_KEYWORDS
         assert "claude" in AI_KEYWORDS
-        assert "gemini" in AI_KEYWORDS
+        assert "mika" in AI_KEYWORDS
 
 
 class TestTrustedDomains:

@@ -4,15 +4,29 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, TypedDict, Union
 
+from .media_semantics import (
+    build_media_semantic,
+    extract_media_semantic,
+    placeholder_from_content_part,
+)
+
 
 class ImageURL(TypedDict, total=False):
     url: str
+
+
+class MediaSemantic(TypedDict, total=False):
+    kind: str
+    id: str
+    ref: str
+    source: str
 
 
 class ContentPart(TypedDict, total=False):
     type: str
     text: str
     image_url: ImageURL
+    mika_media: MediaSemantic
 
 
 class ContextMessage(TypedDict, total=False):
@@ -33,21 +47,29 @@ def _normalize_part(part: Any) -> ContentPart | None:
         return {"type": "text", "text": str(part.get("text") or "")}
 
     if part_type == "image_url":
+        semantic = extract_media_semantic(part, fallback_kind=part.get("media_kind") or "image")
         image_url = part.get("image_url")
         if isinstance(image_url, dict):
             url = str(image_url.get("url") or "").strip()
         else:
             url = str(image_url or "").strip()
         if not url:
-            return {"type": "text", "text": "[图片]"}
-        return {"type": "image_url", "image_url": {"url": url}}
+            return {"type": "text", "text": placeholder_from_content_part(part)}
+        return {"type": "image_url", "image_url": {"url": url}, "mika_media": semantic}
 
-    if part_type == "image":
+    if part_type in {"image", "mface", "emoji"}:
         data = part.get("data") if isinstance(part.get("data"), dict) else {}
         url = str((data or {}).get("url") or (data or {}).get("file") or "").strip()
+        semantic = build_media_semantic(
+            kind=part.get("media_kind") or part_type,
+            asset_ref=(data or {}).get("file_id") or (data or {}).get("file") or "",
+            url=url,
+            emoji_id=(data or {}).get("emoji_id") or (data or {}).get("id") or "",
+            source=(data or {}).get("source") or part_type,
+        )
         if url:
-            return {"type": "image_url", "image_url": {"url": url}}
-        return {"type": "text", "text": "[图片]"}
+            return {"type": "image_url", "image_url": {"url": url}, "mika_media": semantic}
+        return {"type": "text", "text": placeholder_from_content_part({"mika_media": semantic})}
 
     text = str(part.get("text") or part.get("content") or "").strip()
     if text:

@@ -7,8 +7,8 @@
 - SSRF 防护（内网 IP 校验）
 
 环境变量：
-- GEMINI_IMAGE_CACHE_DIR: 图片缓存目录
-- GEMINI_DATA_DIR: 数据根目录（缓存位于 <dir>/gemini_chat/image_cache）
+- MIKA_IMAGE_CACHE_DIR: 图片缓存目录
+- MIKA_DATA_DIR: 数据根目录（缓存位于 <dir>/mika_chat/image_cache）
 （可选）宿主路径端口：若未配置上述环境变量，则优先使用宿主注入的 cache 目录
 
 相关模块：
@@ -35,17 +35,17 @@ from ..infra.paths import get_cache_root
 
 def _get_default_cache_dir() -> Path:
     """获取图片缓存目录默认路径（优先环境变量，否则使用 localstore / 项目路径）。"""
-    env_path = os.getenv("GEMINI_IMAGE_CACHE_DIR")
+    env_path = str(os.getenv("MIKA_IMAGE_CACHE_DIR", "") or "").strip()
     if env_path:
         return Path(env_path)
 
-    # 若未设置专用目录，则优先使用 GEMINI_DATA_DIR
-    env_data_dir = os.getenv("GEMINI_DATA_DIR")
+    # 若未设置专用目录，则优先使用 MIKA_DATA_DIR
+    env_data_dir = str(os.getenv("MIKA_DATA_DIR", "") or "").strip()
     if env_data_dir:
-        return Path(env_data_dir) / "gemini_chat" / "image_cache"
+        return Path(env_data_dir) / "mika_chat" / "image_cache"
 
     # 未配置环境变量时：优先使用宿主注入路径端口；无宿主则回退到项目路径
-    return get_cache_root("gemini_chat") / "image_cache"
+    return get_cache_root("mika_chat") / "image_cache"
 
 
 def _is_obviously_local_host(hostname: str) -> bool:
@@ -102,6 +102,30 @@ MIME_TYPES = {
 class ImageProcessError(Exception):
     """图片处理错误"""
     pass
+
+
+def _parse_data_url(data_url: str) -> Optional[Tuple[str, str]]:
+    """解析 data URL，返回 (base64_data, mime_type)。解析失败返回 None。"""
+    raw = str(data_url or "").strip()
+    if not raw.startswith("data:"):
+        return None
+    try:
+        header, payload = raw.split(",", 1)
+    except ValueError:
+        return None
+    if not payload:
+        return None
+
+    mime_type = "image/jpeg"
+    if ":" in header:
+        media_and_flags = header.split(":", 1)[1]
+        if ";" in media_and_flags:
+            media = media_and_flags.split(";", 1)[0].strip()
+            if media:
+                mime_type = media
+        elif media_and_flags.strip():
+            mime_type = media_and_flags.strip()
+    return payload, mime_type
 
 
 class ImageProcessor:
@@ -234,7 +258,7 @@ class ImageProcessor:
             MIME 类型字符串
         """
         # [GIF 转换处理] 如果是 GIF 转换后的图片，强制返回 PNG
-        # 因为 Gemini API 不支持 image/gif
+        # 因为 Mika API 不支持 image/gif
         if is_gif_converted:
             return "image/png"
         
@@ -245,7 +269,7 @@ class ImageProcessor:
             elif "png" in content_type:
                 return "image/png"
             elif "gif" in content_type:
-                # [重要] GIF 格式不被 Gemini 支持，这里不应该到达
+                # [重要] GIF 格式不被 Mika 支持，这里不应该到达
                 # 因为 GIF 应该在下载时就被转换了
                 log.warning("检测到 GIF MIME 类型，但未标记为已转换，可能存在逻辑问题")
                 return "image/png"  # 保守处理，假设已转换
@@ -257,7 +281,7 @@ class ImageProcessor:
         path_lower = parsed.path.lower()
         for ext, mime in MIME_TYPES.items():
             if path_lower.endswith(ext):
-                # [重要] GIF 格式不被 Gemini 支持
+                # [重要] GIF 格式不被 Mika 支持
                 if mime == "image/gif":
                     log.warning("从 URL 推断出 GIF 格式，但未标记为已转换")
                     return "image/png"  # 保守处理
@@ -289,10 +313,9 @@ class ImageProcessor:
         cached = self._get_from_memory_cache(url)
         if cached:
             #缓存格式: "data:mime_type;base64,..."
-            if cached.startswith("data:"):
-                parts = cached.split(",", 1)
-                mime = parts[0].split(":")[1].split(";")[0]
-                return parts[1], mime
+            parsed_data_url = _parse_data_url(cached)
+            if parsed_data_url is not None:
+                return parsed_data_url
             return cached, "image/jpeg"
         
         # 2. 检查磁盘缓存
@@ -300,10 +323,9 @@ class ImageProcessor:
         disk_cached = await self._load_from_disk_cache(cache_path)
         if disk_cached:
             self._set_memory_cache(url, disk_cached)
-            if disk_cached.startswith("data:"):
-                parts = disk_cached.split(",", 1)
-                mime = parts[0].split(":")[1].split(";")[0]
-                return parts[1], mime
+            parsed_data_url = _parse_data_url(disk_cached)
+            if parsed_data_url is not None:
+                return parsed_data_url
             return disk_cached, "image/jpeg"
         
         # 3. 下载图片
@@ -314,7 +336,9 @@ class ImageProcessor:
                 # 处理特殊 URL（如 GIF 转换）
                 download_url = url
                 is_gif_converted = False
-                allow_remote_gif_convert = os.getenv("GEMINI_ALLOW_WSRV_GIF_CONVERT", "0").lower() in {
+                allow_remote_gif_convert = str(
+                    os.getenv("MIKA_ALLOW_WSRV_GIF_CONVERT", "") or ""
+                ).strip().lower() in {
                     "1",
                     "true",
                     "yes",
@@ -368,7 +392,7 @@ class ImageProcessor:
 
                         img = Image.open(BytesIO(content))
                         out = BytesIO()
-                        # 取第一帧，转为 PNG（Gemini 不支持 image/gif）
+                        # 取第一帧，转为 PNG（Mika API 不支持 image/gif）
                         img.seek(0)
                         img.convert("RGBA").save(out, format="PNG")
                         content = out.getvalue()
@@ -577,17 +601,22 @@ def extract_image_file_ids(message: Any, max_images: int) -> list[str]:
     return file_ids
 
 
-async def resolve_image_urls(bot: Any, message: Any, max_images: int) -> list[str]:
+async def resolve_image_urls(
+    message: Any,
+    max_images: int,
+    *,
+    platform_api: Any = None,
+) -> list[str]:
     """跨 OneBot 实现解析图片 URL（best-effort）。
 
     解析策略：
     1) 先通过 :func:`extract_images` 提取消息段里直接给出的 http(s) URL
     2) 若数量不足，再尝试 OneBot v12 的 ``get_file``，把仅提供 ``file_id`` 的图片解析成 URL
     """
-    from .safe_api import safe_call_api
+    from ..runtime import get_platform_api_port as get_runtime_platform_api_port
 
     urls = extract_images(message, max_images=max_images)
-    if not bot or max_images <= 0 or len(urls) >= max_images:
+    if max_images <= 0 or len(urls) >= max_images:
         return urls
 
     remaining = max_images - len(urls)
@@ -595,11 +624,24 @@ async def resolve_image_urls(bot: Any, message: Any, max_images: int) -> list[st
     if not file_ids:
         return urls
 
+    platform_api_port = platform_api if platform_api is not None else get_runtime_platform_api_port()
+    if platform_api_port is None:
+        return urls
+
+    platform_caps = None
+    try:
+        platform_caps = platform_api_port.capabilities()
+    except Exception:
+        platform_caps = None
+
     for file_id in file_ids:
-        res = await safe_call_api(bot, "get_file", file_id=file_id)
-        if not isinstance(res, dict):
-            continue
-        url = str(res.get("url") or res.get("download_url") or "").strip()
+        url = ""
+        try:
+            if platform_caps is None or bool(getattr(platform_caps, "supports_file_resolve", False)):
+                resolved_url = await platform_api_port.resolve_file_url(file_id)
+                url = str(resolved_url or "").strip()
+        except Exception:
+            url = ""
         if url.startswith("http://") or url.startswith("https://"):
             if url not in urls:
                 urls.append(url)
@@ -633,10 +675,15 @@ def _dedupe_image_urls(urls: list[str], max_images: int) -> list[str]:
     return merged
 
 
-async def extract_and_resolve_images(bot: Any, message: Any, max_images: int) -> list[str]:
+async def extract_and_resolve_images(
+    message: Any,
+    max_images: int,
+    *,
+    platform_api: Any = None,
+) -> list[str]:
     """统一图片提取入口：直接 URL + file_id 解析 + 去重裁剪。
 
     用于普通消息与引用消息的同链路处理，避免两套不一致逻辑。
     """
-    urls = await resolve_image_urls(bot, message, max_images=max_images)
+    urls = await resolve_image_urls(message, max_images=max_images, platform_api=platform_api)
     return _dedupe_image_urls(urls, max_images=max_images)

@@ -86,7 +86,7 @@ class Metrics:
     def _escape_label_value(value: str) -> str:
         return value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
 
-    def to_prometheus(self, *, namespace: str = "gemini_chat", plugin_version: str = "") -> str:
+    def to_prometheus(self, *, namespace: str = "mika_chat", plugin_version: str = "") -> str:
         """导出 Prometheus 文本格式（OpenMetrics 0.0.4 兼容）。"""
         metric_prefix = f"{namespace}_"
         lines = []

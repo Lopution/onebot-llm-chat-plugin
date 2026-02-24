@@ -33,14 +33,15 @@ dependencies = [
     "nonebot-plugin-localstore",
     
     # Web 服务器
-    "fastapi>=0.128.0",
+    "fastapi>=0.116.1",
+    "python-multipart>=0.0.9",
     "uvicorn[standard]>=0.40.0",
     
     # HTTP 客户端
     "httpx>=0.28.1",
     
     # Gemini 模型（OpenAI 兼容格式）
-    "google-genai>=1.58.0",
+    "google-genai>=1.12.1",
     
     # 数据库
     "aiosqlite>=0.22.1",
@@ -66,27 +67,39 @@ dev = [
     "pre-commit>=4.0.0",
 ]
 docs = [
-    "mkdocs>=1.5.0",
-    "mkdocs-material>=9.0.0",
-    "mkdocstrings[python]>=0.24.0",
+    "mkdocs>=1.6,<2.0",
+    "mkdocs-material>=9.5,<10.0",
+    "mkdocstrings[python]>=0.24,<1.0",
 ]
 semantic = [
     # Optional: lower-memory semantic matcher backend (recommended for long-running WSL2)
     "fastembed",
 ]
+mcp = [
+    # Optional: MCP SDK backend for dynamic tool servers
+    "mcp>=1.0.0",
+]
+webui = []
 
 [project.urls]
 Homepage = "https://github.com/Lopution/mika-chat-core"
 Repository = "https://github.com/Lopution/mika-chat-core.git"
 Issues = "https://github.com/Lopution/mika-chat-core/issues"
 
+[project.scripts]
+mika-chat = "mika_chat_cli:main"
+
 [project.entry-points."nonebot.plugin"]
 mika_chat = "nonebot_plugin_mika_chat"
 
 [tool.hatch.build.targets.wheel]
 packages = [
+    "src/mika_chat_cli",
     "src/mika_chat_core",
     "src/nonebot_plugin_mika_chat",
+]
+include = [
+    "src/mika_chat_core/webui/static/**",
 ]
 
 [tool.ruff]

@@ -78,9 +78,9 @@ def ensure_env(force: bool) -> None:
 
 def env_has_required_values(path: Path) -> bool:
     env_map = read_env_map(path)
-    api_key = env_map.get("GEMINI_API_KEY", "")
-    key_list = env_map.get("GEMINI_API_KEY_LIST", "")
-    master_id = env_map.get("GEMINI_MASTER_ID", "")
+    api_key = str(env_map.get("MIKA_API_KEY", "")).strip()
+    key_list = str(env_map.get("MIKA_API_KEY_LIST", "")).strip()
+    master_id = str(env_map.get("MIKA_MASTER_ID", "")).strip()
     return bool((api_key or key_list) and master_id and master_id != "0")
 
 
