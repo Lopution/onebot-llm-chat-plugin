@@ -18,6 +18,7 @@ except ImportError:  # pragma: no cover - tests/stubs fallback
 
 from mika_chat_core.config import Config
 from mika_chat_core.runtime import get_config
+from mika_chat_core.utils.media_semantics import placeholder_from_content_part
 from .runtime_ports_nb import get_runtime_ports_bundle
 
 
@@ -50,7 +51,7 @@ async def handle_search_group_history(args: dict, group_id: str) -> str:
                     if item_type == "text":
                         parts.append(str(item.get("text") or ""))
                     elif item_type == "image_url":
-                        parts.append("[图片]")
+                        parts.append(placeholder_from_content_part(item))
                 return " ".join(p for p in parts if p)
             return str(content or "")
 

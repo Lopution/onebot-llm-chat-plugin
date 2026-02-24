@@ -38,6 +38,12 @@ async def test_build_original_and_api_content_without_processor_keeps_urls():
     assert isinstance(original, list)
     assert original[0] == {"type": "text", "text": "hello"}
     assert api_content[0] == {"type": "text", "text": "hello"}
+    assert all(
+        isinstance(item, dict)
+        and item.get("type") == "image_url"
+        and isinstance(item.get("mika_media"), dict)
+        for item in original[1:]
+    )
     assert {"type": "image_url", "image_url": {"url": "https://example.com/a.png"}} in api_content
     assert {"type": "image_url", "image_url": {"url": "data:image/png;base64,abc"}} in api_content
 

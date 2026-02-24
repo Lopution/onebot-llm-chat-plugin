@@ -10,6 +10,11 @@ import time
 from typing import Any, Iterable, List
 
 from mika_chat_core.contracts import Author, ContentPart, EventEnvelope
+from mika_chat_core.utils.media_semantics import (
+    MEDIA_KIND_EMOJI,
+    MEDIA_KIND_IMAGE,
+    build_media_semantic,
+)
 from mika_chat_core.utils.event_context import build_event_context, build_event_context_from_event
 
 
@@ -104,7 +109,24 @@ def extract_content_parts(
 
         if seg_type in {"image", "mface"}:
             asset_ref = _extract_asset_ref(data)
-            parts.append(ContentPart(kind="image", asset_ref=asset_ref))
+            is_emoji = seg_type == "mface"
+            semantic = build_media_semantic(
+                kind=MEDIA_KIND_EMOJI if is_emoji else MEDIA_KIND_IMAGE,
+                asset_ref=asset_ref,
+                url=data.get("url") or data.get("file") or "",
+                emoji_id=data.get("emoji_id") or data.get("id") or data.get("summary") or "",
+                source=seg_type,
+            )
+            parts.append(
+                ContentPart(
+                    kind="image",
+                    asset_ref=asset_ref,
+                    meta={
+                        "media_kind": semantic.get("kind", MEDIA_KIND_IMAGE),
+                        "mika_media": semantic,
+                    },
+                )
+            )
             continue
 
         if seg_type in {"file", "record", "video", "audio", "voice"}:

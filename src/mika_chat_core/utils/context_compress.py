@@ -18,6 +18,7 @@ import re
 from typing import Any, Dict, List, Union
 
 from ..infra.logging import logger as log
+from .media_semantics import placeholder_from_content_part
 
 
 # ==================== Magic-number constants ====================
@@ -96,7 +97,7 @@ def compress_message_content(content: Union[str, List[Dict[str, Any]]]) -> Union
                         sanitized_text = sanitized_text[:COMPRESS_HEAD_LENGTH] + "...[省略]..." + sanitized_text[-COMPRESS_TAIL_LENGTH:]
                     compressed_parts.append({"type": "text", "text": sanitized_text})
                 elif item.get("type") in ("image_url", "image"):
-                    compressed_parts.append({"type": "text", "text": "[图片]"})
+                    compressed_parts.append({"type": "text", "text": placeholder_from_content_part(item)})
                 else:
                     compressed_parts.append(item)
             else:
@@ -138,12 +139,16 @@ async def compress_context_for_safety(
             elif isinstance(content, list):
                 text_parts = []
                 for item in content:
-                    if isinstance(item, dict) and item.get("type") == "text":
+                    if not isinstance(item, dict):
+                        continue
+                    if item.get("type") == "text":
                         text = item.get("text", "")
                         text = sanitize_text_for_safety(text)
                         if len(text) > COMPRESS_L2_MULTIMODAL_MAX_LENGTH:
                             text = text[:COMPRESS_L2_MULTIMODAL_HEAD_LENGTH] + "..."
                         text_parts.append(text)
+                    elif item.get("type") in ("image_url", "image"):
+                        text_parts.append(placeholder_from_content_part(item))
                 compressed_content = " ".join(text_parts) if text_parts else "[多媒体消息]"
             else:
                 compressed_content = str(content)[:COMPRESS_L2_MULTIMODAL_MAX_LENGTH]

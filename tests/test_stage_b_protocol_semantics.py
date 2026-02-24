@@ -111,3 +111,22 @@ def test_summarize_envelope_counts_match_parts():
     assert summary.has_mention is True
     assert summary.image_count == 1
     assert summary.attachment_count == 2
+
+
+def test_build_context_record_text_uses_media_semantic_tokens_when_available():
+    parts = extract_content_parts(
+        [
+            _Seg("mface", {"id": "mface-1", "summary": "doge"}),
+            _Seg("image", {"url": "https://example.com/a.png"}),
+        ],
+        fallback_plaintext="",
+    )
+    summary = summarize_content_parts(parts)
+    text = build_context_record_text(
+        summary=summary,
+        plaintext="",
+        parsed_text="",
+        parse_failed=False,
+    )
+    assert "[表情][emoji:" in text
+    assert "[图片][picid:" in text

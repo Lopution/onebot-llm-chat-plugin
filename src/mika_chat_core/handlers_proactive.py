@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List
 
+from .utils.media_semantics import placeholder_from_content_part
+
 
 def render_transcript_content(content: Any) -> str:
     if isinstance(content, str):
@@ -18,7 +20,7 @@ def render_transcript_content(content: Any) -> str:
             if item_type == "text":
                 parts.append(str(item.get("text") or ""))
             elif item_type == "image_url":
-                parts.append("[图片]")
+                parts.append(placeholder_from_content_part(item))
         text = " ".join(part for part in parts if part)
     else:
         text = str(content or "")

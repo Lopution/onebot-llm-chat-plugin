@@ -77,3 +77,38 @@ async def test_snapshot_keeps_multimodal_when_enabled(
             isinstance(part, dict) and part.get("type") == "image_url"
             for part in context[0]["content"]
         )
+
+
+@pytest.mark.asyncio
+async def test_snapshot_textifies_image_and_emoji_with_stable_tokens(
+    temp_db_path: Path,
+    temp_database,
+):
+    from mika_chat_core.utils.context_store import SQLiteContextStore
+
+    content = [
+        {"type": "text", "text": "看看这些"},
+        {
+            "type": "image_url",
+            "image_url": {"url": "https://example.com/a.jpg"},
+            "mika_media": {"kind": "image", "id": "imgabc123", "ref": "https://example.com/a.jpg"},
+        },
+        {
+            "type": "image_url",
+            "image_url": {"url": "https://example.com/e.png"},
+            "mika_media": {"kind": "emoji", "id": "emoabc456", "ref": "mface-1"},
+        },
+    ]
+
+    with patch("mika_chat_core.utils.context_db.DB_PATH", temp_db_path), patch(
+        "mika_chat_core.utils.context_store.DB_PATH", temp_db_path
+    ), patch("mika_chat_core.utils.context_store.get_db", return_value=temp_database):
+        store = SQLiteContextStore(history_store_multimodal=False)
+        await store.add_message(
+            "u1", "user", content, group_id="g1", message_id="m2", timestamp=2.0
+        )
+
+        context = await store.get_context("u1", "g1")
+        snapshot_text = str(context[0]["content"])
+        assert "[picid:imgabc123]" in snapshot_text
+        assert "[emoji:emoabc456]" in snapshot_text

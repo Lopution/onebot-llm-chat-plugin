@@ -44,6 +44,7 @@ from .write_pipeline import (
     add_message_flow as service_add_message_flow,
 )
 from ..context_schema import normalize_content
+from ..media_semantics import placeholder_from_content_part
 from ..context_db import DB_PATH as _CONTEXT_DB_PATH
 from ..context_db import get_db, get_db_path, init_database, close_database
 from ..session_lock import SessionLockManager
@@ -454,7 +455,7 @@ class SQLiteContextStore:
                 if text:
                     text_parts.append(text)
             elif item_type == "image_url":
-                text_parts.append("[图片]")
+                text_parts.append(placeholder_from_content_part(item))
         return " ".join(text_parts).strip()
 
     def _prepare_snapshot_messages(

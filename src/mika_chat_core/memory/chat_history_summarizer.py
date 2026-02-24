@@ -12,6 +12,7 @@ import httpx
 from ..infra.logging import logger as log
 from ..llm.providers import build_provider_request, parse_provider_response
 from ..utils.context_schema import normalize_content
+from ..utils.media_semantics import placeholder_from_content_part
 from ..utils.prompt_loader import load_prompt_yaml
 from .topic_store import get_topic_store
 
@@ -91,7 +92,7 @@ class ChatHistorySummarizer:
                 if value:
                     text_parts.append(value)
             elif item_type == "image_url":
-                text_parts.append("[图片]")
+                text_parts.append(placeholder_from_content_part(item))
         return " ".join(text_parts).strip()
 
     def _render_messages(self, messages: List[dict[str, Any]]) -> str:
@@ -402,4 +403,3 @@ def get_chat_history_summarizer() -> ChatHistorySummarizer:
     if _chat_history_summarizer is None:
         _chat_history_summarizer = ChatHistorySummarizer()
     return _chat_history_summarizer
-

@@ -8,6 +8,7 @@ from typing import Any, Awaitable, Callable, Optional
 from .contracts import ContentPart, EventEnvelope
 from .infra.logging import logger as log
 from .ports.bot_api import PlatformApiPort
+from .utils.media_semantics import placeholder_from_media_semantic
 from .utils.event_context import build_event_context_from_envelope
 from .utils.recent_images import get_image_cache
 
@@ -54,6 +55,8 @@ def _render_quoted_text_from_message_data(message_data: Any) -> str:
                 pieces.append(text)
         elif seg_type == "image":
             pieces.append("[图片]")
+        elif seg_type == "mface":
+            pieces.append("[表情]")
         elif seg_type in {"at", "mention"}:
             target = str(seg_data.get("qq") or seg_data.get("user_id") or seg_data.get("target_id") or "").strip()
             pieces.append(f"@{target}" if target else "@某人")
@@ -189,6 +192,11 @@ async def parse_envelope_with_mentions(
 
             if quoted_text or extra_images:
                 quoted_content = f"[引用 {sender_name} 的消息: {quoted_text or '[多媒体内容]'}]"
+            continue
+
+        if part.kind == "image":
+            media = part.meta.get("mika_media") if isinstance(part.meta, dict) else None
+            text_parts.append(placeholder_from_media_semantic(media))
 
     result = "".join(text_parts).strip()
     if quoted_content:

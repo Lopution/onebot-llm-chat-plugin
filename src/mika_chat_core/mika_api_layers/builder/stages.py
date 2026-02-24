@@ -5,6 +5,8 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from ...utils.media_semantics import build_media_semantic, placeholder_from_media_semantic
+
 
 def guard_inputs(
     *,
@@ -64,10 +66,17 @@ async def build_original_and_api_content(
     original_content: Union[str, List[Dict[str, Any]]] = [{"type": "text", "text": message}]
     for url in normalized_image_urls:
         url_str = str(url or "").strip()
+        semantic = build_media_semantic(kind="image", url=url_str, source="request_image")
         if url_str.startswith(("http://", "https://", "data:")):
-            original_content.append({"type": "image_url", "image_url": {"url": url_str}})
+            original_content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": url_str},
+                    "mika_media": semantic,
+                }
+            )
         else:
-            original_content.append({"type": "text", "text": "[图片]"})
+            original_content.append({"type": "text", "text": placeholder_from_media_semantic(semantic)})
 
     api_content_list: List[Dict[str, Any]] = [{"type": "text", "text": message}]
     data_urls = [url for url in normalized_image_urls if url.startswith("data:")]

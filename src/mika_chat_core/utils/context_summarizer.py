@@ -10,6 +10,7 @@ import httpx
 from ..infra.logging import logger as log
 from ..llm.providers import build_provider_request, parse_provider_response
 from .context_schema import normalize_content
+from .media_semantics import placeholder_from_content_part
 
 
 class ContextSummarizer:
@@ -41,7 +42,7 @@ class ContextSummarizer:
                         if value:
                             parts.append(value)
                     elif item_type == "image_url":
-                        parts.append("[图片]")
+                        parts.append(placeholder_from_content_part(item))
                 text = " ".join(parts).strip()
             if text:
                 lines.append(f"{role}: {text}")

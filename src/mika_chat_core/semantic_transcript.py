@@ -10,6 +10,11 @@ from dataclasses import dataclass
 from typing import Iterable, List
 
 from .contracts import ContentPart, EventEnvelope
+from .utils.media_semantics import (
+    MEDIA_KIND_EMOJI,
+    normalize_media_kind,
+    placeholder_from_media_semantic,
+)
 
 
 @dataclass(frozen=True)
@@ -18,6 +23,8 @@ class SemanticSummary:
     has_mention: bool
     mention_tokens: List[str]
     image_count: int
+    emoji_count: int
+    image_placeholders: List[str]
     attachment_count: int
 
 
@@ -37,6 +44,8 @@ def summarize_content_parts(parts: Iterable[ContentPart]) -> SemanticSummary:
     has_reply = False
     mention_tokens: List[str] = []
     image_count = 0
+    emoji_count = 0
+    image_placeholders: List[str] = []
     attachment_count = 0
 
     for part in parts or []:
@@ -46,6 +55,16 @@ def summarize_content_parts(parts: Iterable[ContentPart]) -> SemanticSummary:
             mention_tokens.append(_mention_token(part))
         elif part.kind == "image":
             image_count += 1
+            media = part.meta.get("mika_media") if isinstance(part.meta, dict) else None
+            media_kind = normalize_media_kind(
+                (media or {}).get("kind") if isinstance(media, dict) else part.meta.get("media_kind", "")
+            )
+            if media_kind == MEDIA_KIND_EMOJI:
+                emoji_count += 1
+
+            # 仅当有显式媒体语义时输出稳定 token；否则保持旧占位行为。
+            if isinstance(media, dict) and media:
+                image_placeholders.append(placeholder_from_media_semantic(media))
         elif part.kind == "attachment":
             attachment_count += 1
 
@@ -54,6 +73,8 @@ def summarize_content_parts(parts: Iterable[ContentPart]) -> SemanticSummary:
         has_mention=bool(mention_tokens),
         mention_tokens=mention_tokens,
         image_count=image_count,
+        emoji_count=emoji_count,
+        image_placeholders=image_placeholders,
         attachment_count=attachment_count,
     )
 
@@ -92,7 +113,10 @@ def build_context_record_text(
             text = (plaintext or "").strip()
 
     if summary.image_count > 0:
-        image_placeholder = "[图片]" if summary.image_count == 1 else f"[图片×{summary.image_count}]"
+        if summary.image_placeholders:
+            image_placeholder = " ".join(summary.image_placeholders)
+        else:
+            image_placeholder = "[图片]" if summary.image_count == 1 else f"[图片×{summary.image_count}]"
         text = f"{text} {image_placeholder}".strip() if text else image_placeholder
 
     if summary.attachment_count > 0:

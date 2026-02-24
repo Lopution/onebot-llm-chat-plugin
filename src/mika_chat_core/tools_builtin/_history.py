@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..infra.logging import logger
+from ..utils.media_semantics import placeholder_from_content_part
 from ..tools import tool, _resolve_tool_override
 
 
@@ -51,7 +52,7 @@ async def handle_search_group_history(args: dict, group_id: str) -> str:
                     if item_type == "text":
                         parts.append(str(item.get("text") or ""))
                     elif item_type == "image_url":
-                        parts.append("[图片]")
+                        parts.append(placeholder_from_content_part(item))
                 return " ".join(p for p in parts if p)
             return str(content or "")
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
+from ...utils.media_semantics import placeholder_from_content_part
 from .stages import (
     append_history_messages as service_append_history_messages,
     build_enhanced_system_prompt as service_build_enhanced_system_prompt,
@@ -29,7 +30,7 @@ def sanitize_content_for_request(content: Any, *, allow_images: bool, normalize_
             continue
         if part_type == "image_url":
             if not allow_images:
-                parts.append({"type": "text", "text": "[图片]"})
+                parts.append({"type": "text", "text": placeholder_from_content_part(part)})
                 continue
             image_url = part.get("image_url")
             if isinstance(image_url, dict):
@@ -39,7 +40,7 @@ def sanitize_content_for_request(content: Any, *, allow_images: bool, normalize_
             if url:
                 parts.append({"type": "image_url", "image_url": {"url": url}})
             else:
-                parts.append({"type": "text", "text": "[图片]"})
+                parts.append({"type": "text", "text": placeholder_from_content_part(part)})
             continue
         text = str(part.get("text") or "").strip()
         if text:

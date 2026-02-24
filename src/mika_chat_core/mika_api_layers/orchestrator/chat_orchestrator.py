@@ -276,6 +276,8 @@ async def run_chat_main_loop(
         tool_trace=tool_trace,
     )
 
+    from ...runtime import get_task_supervisor
+
     if getattr(plugin_cfg, "mika_memory_enabled", False):
         session_key_for_extract = client._memory_session_key(user_id, group_id)
         extract_interval = int(getattr(plugin_cfg, "mika_memory_extract_interval", 3) or 3)
@@ -284,7 +286,6 @@ async def run_chat_main_loop(
                 {"role": "user", "content": original_content},
                 {"role": "assistant", "content": reply},
             ]
-            from ...runtime import get_task_supervisor
 
             get_task_supervisor().spawn(
                 client._extract_and_store_memories(

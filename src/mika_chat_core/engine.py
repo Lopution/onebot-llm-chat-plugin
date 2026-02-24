@@ -11,6 +11,7 @@ from typing import Any, Optional
 from .contracts import ChatMessage, ChatSession, ContentPart, EventEnvelope, NoopAction, SendMessageAction
 from .ports.host_events import HostEventPort
 from .ports.message import MessagePort
+from .utils.media_semantics import placeholder_from_media_semantic
 
 
 CoreAction = SendMessageAction | NoopAction
@@ -85,7 +86,8 @@ class ChatEngine:
                 text_chunks.append(f"[reply:{part.target_id}]")
             elif part.kind == "image":
                 images.append(part.asset_ref)
-                text_chunks.append("[图片]")
+                media = part.meta.get("mika_media") if isinstance(part.meta, dict) else None
+                text_chunks.append(placeholder_from_media_semantic(media))
             elif part.kind == "attachment":
                 text_chunks.append("[附件]")
 
