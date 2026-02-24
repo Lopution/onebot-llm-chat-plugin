@@ -220,6 +220,74 @@ def reset_runtime_state_between_tests():
     runtime_module.reset_runtime_state()
 
 
+@pytest.fixture(autouse=True)
+async def reset_search_engine_state_between_tests():
+    """重置 search_engine 的全局状态，避免真实网络请求或跨事件循环复用导致卡死。
+
+    说明：
+    - search_engine 内部会缓存 provider 和 http client，并绑定事件循环 id。
+    - 在安装了真实 fastapi/httpx 的环境里，如果测试未完全 mock 掉网络路径，
+      可能触发真实 HTTP 请求（在沙箱/CI 里会卡住）。
+    """
+
+    from mika_chat_core.utils import search_engine
+
+    try:
+        client = getattr(search_engine, "_http_client", None)
+        if client is not None and hasattr(client, "aclose") and not getattr(client, "is_closed", True):
+            try:
+                await client.aclose()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # Reset provider/client and loop-bound locks.
+    try:
+        search_engine.reset_search_provider()
+    except Exception:
+        pass
+    try:
+        search_engine._http_client = None
+        search_engine._http_client_loop_id = None
+        search_engine._http_client_lock = None
+        search_engine._http_client_lock_loop_id = None
+    except Exception:
+        pass
+
+    try:
+        search_engine.clear_search_cache()
+    except Exception:
+        pass
+    try:
+        search_engine.clear_classify_cache()
+    except Exception:
+        pass
+
+    yield
+
+    try:
+        client = getattr(search_engine, "_http_client", None)
+        if client is not None and hasattr(client, "aclose") and not getattr(client, "is_closed", True):
+            try:
+                await client.aclose()
+            except Exception:
+                pass
+    except Exception:
+        pass
+    try:
+        search_engine.reset_search_provider()
+    except Exception:
+        pass
+    try:
+        search_engine._http_client = None
+        search_engine._http_client_loop_id = None
+        search_engine._http_client_lock = None
+        search_engine._http_client_lock_loop_id = None
+    except Exception:
+        pass
+
+
 # ==================== pytest-asyncio 配置 ====================
 # 注意：不再需要自定义 event_loop fixture
 # pytest-asyncio 0.21+ 已废弃此方式，应使用 pyproject.toml 中的 asyncio_mode = "auto"

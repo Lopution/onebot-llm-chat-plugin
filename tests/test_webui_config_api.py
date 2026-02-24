@@ -6,10 +6,9 @@ from pathlib import Path
 import pytest
 
 fastapi = pytest.importorskip("fastapi")
-testclient = pytest.importorskip("fastapi.testclient")
+httpx = pytest.importorskip("httpx")
 
 FastAPI = fastapi.FastAPI
-TestClient = testclient.TestClient
 
 from mika_chat_core.config import Config
 from mika_chat_core.runtime import get_config as get_runtime_config
@@ -29,13 +28,14 @@ def _make_config(**overrides: object) -> Config:
     return Config(**payload)
 
 
-def test_webui_config_get_sections_contains_llm_provider():
+@pytest.mark.asyncio
+async def test_webui_config_get_sections_contains_llm_provider():
     config = _make_config()
     app = FastAPI()
     app.include_router(create_webui_router(settings_getter=lambda: config))
-    client = TestClient(app)
-
-    response = client.get("/webui/api/config")
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/webui/api/config")
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
@@ -50,13 +50,14 @@ def test_webui_config_get_sections_contains_llm_provider():
     assert "mika_webui_enabled" in keys
 
 
-def test_webui_config_get_marks_message_stream_fields_as_advanced():
+@pytest.mark.asyncio
+async def test_webui_config_get_marks_message_stream_fields_as_advanced():
     config = _make_config()
     app = FastAPI()
     app.include_router(create_webui_router(settings_getter=lambda: config))
-    client = TestClient(app)
-
-    response = client.get("/webui/api/config")
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/webui/api/config")
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
@@ -72,24 +73,26 @@ def test_webui_config_get_marks_message_stream_fields_as_advanced():
     assert field_map["mika_message_split_enabled"].get("advanced") is None
 
 
-def test_webui_config_put_updates_env_file(monkeypatch, tmp_path):
+@pytest.mark.asyncio
+async def test_webui_config_put_updates_env_file(monkeypatch, tmp_path):
     config = _make_config()
     app = FastAPI()
     app.include_router(create_webui_router(settings_getter=lambda: config))
-    client = TestClient(app)
+    transport = httpx.ASGITransport(app=app)
 
     env_path = tmp_path / ".env"
     env_path.write_text("LLM_PROVIDER=\"openai_compat\"\n", encoding="utf-8")
     monkeypatch.setenv("DOTENV_PATH", str(env_path))
 
-    response = client.put(
-        "/webui/api/config",
-        json={
-            "llm_provider": "anthropic",
-            "mika_webui_enabled": True,
-            "mika_group_whitelist": ["10001", "10002"],
-        },
-    )
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.put(
+            "/webui/api/config",
+            json={
+                "llm_provider": "anthropic",
+                "mika_webui_enabled": True,
+                "mika_group_whitelist": ["10001", "10002"],
+            },
+        )
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
@@ -102,23 +105,25 @@ def test_webui_config_put_updates_env_file(monkeypatch, tmp_path):
     assert f"MIKA_GROUP_WHITELIST={json.dumps(['10001', '10002'])}" in content
 
 
-def test_webui_config_put_rejects_unknown_key():
+@pytest.mark.asyncio
+async def test_webui_config_put_rejects_unknown_key():
     config = _make_config()
     app = FastAPI()
     app.include_router(create_webui_router(settings_getter=lambda: config))
-    client = TestClient(app)
-
-    response = client.put("/webui/api/config", json={"unknown_field_x": 1})
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.put("/webui/api/config", json={"unknown_field_x": 1})
     assert response.status_code == 400
     body = response.json()
     assert body["status"] == "error"
 
 
-def test_webui_config_reload_from_env_file(monkeypatch, tmp_path: Path):
+@pytest.mark.asyncio
+async def test_webui_config_reload_from_env_file(monkeypatch, tmp_path: Path):
     config = _make_config()
     app = FastAPI()
     app.include_router(create_webui_router(settings_getter=lambda: config))
-    client = TestClient(app)
+    transport = httpx.ASGITransport(app=app)
 
     env_path = tmp_path / ".env"
     env_path.write_text(
@@ -127,7 +132,8 @@ def test_webui_config_reload_from_env_file(monkeypatch, tmp_path: Path):
     )
     monkeypatch.setenv("DOTENV_PATH", str(env_path))
 
-    response = client.post("/webui/api/config/reload")
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/webui/api/config/reload")
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
@@ -141,45 +147,50 @@ def test_webui_config_reload_from_env_file(monkeypatch, tmp_path: Path):
     assert config.mika_webui_enabled is False
 
 
-def test_webui_config_export_masks_secrets_by_default():
+@pytest.mark.asyncio
+async def test_webui_config_export_masks_secrets_by_default():
     real_key = "real-secret-key-1234567890"
     config = _make_config(llm_api_key=real_key)
     app = FastAPI()
     app.include_router(create_webui_router(settings_getter=lambda: config))
-    client = TestClient(app)
+    transport = httpx.ASGITransport(app=app)
 
-    response = client.get("/webui/api/config/export")
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/webui/api/config/export")
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
     assert body["data"]["config"]["llm_api_key"] == "••••••••"
 
-    response = client.get("/webui/api/config/export", params={"include_secrets": "true"})
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/webui/api/config/export", params={"include_secrets": "true"})
     assert response.status_code == 200
     body = response.json()
     assert body["data"]["config"]["llm_api_key"] == real_key
 
 
-def test_webui_config_import_writes_env_and_applies_runtime(monkeypatch, tmp_path: Path):
+@pytest.mark.asyncio
+async def test_webui_config_import_writes_env_and_applies_runtime(monkeypatch, tmp_path: Path):
     config = _make_config()
     app = FastAPI()
     app.include_router(create_webui_router(settings_getter=lambda: config))
-    client = TestClient(app)
+    transport = httpx.ASGITransport(app=app)
 
     env_path = tmp_path / ".env"
     env_path.write_text("", encoding="utf-8")
     monkeypatch.setenv("DOTENV_PATH", str(env_path))
 
-    response = client.post(
-        "/webui/api/config/import",
-        json={
-            "config": {
-                "llm_provider": "azure_openai",
-                "mika_webui_enabled": False,
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/webui/api/config/import",
+            json={
+                "config": {
+                    "llm_provider": "azure_openai",
+                    "mika_webui_enabled": False,
+                },
+                "apply_runtime": True,
             },
-            "apply_runtime": True,
-        },
-    )
+        )
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"

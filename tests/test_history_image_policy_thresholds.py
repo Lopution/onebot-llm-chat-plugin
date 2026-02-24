@@ -90,3 +90,62 @@ def test_context_image_placeholder_supports_image_keyword_variant():
 
     assert decision.action == HistoryImageAction.TWO_STAGE
     assert decision.candidate_msg_ids == ["m1"]
+
+
+def test_implicit_reference_with_picid_placeholder_triggers_two_stage():
+    decision = determine_history_image_action(
+        message_text="啥意思",
+        candidate_images=[_image("m1")],
+        context_messages=[{"role": "user", "content": "[图片][picid:abc123]"}],
+        mode="hybrid",
+        inline_max=1,
+        two_stage_max=1,
+        enable_collage=False,
+        inline_threshold=0.85,
+        two_stage_threshold=0.5,
+    )
+
+    assert decision.action == HistoryImageAction.TWO_STAGE
+    assert decision.candidate_msg_ids == ["m1"]
+
+
+def test_implicit_reference_with_emoji_placeholder_triggers_two_stage():
+    decision = determine_history_image_action(
+        message_text="解释下",
+        candidate_images=[_image("m1")],
+        context_messages=[{"role": "user", "content": "[表情][emoji:deadbeef]"}],
+        mode="hybrid",
+        inline_max=1,
+        two_stage_max=1,
+        enable_collage=False,
+        inline_threshold=0.85,
+        two_stage_threshold=0.5,
+    )
+
+    assert decision.action == HistoryImageAction.TWO_STAGE
+    assert decision.candidate_msg_ids == ["m1"]
+
+
+def test_implicit_reference_with_multimodal_history_triggers_two_stage():
+    decision = determine_history_image_action(
+        message_text="啥意思",
+        candidate_images=[_image("m1")],
+        context_messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "看看"},
+                    {"type": "image_url", "image_url": {"url": "https://example.com/a.jpg"}},
+                ],
+            }
+        ],
+        mode="hybrid",
+        inline_max=1,
+        two_stage_max=1,
+        enable_collage=False,
+        inline_threshold=0.85,
+        two_stage_threshold=0.5,
+    )
+
+    assert decision.action == HistoryImageAction.TWO_STAGE
+    assert decision.candidate_msg_ids == ["m1"]

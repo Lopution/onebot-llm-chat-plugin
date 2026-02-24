@@ -30,6 +30,7 @@ async def test_build_original_and_api_content_without_processor_keeps_urls():
     original, api_content = await build_original_and_api_content(
         message="hello",
         normalized_image_urls=["https://example.com/a.png", "data:image/png;base64,abc"],
+        allow_images_in_api=True,
         has_image_processor=False,
         get_image_processor=lambda _c: None,
         plugin_cfg=cfg,

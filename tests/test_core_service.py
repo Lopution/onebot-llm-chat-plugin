@@ -3,10 +3,9 @@ from __future__ import annotations
 import pytest
 
 fastapi = pytest.importorskip("fastapi")
-testclient = pytest.importorskip("fastapi.testclient")
+httpx = pytest.importorskip("httpx")
 
 FastAPI = fastapi.FastAPI
-TestClient = testclient.TestClient
 
 from mika_chat_core.config import Config
 from mika_chat_core.core_service import (
@@ -44,7 +43,8 @@ def _envelope_payload(text: str = "hello", *, include_intent: bool = True) -> di
     }
 
 
-def test_core_service_post_event_returns_actions():
+@pytest.mark.asyncio
+async def test_core_service_post_event_returns_actions():
     config = _make_config()
     app = FastAPI()
     app.include_router(
@@ -53,9 +53,9 @@ def test_core_service_post_event_returns_actions():
             ports_getter=lambda: None,
         )
     )
-    client = TestClient(app)
-
-    response = client.post("/v1/events", json={"envelope": _envelope_payload()})
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/v1/events", json={"envelope": _envelope_payload()})
     assert response.status_code == 200
     body = response.json()
     assert body["schema_version"] == 1
@@ -64,7 +64,8 @@ def test_core_service_post_event_returns_actions():
     assert "上下文不可用" in body["actions"][0]["parts"][0]["text"]
 
 
-def test_core_service_health_endpoint_available():
+@pytest.mark.asyncio
+async def test_core_service_health_endpoint_available():
     config = _make_config(mika_health_check_api_probe_enabled=False)
     app = FastAPI()
     app.include_router(
@@ -73,9 +74,9 @@ def test_core_service_health_endpoint_available():
             ports_getter=lambda: None,
         )
     )
-    client = TestClient(app)
-
-    response = client.get("/v1/health")
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/v1/health")
     assert response.status_code == 200
     body = response.json()
     assert "status" in body
@@ -83,7 +84,8 @@ def test_core_service_health_endpoint_available():
     assert "runtime" in body
 
 
-def test_core_service_proactive_evaluate_endpoint_removed():
+@pytest.mark.asyncio
+async def test_core_service_proactive_evaluate_endpoint_removed():
     config = _make_config()
     app = FastAPI()
     app.include_router(
@@ -92,16 +94,17 @@ def test_core_service_proactive_evaluate_endpoint_removed():
             ports_getter=lambda: None,
         )
     )
-    client = TestClient(app)
-
-    response = client.post(
-        "/v1/proactive/evaluate",
-        json={"envelope": _envelope_payload()},
-    )
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/proactive/evaluate",
+            json={"envelope": _envelope_payload()},
+        )
     assert response.status_code == 404
 
 
-def test_core_service_requires_token_when_configured():
+@pytest.mark.asyncio
+async def test_core_service_requires_token_when_configured():
     config = _make_config(mika_core_service_token="secret-token")
     app = FastAPI()
     app.include_router(
@@ -110,23 +113,27 @@ def test_core_service_requires_token_when_configured():
             ports_getter=lambda: None,
         )
     )
-    client = TestClient(app)
-
-    denied = client.post("/v1/events", json={"envelope": _envelope_payload()})
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        denied = await client.post("/v1/events", json={"envelope": _envelope_payload()})
     assert denied.status_code == 401
 
-    allowed = client.post(
-        "/v1/events",
-        headers={"Authorization": "Bearer secret-token"},
-        json={"envelope": _envelope_payload()},
-    )
-    assert allowed.status_code == 200
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        allowed = await client.post(
+            "/v1/events",
+            headers={"Authorization": "Bearer secret-token"},
+            json={"envelope": _envelope_payload()},
+        )
+        assert allowed.status_code == 200
 
-    denied_health = client.get("/v1/health")
-    assert denied_health.status_code == 401
+        denied_health = await client.get("/v1/health")
+        assert denied_health.status_code == 401
 
-    allowed_health = client.get("/v1/health", headers={"Authorization": "Bearer secret-token"})
-    assert allowed_health.status_code == 200
+        allowed_health = await client.get(
+            "/v1/health",
+            headers={"Authorization": "Bearer secret-token"},
+        )
+        assert allowed_health.status_code == 200
 
 
 def test_core_service_loopback_guard_helper():
@@ -137,7 +144,8 @@ def test_core_service_loopback_guard_helper():
     assert _is_loopback_client("10.0.0.2") is False
 
 
-def test_core_service_denies_non_loopback_when_token_not_set(monkeypatch):
+@pytest.mark.asyncio
+async def test_core_service_denies_non_loopback_when_token_not_set(monkeypatch):
     config = _make_config(mika_core_service_token="")
     app = FastAPI()
     app.include_router(
@@ -146,9 +154,10 @@ def test_core_service_denies_non_loopback_when_token_not_set(monkeypatch):
             ports_getter=lambda: None,
         )
     )
-    client = TestClient(app)
+    transport = httpx.ASGITransport(app=app)
     monkeypatch.setattr("mika_chat_core.core_service._is_loopback_client", lambda _host: False)
-    response = client.post("/v1/events", json={"envelope": _envelope_payload()})
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/v1/events", json={"envelope": _envelope_payload()})
     assert response.status_code == 403
 
 

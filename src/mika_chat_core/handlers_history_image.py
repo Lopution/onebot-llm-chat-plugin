@@ -83,11 +83,11 @@ async def apply_history_image_strategy_flow(
     )
 
     context_messages = None
-    if group_id:
-        try:
-            context_messages = await mika_client.get_context(user_id, group_id)
-        except Exception as exc:
-            log_obj.debug(f"[历史图片] 获取上下文失败，继续策略判定: {exc}")
+    try:
+        context_messages = await mika_client.get_context(user_id, group_id)
+    except Exception as exc:
+        # 上下文获取失败不应阻断历史图片策略判定（仅影响隐式指代等增强能力）。
+        log_obj.debug(f"[历史图片] 获取上下文失败，继续策略判定: {exc}")
 
     decision = determine_history_image_action_fn(
         message_text=message_text,
@@ -142,11 +142,62 @@ async def apply_history_image_strategy_flow(
         return final_image_urls, cached_hint
 
     if decision.action == history_image_action_cls.TWO_STAGE:
+        metrics_obj.history_image_two_stage_triggered_total += 1
+        context_key = f"group:{group_id}" if group_id else f"private:{user_id}"
+        max_images = int(cfg(plugin_config, "mika_history_image_two_stage_max", 2) or 2)
+
+        # 优先后端自动回取并附带媒体，避免“必须工具/必须引用”才能看图。
+        fetched: list[dict[str, str]] = []
+        try:
+            from .utils.history_image_fetcher import fetch_history_images_data_urls
+
+            fetched = await fetch_history_images_data_urls(
+                context_key=context_key,
+                msg_ids=list(decision.candidate_msg_ids or []),
+                max_images=max(1, max_images),
+                plugin_config=plugin_config,
+                get_image_cache_fn=lambda: image_cache,
+                metrics_obj=None,
+            )
+        except Exception as exc:
+            log_obj.warning(f"[历史图片] TWO_STAGE 自动回取失败: {exc}")
+            fetched = []
+
+        if fetched:
+            sender_map = {
+                str(img.message_id): str(img.sender_name or "").strip()
+                for img in candidate_images
+                if str(getattr(img, "message_id", "") or "").strip()
+            }
+            for item in fetched:
+                mid = str(item.get("msg_id") or "").strip()
+                sender = sender_map.get(mid)
+                if sender:
+                    item["sender_name"] = sender
+
+            final_image_urls = [str(item.get("data_url") or "").strip() for item in fetched]
+            final_image_urls = [u for u in final_image_urls if u.startswith("data:")]
+            if final_image_urls:
+                mapping_parts = [
+                    f"Image {i+1} from <msg_id:{item.get('msg_id','')}> (sent by {item.get('sender_name','某人')})"
+                    for i, item in enumerate(fetched)
+                ]
+                cached_hint = (
+                    "[System Note: Attached history images mapping: "
+                    + ", ".join(mapping_parts)
+                    + "]"
+                )
+                metrics_obj.history_image_images_injected_total += len(final_image_urls)
+                log_obj.info(
+                    f"[历史图片] TWO_STAGE 自动回取成功 | {scope_info} | images={len(final_image_urls)} | reason={decision.reason}"
+                )
+                return final_image_urls, cached_hint
+
+        # 自动回取失败时：回退到“候选提示 + 工具兜底”（群聊可用；私聊提示重发图片）。
         if group_id:
             cached_hint = build_candidate_hint_fn(decision.candidate_msg_ids)
         else:
-            cached_hint = "[System Note: 历史图片按需提取仅支持群聊场景；如需识别图片，请重新发送图片。]"
-        metrics_obj.history_image_two_stage_triggered_total += 1
+            cached_hint = "[System Note: 历史图片自动回取失败；如需识别图片，请重新发送图片。]"
         log_obj.info(
             f"[历史图片] TWO_STAGE | {scope_info} | candidates={len(decision.candidate_msg_ids)} | reason={decision.reason}"
         )

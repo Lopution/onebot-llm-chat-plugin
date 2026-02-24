@@ -183,6 +183,13 @@ class Config(BaseModel):
         annotation = cls.__annotations__.get(field_name)
         origin = get_origin(annotation)
         args = get_args(annotation)
+        # Optional[T] 在运行时表现为 Union[T, None]：这里将其展开为 T 以复用现有解析逻辑。
+        if origin is not None and args and type(None) in args:  # noqa: E721
+            non_none = [a for a in args if a is not type(None)]  # noqa: E721
+            if len(non_none) == 1:
+                annotation = non_none[0]
+                origin = get_origin(annotation)
+                args = get_args(annotation)
 
         if annotation is None or annotation is str:
             return str(raw_value)
@@ -419,6 +426,13 @@ class Config(BaseModel):
             raise ValueError("mika_quote_image_caption_timeout_seconds 必须大于 0")
         return v
 
+    @field_validator("mika_media_caption_timeout_seconds")
+    @classmethod
+    def validate_media_caption_timeout(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("mika_media_caption_timeout_seconds 必须大于 0")
+        return v
+
     @field_validator("mika_message_split_threshold")
     @classmethod
     def validate_message_split_threshold(cls, v: int) -> int:
@@ -549,6 +563,19 @@ class Config(BaseModel):
         if value not in allowed:
             raise ValueError(
                 "llm_provider 仅支持 openai_compat / anthropic / google_genai / azure_openai"
+            )
+        return value
+
+    @field_validator("mika_media_caption_provider")
+    @classmethod
+    def validate_media_caption_provider(cls, v: str) -> str:
+        value = (v or "").strip().lower()
+        if not value:
+            return ""
+        allowed = {"openai_compat", "anthropic", "google_genai", "azure_openai"}
+        if value not in allowed:
+            raise ValueError(
+                "mika_media_caption_provider 仅支持 openai_compat / anthropic / google_genai / azure_openai"
             )
         return value
 
@@ -948,6 +975,19 @@ class Config(BaseModel):
     mika_dream_max_iterations: int = 5
     # 多模态严格模式：清理不合法的历史多模态块，避免接口报错
     mika_multimodal_strict: bool = True
+    # 强制声明主上游是否支持图片输入（None=按 provider 推断；对 openai_compat 代理尤为关键）
+    mika_llm_supports_images: Optional[bool] = None
+    # 当主上游不支持图片输入时：是否启用“看图转文字(caption)兜底”
+    mika_media_caption_enabled: bool = False
+    # caption provider（空=复用主 llm_provider）
+    mika_media_caption_provider: str = ""
+    # caption provider base_url/api_key/model（空=复用主 LLM 配置）
+    mika_media_caption_base_url: str = ""
+    mika_media_caption_api_key: str = ""
+    mika_media_caption_model: str = ""
+    # caption prompt（用户不配也能跑）
+    mika_media_caption_prompt: str = "请用中文简短描述这张图/表情包的内容；如果有文字请读出来；不要编造。"
+    mika_media_caption_timeout_seconds: float = 20.0
     # 是否为引用消息中的图片注入简短说明（best-effort）
     mika_quote_image_caption_enabled: bool = True
     # 引用图片说明模板（仅用于构造提示文本，不触发额外模型调用）

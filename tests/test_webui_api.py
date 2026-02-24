@@ -5,10 +5,9 @@ from unittest.mock import patch
 import pytest
 
 fastapi = pytest.importorskip("fastapi")
-testclient = pytest.importorskip("fastapi.testclient")
+httpx = pytest.importorskip("httpx")
 
 FastAPI = fastapi.FastAPI
-TestClient = testclient.TestClient
 
 from mika_chat_core.config import Config
 from mika_chat_core.webui import create_webui_router
@@ -49,38 +48,42 @@ class _DummyKnowledgeStore:
         return 8
 
 
-def test_webui_router_respects_base_path():
+@pytest.mark.asyncio
+async def test_webui_router_respects_base_path():
     config = _make_config(mika_webui_base_path="panel")
     app = FastAPI()
     app.include_router(create_webui_router(settings_getter=lambda: config))
-    client = TestClient(app)
-
-    response = client.get("/panel/api/dashboard/metrics")
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/panel/api/dashboard/metrics")
     assert response.status_code == 200
 
 
-def test_dashboard_metrics_returns_snapshot():
+@pytest.mark.asyncio
+async def test_dashboard_metrics_returns_snapshot():
     config = _make_config()
     app = FastAPI()
     app.include_router(create_webui_router(settings_getter=lambda: config))
-    client = TestClient(app)
+    transport = httpx.ASGITransport(app=app)
 
     with patch(
         "mika_chat_core.webui.api_dashboard.metrics.snapshot",
         return_value={"requests_total": 123, "tool_calls_total": 9},
     ):
-        response = client.get("/webui/api/dashboard/metrics")
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/webui/api/dashboard/metrics")
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
     assert body["data"]["requests_total"] == 123
 
 
-def test_dashboard_stats_aggregates_store_data(monkeypatch):
+@pytest.mark.asyncio
+async def test_dashboard_stats_aggregates_store_data(monkeypatch):
     config = _make_config()
     app = FastAPI()
     app.include_router(create_webui_router(settings_getter=lambda: config))
-    client = TestClient(app)
+    transport = httpx.ASGITransport(app=app)
 
     monkeypatch.setattr("mika_chat_core.webui.api_dashboard.get_context_store", lambda: _DummyContextStore())
     monkeypatch.setattr(
@@ -94,7 +97,8 @@ def test_dashboard_stats_aggregates_store_data(monkeypatch):
     monkeypatch.setattr("mika_chat_core.webui.api_dashboard.semantic_matcher._model", object())
     monkeypatch.setattr("mika_chat_core.webui.api_dashboard.semantic_matcher._backend", "fastembed")
 
-    response = client.get("/webui/api/dashboard/stats")
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/webui/api/dashboard/stats")
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"

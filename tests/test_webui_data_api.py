@@ -3,10 +3,9 @@ from __future__ import annotations
 import pytest
 
 fastapi = pytest.importorskip("fastapi")
-testclient = pytest.importorskip("fastapi.testclient")
+httpx = pytest.importorskip("httpx")
 
 FastAPI = fastapi.FastAPI
-TestClient = testclient.TestClient
 
 from mika_chat_core.config import Config
 from mika_chat_core.webui import create_webui_router
@@ -63,34 +62,41 @@ class _DummyMemoryStore:
         return 3
 
 
-def test_webui_knowledge_and_memory_endpoints(monkeypatch):
+@pytest.mark.asyncio
+async def test_webui_knowledge_and_memory_endpoints(monkeypatch):
     config = _make_config()
     app = FastAPI()
     app.include_router(create_webui_router(settings_getter=lambda: config))
-    client = TestClient(app)
+    transport = httpx.ASGITransport(app=app)
 
     monkeypatch.setattr("mika_chat_core.webui.api_knowledge.get_knowledge_store", lambda: _DummyKnowledgeStore())
     monkeypatch.setattr("mika_chat_core.webui.api_memory.get_memory_store", lambda: _DummyMemoryStore())
     monkeypatch.setattr("mika_chat_core.webui.api_knowledge.semantic_matcher.encode_batch", lambda _texts: [[1.0, 0.0]])
 
-    assert client.get("/webui/api/knowledge/corpora").status_code == 200
-    assert client.get("/webui/api/knowledge/documents", params={"corpus_id": "default"}).status_code == 200
-    assert client.get("/webui/api/knowledge/documents/d1/chunks", params={"corpus_id": "default"}).status_code == 200
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        assert (await client.get("/webui/api/knowledge/corpora")).status_code == 200
+        assert (await client.get("/webui/api/knowledge/documents", params={"corpus_id": "default"})).status_code == 200
+        assert (
+            await client.get("/webui/api/knowledge/documents/d1/chunks", params={"corpus_id": "default"})
+        ).status_code == 200
 
-    ingest_resp = client.post(
-        "/webui/api/knowledge/ingest",
-        json={"corpus_id": "default", "content": "这是知识文档正文内容，长度足够。"},
-    )
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        ingest_resp = await client.post(
+            "/webui/api/knowledge/ingest",
+            json={"corpus_id": "default", "content": "这是知识文档正文内容，长度足够。"},
+        )
     assert ingest_resp.status_code == 200
     assert ingest_resp.json()["data"]["ok"] is True
 
-    delete_resp = client.delete("/webui/api/knowledge/documents/d1", params={"corpus_id": "default"})
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        delete_resp = await client.delete("/webui/api/knowledge/documents/d1", params={"corpus_id": "default"})
     assert delete_resp.status_code == 200
     assert delete_resp.json()["data"]["deleted"] == 1
 
-    assert client.get("/webui/api/memory/sessions").status_code == 200
-    assert client.get("/webui/api/memory/facts", params={"session_key": "group:1"}).status_code == 200
-    assert client.delete("/webui/api/memory/1").status_code == 200
-    cleanup_resp = client.post("/webui/api/memory/cleanup", json={"max_age_days": 30})
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        assert (await client.get("/webui/api/memory/sessions")).status_code == 200
+        assert (await client.get("/webui/api/memory/facts", params={"session_key": "group:1"})).status_code == 200
+        assert (await client.delete("/webui/api/memory/1")).status_code == 200
+        cleanup_resp = await client.post("/webui/api/memory/cleanup", json={"max_age_days": 30})
     assert cleanup_resp.status_code == 200
     assert cleanup_resp.json()["data"]["deleted"] == 3

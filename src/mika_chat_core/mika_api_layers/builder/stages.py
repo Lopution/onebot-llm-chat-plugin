@@ -55,6 +55,7 @@ async def build_original_and_api_content(
     *,
     message: str,
     normalized_image_urls: List[str],
+    allow_images_in_api: bool,
     has_image_processor: bool,
     get_image_processor,
     plugin_cfg: Any,
@@ -64,9 +65,11 @@ async def build_original_and_api_content(
         return message, message
 
     original_content: Union[str, List[Dict[str, Any]]] = [{"type": "text", "text": message}]
+    api_content_list: List[Dict[str, Any]] = [{"type": "text", "text": message}]
     for url in normalized_image_urls:
         url_str = str(url or "").strip()
         semantic = build_media_semantic(kind="image", url=url_str, source="request_image")
+        placeholder = placeholder_from_media_semantic(semantic)
         if url_str.startswith(("http://", "https://", "data:")):
             original_content.append(
                 {
@@ -76,9 +79,17 @@ async def build_original_and_api_content(
                 }
             )
         else:
-            original_content.append({"type": "text", "text": placeholder_from_media_semantic(semantic)})
+            original_content.append({"type": "text", "text": placeholder})
+            api_content_list.append({"type": "text", "text": placeholder})
+            continue
 
-    api_content_list: List[Dict[str, Any]] = [{"type": "text", "text": message}]
+        if not allow_images_in_api:
+            api_content_list.append({"type": "text", "text": placeholder})
+            continue
+
+    if not allow_images_in_api:
+        return original_content, api_content_list
+
     data_urls = [url for url in normalized_image_urls if url.startswith("data:")]
     normal_urls = [url for url in normalized_image_urls if not url.startswith("data:")]
     for data_url in data_urls:
@@ -215,7 +226,12 @@ async def append_history_messages(
         role = sanitized.get("role")
         content = sanitized.get("content")
         msg_id = sanitized.get("message_id")
-        if msg_id and isinstance(content, str) and "[图片" in content:
+        if (
+            msg_id
+            and isinstance(content, str)
+            and "<msg_id:" not in content
+            and ("[图片" in content or "[表情" in content)
+        ):
             content = f"{content} <msg_id:{msg_id}>"
 
         msg_timestamp = 0.0

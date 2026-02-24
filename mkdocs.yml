@@ -30,6 +30,7 @@ plugins:
 nav:
   - 首页: index.md
   - 设计:
+    - 未来发展路线图: roadmap.md
     - 重构方向（草案）: refactor_direction.md
   - 部署:
     - WSL2 + 任意 OneBot 实现: deploy/wsl2.md

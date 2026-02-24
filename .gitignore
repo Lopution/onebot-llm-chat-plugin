@@ -34,6 +34,9 @@ ENV/
 *.swo
 *~
 
+# AI assistants / planning artifacts
+.claude/
+
 # Testing
 .coverage
 .pytest_cache/

@@ -79,3 +79,4 @@ src/
 - 贡献指南：`CONTRIBUTING.md`
 - 安全策略：`SECURITY.md`
 - 第三方说明：`THIRD_PARTY_NOTICES.md`
+- 项目路线图：`docs/roadmap.md`

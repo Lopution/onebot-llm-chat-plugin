@@ -73,21 +73,80 @@ GENERAL_IMAGE_KEYWORDS = [
     "看看", "帮我看", "识别", "分析",
 ]
 
+# 隐式指代（短问句/求解释）：上下文里出现过媒体占位，但当前消息未显式提到“图/表情”等
+IMPLICIT_MEDIA_QUESTION_KEYWORDS = [
+    "啥意思",
+    "什么意思",
+    "这是什么",
+    "这是啥",
+    "看懂没",
+    "看懂吗",
+    "解释下",
+    "解释一下",
+    "解释",
+    "怎么回事",
+    "怎么理解",
+    "图里写的啥",
+    "图里写啥",
+    "图上写的啥",
+    "图上写啥",
+    "这啥",
+    "这啥意思",
+]
+
 
 def _has_any_keyword(text: str, keywords: List[str]) -> bool:
     """检查文本是否包含任一关键词"""
     text_lower = text.lower()
     return any(kw.lower() in text_lower for kw in keywords)
 
+def _looks_like_implicit_media_question(text: str) -> bool:
+    """判断是否像“隐式指代媒体”的短问句。"""
+    cleaned = re.sub(r"\s+", "", str(text or "").strip().lower())
+    if not cleaned:
+        return False
+    # 过长通常不是“刚才那张是啥”的隐式指代场景，避免误触发。
+    if len(cleaned) > 40:
+        return False
+    return any(keyword in cleaned for keyword in IMPLICIT_MEDIA_QUESTION_KEYWORDS)
 
 def _count_image_placeholders_in_context(context_messages: List[Dict[str, Any]], lookback: int = 5) -> int:
-    """统计最近上下文中图片占位符数量"""
+    """统计最近上下文中媒体占位符数量（图片/表情）。"""
     count = 0
-    pattern = re.compile(r"\[(?:图片|image)(?::[^\]]*)?\]", re.IGNORECASE)
+    # 中文占位符（含稳定 id）：[图片] / [图片×3] / [图片][picid:xxxx] / [表情] / [表情×2] / [表情][emoji:xxxx]
+    cn_pattern = re.compile(r"\[(图片|表情)(?:×(\d+))?\]")
+    # 兼容旧形态：[Image: xxx]
+    legacy_pattern = re.compile(r"\[(?:image)(?::[^\]]*)?\]", re.IGNORECASE)
     for msg in context_messages[-lookback:]:
         content = msg.get("content", "")
         if isinstance(content, str):
-            count += len(pattern.findall(content))
+            for matched in cn_pattern.finditer(content):
+                raw_n = matched.group(2)
+                if raw_n and raw_n.isdigit():
+                    count += max(1, int(raw_n))
+                else:
+                    count += 1
+            count += len(legacy_pattern.findall(content))
+            continue
+
+        # history_store_multimodal=True 时，content 是 list[part]，需要直接识别 image_url。
+        if isinstance(content, list):
+            for part in content:
+                if not isinstance(part, dict):
+                    continue
+                part_type = str(part.get("type") or "").lower()
+                if part_type == "image_url":
+                    count += 1
+                    continue
+                if part_type == "text":
+                    text = str(part.get("text") or "")
+                    for matched in cn_pattern.finditer(text):
+                        raw_n = matched.group(2)
+                        if raw_n and raw_n.isdigit():
+                            count += max(1, int(raw_n))
+                        else:
+                            count += 1
+                    count += len(legacy_pattern.findall(text))
     return count
 
 
@@ -135,14 +194,20 @@ def determine_history_image_action(
         )
     
     # 合并关键词
-    all_keywords = custom_keywords or []
-    if not all_keywords:
-        all_keywords = STRONG_REFERENCE_KEYWORDS + COMPARISON_KEYWORDS + GENERAL_IMAGE_KEYWORDS
+    effective_general_keywords = list(GENERAL_IMAGE_KEYWORDS)
+    if custom_keywords:
+        for kw in custom_keywords:
+            item = str(kw or "").strip()
+            if not item:
+                continue
+            if item in effective_general_keywords:
+                continue
+            effective_general_keywords.append(item)
     
     # 判定触发强度
     has_strong_ref = _has_any_keyword(message_text, STRONG_REFERENCE_KEYWORDS)
     has_comparison = _has_any_keyword(message_text, COMPARISON_KEYWORDS)
-    has_general_ref = _has_any_keyword(message_text, GENERAL_IMAGE_KEYWORDS)
+    has_general_ref = _has_any_keyword(message_text, effective_general_keywords)
     
     # 检查上下文中是否有图片占位符
     context_has_images = False
@@ -159,6 +224,11 @@ def determine_history_image_action(
         confidence = 0.6
     elif context_has_images:
         confidence = 0.3
+
+    # 隐式指代：上下文出现过媒体占位，当前消息像“短问句/求解释”
+    # 目标：避免用户不引用、不说“图/表情”，只说“啥意思”时漏掉 TWO_STAGE。
+    if context_has_images and _looks_like_implicit_media_question(message_text):
+        confidence = max(confidence, float(two_stage_threshold))
     
     # 无明确触发信号
     if confidence < 0.3:

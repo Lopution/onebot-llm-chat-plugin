@@ -49,6 +49,15 @@ def build_proactive_chatroom_injection(
         if len(content) > 200:
             content = content[:200] + "…"
 
+        # 当 transcript 行包含媒体占位符时，附加 <msg_id:...>，方便后续两阶段回取关联。
+        msg_id = str(msg.get("message_id") or "").strip()
+        if (
+            msg_id
+            and "<msg_id:" not in content
+            and ("[图片" in content or "[表情" in content)
+        ):
+            content = f"{content} <msg_id:{msg_id}>"
+
         if role == "assistant":
             lines.append(f"{bot_name}: {content}")
             continue

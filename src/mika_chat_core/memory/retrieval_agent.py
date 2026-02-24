@@ -133,6 +133,8 @@ class MemoryRetrievalAgent:
         temperature: float = 0.0,
         max_tokens: int = 512,
     ) -> str:
+        provider_name = str(llm_cfg.get("provider") or "openai_compat")
+        base_url = str(llm_cfg.get("base_url") or "")
         api_keys = list(llm_cfg.get("api_keys") or [])
         if not api_keys:
             return ""
@@ -149,8 +151,8 @@ class MemoryRetrievalAgent:
         }
 
         prepared = build_provider_request(
-            provider=str(llm_cfg.get("provider") or "openai_compat"),
-            base_url=str(llm_cfg.get("base_url") or ""),
+            provider=provider_name,
+            base_url=base_url,
             model=model,
             api_key=str(api_keys[0] or ""),
             request_body=request_body,
@@ -169,7 +171,7 @@ class MemoryRetrievalAgent:
             response.raise_for_status()
             payload = response.json()
             assistant_message, _, _, _ = parse_provider_response(
-                provider=str(llm_cfg.get("provider") or "openai_compat"),
+                provider=provider_name,
                 data=payload,
             )
             parsed = normalize_content(assistant_message.get("content", ""))
@@ -185,8 +187,27 @@ class MemoryRetrievalAgent:
                 if value:
                     text_parts.append(value)
             return "\n".join(text_parts).strip()
+        except httpx.HTTPStatusError as exc:
+            status_code = int(getattr(exc.response, "status_code", 0) or 0)
+            body_preview = ""
+            try:
+                body_preview = str(getattr(exc.response, "text", "") or "").strip()
+            except Exception:
+                body_preview = ""
+            body_preview = body_preview.replace("\n", " ")
+            if len(body_preview) > 240:
+                body_preview = body_preview[:240] + "..."
+            log.warning(
+                f"[memory-retrieval] 规划调用失败 | model={model} | provider={provider_name} | "
+                f"base_url={base_url} | status={status_code} | body={body_preview!r}"
+            )
+            return ""
         except Exception as exc:
-            log.warning(f"[memory-retrieval] 规划调用失败 | model={model} | err={exc}")
+            log.warning(
+                f"[memory-retrieval] 规划调用失败 | model={model} | provider={provider_name} | "
+                f"base_url={base_url} | err_type={type(exc).__name__} | err={exc!r}",
+                exc_info=True,
+            )
             return ""
 
     @staticmethod

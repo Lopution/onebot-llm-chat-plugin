@@ -3,10 +3,9 @@ from __future__ import annotations
 import pytest
 
 fastapi = pytest.importorskip("fastapi")
-testclient = pytest.importorskip("fastapi.testclient")
+httpx = pytest.importorskip("httpx")
 
 FastAPI = fastapi.FastAPI
-TestClient = testclient.TestClient
 
 from mika_chat_core.config import Config
 from mika_chat_core.webui import create_webui_router
@@ -79,43 +78,55 @@ class _DummyContextStore:
         }
 
 
-def test_webui_session_api_endpoints(monkeypatch):
+@pytest.mark.asyncio
+async def test_webui_session_api_endpoints(monkeypatch):
     config = _make_config()
     app = FastAPI()
     app.include_router(create_webui_router(settings_getter=lambda: config))
-    client = TestClient(app)
+    transport = httpx.ASGITransport(app=app)
 
     monkeypatch.setattr("mika_chat_core.webui.api_session.get_context_store", lambda: _DummyContextStore())
 
-    list_resp = client.get("/webui/api/session", params={"page": 1, "page_size": 10, "query": "group:"})
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        list_resp = await client.get(
+            "/webui/api/session",
+            params={"page": 1, "page_size": 10, "query": "group:"},
+        )
     assert list_resp.status_code == 200
     assert list_resp.json()["status"] == "ok"
     assert list_resp.json()["data"]["total"] == 1
 
-    detail_resp = client.get("/webui/api/session/group:1001", params={"preview_limit": 8})
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        detail_resp = await client.get(
+            "/webui/api/session/group:1001",
+            params={"preview_limit": 8},
+        )
     assert detail_resp.status_code == 200
     assert detail_resp.json()["data"]["session_key"] == "group:1001"
     assert detail_resp.json()["data"]["message_count"] == 12
 
-    clear_resp = client.delete(
-        "/webui/api/session/group:1001",
-        params={"purge_archive": "true", "purge_topic_state": "false"},
-    )
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        clear_resp = await client.delete(
+            "/webui/api/session/group:1001",
+            params={"purge_archive": "true", "purge_topic_state": "false"},
+        )
     assert clear_resp.status_code == 200
     assert clear_resp.json()["data"]["ok"] is True
     assert clear_resp.json()["data"]["deleted"]["archive"] == 3
     assert clear_resp.json()["data"]["deleted"]["topic_state"] == 0
 
 
-def test_webui_session_detail_not_found(monkeypatch):
+@pytest.mark.asyncio
+async def test_webui_session_detail_not_found(monkeypatch):
     config = _make_config()
     app = FastAPI()
     app.include_router(create_webui_router(settings_getter=lambda: config))
-    client = TestClient(app)
+    transport = httpx.ASGITransport(app=app)
 
     monkeypatch.setattr("mika_chat_core.webui.api_session.get_context_store", lambda: _DummyContextStore())
 
-    response = client.get("/webui/api/session/missing")
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/webui/api/session/missing")
     assert response.status_code == 404
     body = response.json()
     assert body["status"] == "error"

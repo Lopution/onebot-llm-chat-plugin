@@ -6,10 +6,9 @@ from typing import Any
 import pytest
 
 fastapi = pytest.importorskip("fastapi")
-testclient = pytest.importorskip("fastapi.testclient")
+httpx = pytest.importorskip("httpx")
 
 FastAPI = fastapi.FastAPI
-TestClient = testclient.TestClient
 
 from mika_chat_core.config import Config
 from mika_chat_core.webui import create_webui_router
@@ -107,11 +106,12 @@ class _DummyPersonaManager:
         return True
 
 
-def test_webui_persona_crud(monkeypatch):
+@pytest.mark.asyncio
+async def test_webui_persona_crud(monkeypatch):
     config = _make_config()
     app = FastAPI()
     app.include_router(create_webui_router(settings_getter=lambda: config))
-    client = TestClient(app)
+    transport = httpx.ASGITransport(app=app)
 
     manager = _DummyPersonaManager()
     monkeypatch.setattr(
@@ -119,34 +119,38 @@ def test_webui_persona_crud(monkeypatch):
         lambda: manager,
     )
 
-    list_resp = client.get("/webui/api/persona")
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        list_resp = await client.get("/webui/api/persona")
     assert list_resp.status_code == 200
     assert list_resp.json()["status"] == "ok"
 
-    create_resp = client.post(
-        "/webui/api/persona",
-        json={
-            "name": "新角色",
-            "character_prompt": "你是新角色。",
-            "is_active": False,
-        },
-    )
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        create_resp = await client.post(
+            "/webui/api/persona",
+            json={
+                "name": "新角色",
+                "character_prompt": "你是新角色。",
+                "is_active": False,
+            },
+        )
     assert create_resp.status_code == 200
     created = create_resp.json()["data"]
     assert created["name"] == "新角色"
 
-    activate_resp = client.post(f"/webui/api/persona/{created['id']}/activate")
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        activate_resp = await client.post(f"/webui/api/persona/{created['id']}/activate")
     assert activate_resp.status_code == 200
     assert activate_resp.json()["data"]["is_active"] is True
 
-    update_resp = client.put(
-        f"/webui/api/persona/{created['id']}",
-        json={"character_prompt": "你是更新后的角色。"},
-    )
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        update_resp = await client.put(
+            f"/webui/api/persona/{created['id']}",
+            json={"character_prompt": "你是更新后的角色。"},
+        )
     assert update_resp.status_code == 200
     assert "更新后" in update_resp.json()["data"]["character_prompt"]
 
-    delete_resp = client.delete(f"/webui/api/persona/{created['id']}")
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        delete_resp = await client.delete(f"/webui/api/persona/{created['id']}")
     assert delete_resp.status_code == 200
     assert delete_resp.json()["data"]["ok"] is True
-

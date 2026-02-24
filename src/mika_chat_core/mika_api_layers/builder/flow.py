@@ -208,9 +208,27 @@ async def build_messages_flow(
             f"before={len(image_urls)} | after={len(normalized_image_urls)} | max_images={max_images}"
         )
 
+    strict_multimodal = bool(getattr(plugin_cfg, "mika_multimodal_strict", True))
+    llm_cfg = plugin_cfg.get_llm_config()
+    provider_capabilities = get_provider_capabilities_fn(
+        configured_provider=str(llm_cfg.get("provider") or "openai_compat"),
+        base_url=str(llm_cfg.get("base_url") or plugin_cfg.llm_base_url),
+        model=str(model or ""),
+    )
+    supports_images = bool(provider_capabilities.supports_images)
+    supports_tools = bool(provider_capabilities.supports_tools and enable_tools)
+    if not strict_multimodal:
+        supports_images = True
+        supports_tools = bool(enable_tools)
+
+    forced_supports_images = getattr(plugin_cfg, "mika_llm_supports_images", None)
+    if forced_supports_images is not None:
+        supports_images = bool(forced_supports_images)
+
     original_content, api_content = await service_build_original_and_api_content(
         message=message,
         normalized_image_urls=normalized_image_urls,
+        allow_images_in_api=supports_images,
         has_image_processor=has_image_processor,
         get_image_processor=get_image_processor,
         plugin_cfg=plugin_cfg,
@@ -231,18 +249,6 @@ async def build_messages_flow(
     )
 
     messages: List[Dict[str, Any]] = [{"role": "system", "content": enhanced_system_prompt}]
-    strict_multimodal = bool(getattr(plugin_cfg, "mika_multimodal_strict", True))
-    llm_cfg = plugin_cfg.get_llm_config()
-    provider_capabilities = get_provider_capabilities_fn(
-        configured_provider=str(llm_cfg.get("provider") or "openai_compat"),
-        base_url=str(llm_cfg.get("base_url") or plugin_cfg.llm_base_url),
-        model=str(model or ""),
-    )
-    supports_images = bool(provider_capabilities.supports_images)
-    supports_tools = bool(provider_capabilities.supports_tools and enable_tools)
-    if not strict_multimodal:
-        supports_images = True
-        supports_tools = bool(enable_tools)
 
     messages, dropped_tool_messages, dropped_unsupported_images = await service_append_history_messages(
         messages=messages,
@@ -271,9 +277,46 @@ async def build_messages_flow(
         messages.append({"role": "user", "content": _build_search_context_message(search_result)})
         log_obj.info(f"已注入搜索结果(低权限 user 消息) | len={len(search_result)}")
 
-    if system_injection:
-        messages.append({"role": "system", "content": system_injection})
-        log_obj.info(f"已注入外部 System 指令 (如主动发言理由/图片映射) | len={len(system_injection)}")
+    effective_system_injection = system_injection
+    if not supports_images and bool(getattr(plugin_cfg, "mika_media_caption_enabled", False)):
+        image_parts: list[dict[str, Any]] = []
+        if isinstance(original_content, list):
+            for item in original_content:
+                if isinstance(item, dict) and str(item.get("type") or "").lower() == "image_url":
+                    image_parts.append(item)
+        if image_parts:
+            try:
+                from ...utils.media_captioner import caption_images
+
+                captions = await caption_images(
+                    image_parts,
+                    request_id="build_messages",
+                    cfg=plugin_cfg,
+                )
+            except Exception as exc:
+                log_obj.warning(f"caption 兜底失败，继续占位符模式: {exc}")
+                captions = []
+
+            if captions:
+                lines = ["[Context Media Captions | Untrusted]"]
+                for i, caption in enumerate(captions):
+                    text = str(caption or "").strip()
+                    if text:
+                        lines.append(f"- Image {i+1}: {text}")
+                caption_block = "\n".join(lines).strip()
+                if caption_block:
+                    if effective_system_injection:
+                        effective_system_injection = f"{effective_system_injection}\n\n{caption_block}"
+                    else:
+                        effective_system_injection = caption_block
+                    log_obj.info(f"已注入媒体 captions（supports_images=0） | images={len(captions)}")
+
+    if effective_system_injection:
+        messages.append({"role": "system", "content": effective_system_injection})
+        log_obj.info(
+            "已注入外部 System 指令 (如主动发言理由/图片映射/caption) | "
+            f"len={len(effective_system_injection)}"
+        )
 
     messages.append({"role": "user", "content": api_content})
 

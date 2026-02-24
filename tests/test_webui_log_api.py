@@ -3,10 +3,9 @@ from __future__ import annotations
 import pytest
 
 fastapi = pytest.importorskip("fastapi")
-testclient = pytest.importorskip("fastapi.testclient")
+httpx = pytest.importorskip("httpx")
 
 FastAPI = fastapi.FastAPI
-TestClient = testclient.TestClient
 
 from mika_chat_core.config import Config
 from mika_chat_core.infra.log_broker import LogBroker
@@ -26,7 +25,8 @@ def _make_config(**overrides: object) -> Config:
     return Config(**payload)
 
 
-def test_webui_log_history_returns_envelope(monkeypatch):
+@pytest.mark.asyncio
+async def test_webui_log_history_returns_envelope(monkeypatch):
     broker = LogBroker(max_events=20)
     broker.publish("info", "boot")
     broker.publish("warning", "warn")
@@ -35,9 +35,9 @@ def test_webui_log_history_returns_envelope(monkeypatch):
     config = _make_config()
     app = FastAPI()
     app.include_router(create_webui_router(settings_getter=lambda: config))
-    client = TestClient(app)
-
-    response = client.get("/webui/api/log/history", params={"limit": 10})
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/webui/api/log/history", params={"limit": 10})
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
@@ -45,7 +45,8 @@ def test_webui_log_history_returns_envelope(monkeypatch):
     assert [item["message"] for item in body["data"]["events"]] == ["boot", "warn"]
 
 
-def test_webui_log_history_supports_min_level(monkeypatch):
+@pytest.mark.asyncio
+async def test_webui_log_history_supports_min_level(monkeypatch):
     broker = LogBroker(max_events=20)
     broker.publish("debug", "debug-msg")
     broker.publish("info", "info-msg")
@@ -55,9 +56,9 @@ def test_webui_log_history_supports_min_level(monkeypatch):
     config = _make_config()
     app = FastAPI()
     app.include_router(create_webui_router(settings_getter=lambda: config))
-    client = TestClient(app)
-
-    response = client.get("/webui/api/log/history", params={"limit": 10, "min_level": "WARNING"})
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/webui/api/log/history", params={"limit": 10, "min_level": "WARNING"})
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
