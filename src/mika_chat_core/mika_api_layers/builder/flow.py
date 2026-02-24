@@ -130,6 +130,131 @@ def normalize_image_inputs(
     return normalized
 
 
+def _extract_image_parts_from_history(
+    history: List[Dict[str, Any]],
+    *,
+    normalize_content_fn,
+    max_images: int,
+) -> list[dict[str, Any]]:
+    if not history or max_images <= 0:
+        return []
+
+    parts: list[dict[str, Any]] = []
+    for raw_msg in reversed(history):
+        content = normalize_content_fn(raw_msg.get("content", ""))
+        if not isinstance(content, list):
+            continue
+        for item in reversed(content):
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("type") or "").lower() != "image_url":
+                continue
+            parts.append(item)
+            if len(parts) >= max_images:
+                return parts
+    return parts
+
+
+def _dedupe_image_parts(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Deduplicate image parts while keeping order (newest first)."""
+    if not parts:
+        return []
+
+    seen: set[str] = set()
+    deduped: list[dict[str, Any]] = []
+    for part in parts:
+        key = placeholder_from_content_part(part)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(part)
+    return deduped
+
+
+async def _inline_history_images_in_messages(
+    messages: List[Dict[str, Any]],
+    *,
+    max_images: int,
+    plugin_cfg: Any,
+    get_image_processor,
+    log_obj: Any,
+) -> int:
+    """Inline (download+base64) history image_url parts for providers that require inline_data.
+
+    We keep at most `max_images` image_url parts (newest first). Excess history images are
+    replaced with stable placeholders to control cost/latency.
+    """
+    if max_images <= 0:
+        return 0
+    if not callable(get_image_processor):
+        return 0
+
+    try:
+        concurrency = int(getattr(plugin_cfg, "mika_image_download_concurrency", 3) or 3)
+        processor = get_image_processor(concurrency)
+    except Exception as exc:
+        log_obj.warning(f"获取图片处理器失败，跳过历史图片内联: {exc}")
+        return 0
+
+    used = 0
+    replaced = 0
+    failures = 0
+
+    # Walk from newest -> oldest so we keep the most recent media in the budget.
+    for msg in reversed(messages):
+        content = msg.get("content")
+        if not isinstance(content, list):
+            continue
+        for idx in range(len(content) - 1, -1, -1):
+            part = content[idx]
+            if not isinstance(part, dict):
+                continue
+            if str(part.get("type") or "").lower() != "image_url":
+                continue
+
+            placeholder = placeholder_from_content_part(part)
+            image_url = part.get("image_url")
+            if isinstance(image_url, dict):
+                url = str(image_url.get("url") or "").strip()
+            else:
+                url = str(image_url or "").strip()
+
+            if used >= max_images:
+                content[idx] = {"type": "text", "text": placeholder}
+                replaced += 1
+                continue
+
+            if not url:
+                content[idx] = {"type": "text", "text": placeholder}
+                replaced += 1
+                continue
+
+            if url.startswith("data:"):
+                used += 1
+                continue
+
+            if not url.startswith(("http://", "https://")):
+                content[idx] = {"type": "text", "text": placeholder}
+                replaced += 1
+                continue
+
+            try:
+                base64_data, mime_type = await processor.download_and_encode(url)
+                part["image_url"] = {"url": f"data:{mime_type};base64,{base64_data}"}
+                used += 1
+            except Exception as exc:
+                failures += 1
+                content[idx] = {"type": "text", "text": placeholder}
+                replaced += 1
+                log_obj.debug(f"历史图片内联失败，回退占位符: {exc}")
+
+    if used > 0 or replaced > 0:
+        log_obj.info(
+            f"历史图片内联完成 | images={used} replaced={replaced} failures={failures}"
+        )
+    return used
+
+
 def _build_search_context_message(search_result: str) -> str:
     return (
         "[External Search Results | Untrusted]\n"
@@ -273,6 +398,21 @@ async def build_messages_flow(
             f"supports_tools={supports_tools} | supports_images={supports_images}"
         )
 
+    # AstrBot-like behavior: keep recent multimodal history visible to the model.
+    # For providers that require inline_data (or proxy endpoints with unstable URL fetch),
+    # we convert history image_url parts to data URLs (bounded by a small budget).
+    if supports_images and bool(has_image_processor):
+        history_budget = int(getattr(plugin_cfg, "mika_history_image_two_stage_max", 2) or 2)
+        history_budget = max(0, min(max_images, history_budget))
+        if history_budget > 0:
+            await _inline_history_images_in_messages(
+                messages,
+                max_images=history_budget,
+                plugin_cfg=plugin_cfg,
+                get_image_processor=get_image_processor,
+                log_obj=log_obj,
+            )
+
     if search_result:
         messages.append({"role": "user", "content": _build_search_context_message(search_result)})
         log_obj.info(f"已注入搜索结果(低权限 user 消息) | len={len(search_result)}")
@@ -284,6 +424,27 @@ async def build_messages_flow(
             for item in original_content:
                 if isinstance(item, dict) and str(item.get("type") or "").lower() == "image_url":
                     image_parts.append(item)
+
+        # Caption fallback for history media (no-signal continuation).
+        try:
+            history_raw = (
+                await get_context_async(user_id, group_id)
+                if history_override is None
+                else list(history_override)
+            )
+        except Exception:
+            history_raw = []
+
+        # Prefer the most recent media in history.
+        image_parts.extend(
+            _extract_image_parts_from_history(
+                history_raw,
+                normalize_content_fn=normalize_content_fn,
+                max_images=max(1, int(getattr(plugin_cfg, "mika_history_image_two_stage_max", 2) or 2)),
+            )
+        )
+        image_parts = _dedupe_image_parts(image_parts)
+
         if image_parts:
             try:
                 from ...utils.media_captioner import caption_images

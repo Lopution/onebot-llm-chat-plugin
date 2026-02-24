@@ -1151,8 +1151,8 @@ class Config(BaseModel):
     # ==================== 历史图片上下文增强配置 ====================
     # 模式: off=关闭, inline=仅回注原图, two_stage=仅两阶段, hybrid=混合(推荐)
     mika_history_image_mode: str = "hybrid"
-    # 历史上下文快照是否保存多模态图片 part（默认关闭，改为文本占位）
-    mika_history_store_multimodal: bool = False
+    # 历史上下文快照是否保存多模态图片 part（默认开启；上游不支持图片时会自动清洗为占位符/可选 caption）
+    mika_history_store_multimodal: bool = True
     # 单次请求直接回注的历史原图数量上限
     mika_history_image_inline_max: int = 1
     # hybrid 模式下触发 inline 的最低置信度阈值

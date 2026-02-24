@@ -585,7 +585,7 @@ def get_context_store(
     summary_enabled: bool = False,
     summary_trigger_turns: int = 20,
     summary_max_chars: int = 500,
-    history_store_multimodal: bool = False,
+    history_store_multimodal: bool = True,
 ) -> SQLiteContextStore:
     """获取全局上下文存储实例"""
     global context_store
