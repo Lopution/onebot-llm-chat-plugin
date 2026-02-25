@@ -257,6 +257,13 @@ class MikaClient:
         self._use_persistent = context_backend.use_persistent
         self._context_store: Optional[SQLiteContextStore] = context_backend.context_store
         self._contexts: Dict[tuple, List[Dict[str, Any]]] = context_backend.contexts
+
+        # Request-time context trimming (AstrBot-like):
+        # even if the stored context is large, we still enforce a soft budget before sending
+        # it to the upstream model to avoid provider empty/fallback responses.
+        self._request_context_manager = None
+        self._request_context_manager_sig = None
+        self._warned_context_tokens_soft_auto = False
         
         # 复用 httpx 客户端
         self._http_client: Optional[httpx.AsyncClient] = None
@@ -518,14 +525,63 @@ class MikaClient:
         return service_get_context_key(user_id, group_id)
     
     async def _get_context_async(self, user_id: str, group_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        """异步获取上下文（支持持久化存储）"""
-        return await service_get_context_async(
+        """异步获取上下文（支持持久化存储）。
+
+        AstrBot-style guard:
+        - Stored context may be configured to keep many turns/messages.
+        - Before each LLM request (and related sub-requests like retrieval),
+          we apply a soft budget trim to keep the request stable.
+        """
+        history = await service_get_context_async(
             use_persistent=self._use_persistent,
             context_store=self._context_store,
             contexts=self._contexts,
             user_id=user_id,
             group_id=group_id,
         )
+
+        # Fail-safe trimming: do not let a single chat session grow without bounds.
+        # This protects group chats where history can explode and upstream providers may
+        # return "empty final content" while still responding HTTP 200.
+        try:
+            from .utils.context_manager import ContextManager
+
+            context_mode = str(getattr(plugin_config, "mika_context_mode", "structured") or "structured")
+            max_turns = int(getattr(plugin_config, "mika_context_max_turns", 30) or 30)
+            max_tokens_soft = int(getattr(plugin_config, "mika_context_max_tokens_soft", 12000) or 12000)
+            # NOTE: Treat <=0 as "auto safe default" (AstrBot-like). A value of 0 used to
+            # effectively disable trimming, which is unsafe in real group chats.
+            if max_tokens_soft <= 0:
+                max_tokens_soft = 12000
+                if not self._warned_context_tokens_soft_auto:
+                    log.warning(
+                        "检测到 mika_context_max_tokens_soft<=0，启用请求期安全默认值 12000 以防上下文无限膨胀"
+                    )
+                    self._warned_context_tokens_soft_auto = True
+
+            summary_enabled = bool(getattr(plugin_config, "mika_context_summary_enabled", False))
+            hard_max_messages = max(
+                160,
+                int(getattr(plugin_config, "mika_max_context", 40) or 40) * 2,
+            )
+
+            sig = (context_mode, max_turns, max_tokens_soft, summary_enabled, hard_max_messages)
+            if self._request_context_manager is None or self._request_context_manager_sig != sig:
+                self._request_context_manager = ContextManager(
+                    context_mode=context_mode,
+                    max_turns=max_turns,
+                    max_tokens_soft=max_tokens_soft,
+                    summary_enabled=summary_enabled,
+                    hard_max_messages=hard_max_messages,
+                )
+                self._request_context_manager_sig = sig
+
+            trimmed = self._request_context_manager.process(list(history or []))
+            return trimmed
+        except Exception:
+            # Never block chat due to trimming issues; fall back to raw history.
+            log.debug("请求期上下文裁剪失败，回退原始上下文", exc_info=True)
+            return history
     
     
     async def _add_to_context_async(
@@ -868,11 +924,18 @@ class MikaClient:
 
     def _process_response(self, reply: str, request_id: str) -> str:
         """处理响应文本（清理思考标记/角色标签/Markdown格式/空白）。"""
-        return service_process_response(
+        cleaned = service_process_response(
             reply=reply,
             request_id=request_id,
             clean_thinking_markers=self._clean_thinking_markers,
         )
+        # Some upstream OpenAI-compat proxies (e.g. raycast-relay) inject a fixed fallback
+        # text when the real "final content" is empty. Treat it as empty so our own
+        # retry/degrade logic can kick in.
+        if cleaned == "抱歉，我这次没有成功生成有效回复，请重试。":
+            log.warning(f"[req:{request_id}] 上游返回空最终内容兜底文案，按空回复处理以触发降级重试")
+            return ""
+        return cleaned
 
     async def _handle_empty_reply_retry(
         self,
