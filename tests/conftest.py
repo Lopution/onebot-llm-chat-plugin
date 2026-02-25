@@ -188,6 +188,13 @@ atexit.register(_cleanup_patches)
 @pytest.fixture(autouse=True)
 def reset_runtime_state_between_tests():
     """清理 runtime 全局状态，避免测试间环境污染。"""
+    # `mika_chat_cli.load_cli_config()` 会调用 `load_dotenv()`，这会把本地 `.env` 里的变量
+    # 注入到 `os.environ`，并在 monkeypatch 作用域外残留，导致后续 Config 默认值测试被污染。
+    # 这里在每个用例开始前清理相关前缀，确保测试隔离。
+    for key in list(os.environ.keys()):
+        if key.startswith(("MIKA_", "LLM_", "SEARCH_", "SERPER_", "TAVILY_")) and not key.startswith("MIKA_TEST_"):
+            os.environ.pop(key, None)
+
     from mika_chat_core.config import Config
     from mika_chat_core import runtime as runtime_module
     from mika_chat_core.tools_registry import get_tool_registry
