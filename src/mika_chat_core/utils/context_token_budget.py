@@ -16,6 +16,7 @@ Users can always override by setting an explicit positive number.
 from __future__ import annotations
 
 from typing import Any, Iterable
+from urllib.parse import urlparse
 
 
 AUTO_USAGE_RATIO: float = 0.82
@@ -25,6 +26,42 @@ AUTO_MIN_TOKENS: int = 4_000
 # Safety-first cap: even if a model supports huge contexts, very large prompts are
 # expensive and tend to be unstable through third-party proxies.
 AUTO_MAX_TOKENS: int = 20_000
+
+# For unknown third-party proxy endpoints, keep a lower default cap.
+AUTO_PROXY_MAX_TOKENS: int = 12_000
+
+
+def _is_trusted_endpoint(*, provider: str, base_url: str) -> bool:
+    """Heuristic: detect whether the endpoint is likely an official or local LLM endpoint.
+
+    Third-party OpenAI-compatible proxies often impose smaller request-body limits.
+    In auto mode we default to a more conservative cap unless the user explicitly overrides.
+    """
+    try:
+        parsed = urlparse(str(base_url or "").strip())
+        host = str(parsed.hostname or "").lower()
+        path = str(parsed.path or "").lower()
+    except Exception:
+        host = ""
+        path = ""
+
+    if host in {"localhost", "127.0.0.1", "::1"}:
+        return True
+
+    provider_name = str(provider or "").strip().lower()
+    if provider_name == "google_genai":
+        return "generativelanguage.googleapis.com" in host
+    if provider_name == "anthropic":
+        return host.endswith("anthropic.com")
+    if provider_name == "azure_openai":
+        return "openai.azure.com" in host
+
+    # openai_compat: treat official OpenAI + Google OpenAI-compat endpoints as trusted.
+    if host.endswith("openai.com"):
+        return True
+    if "generativelanguage.googleapis.com" in host and "/openai" in path:
+        return True
+    return False
 
 
 def guess_model_context_limit_tokens(model: str) -> int:
@@ -71,6 +108,10 @@ def resolve_context_max_tokens_soft(
     if raw > 0:
         return raw
 
+    provider = str(getattr(plugin_cfg, "llm_provider", "") or "").strip()
+    base_url = str(getattr(plugin_cfg, "llm_base_url", "") or "").strip()
+    endpoint_cap = AUTO_MAX_TOKENS if _is_trusted_endpoint(provider=provider, base_url=base_url) else min(AUTO_MAX_TOKENS, AUTO_PROXY_MAX_TOKENS)
+
     model_candidates = [str(m or "").strip() for m in (models or []) if str(m or "").strip()]
     if not model_candidates:
         model_candidates = [str(getattr(plugin_cfg, "llm_model", "") or "").strip()]
@@ -87,6 +128,5 @@ def resolve_context_max_tokens_soft(
 
     budget = int(limit_tokens * AUTO_USAGE_RATIO)
     budget = max(AUTO_MIN_TOKENS, budget)
-    budget = min(AUTO_MAX_TOKENS, budget)
+    budget = min(endpoint_cap, budget)
     return budget
-
