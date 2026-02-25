@@ -148,10 +148,15 @@ def normalize_context_messages(raw_messages: Any) -> List[ContextMessage]:
 
 
 def estimate_text_tokens(text: str) -> int:
-    """粗略估算 token 数。"""
+    """粗略估算 token 数（保守，偏向高估以避免请求过大）。"""
     if not text:
         return 0
-    return max(1, len(text) // 4)
+    # ASCII 文本大致 ~4 chars/token；CJK 等非 ASCII 往往更接近 1 char/token。
+    # 这里用保守估计，避免在中文群聊里严重低估导致请求过大（代理/中转更容易空回复）。
+    ascii_chars = sum(1 for ch in text if ord(ch) < 128)
+    non_ascii_chars = len(text) - ascii_chars
+    tokens = ascii_chars // 4 + non_ascii_chars
+    return max(1, int(tokens))
 
 
 def estimate_message_tokens(message: ContextMessage) -> int:
@@ -166,7 +171,16 @@ def estimate_message_tokens(message: ContextMessage) -> int:
             if part_type == "text":
                 total += estimate_text_tokens(str(part.get("text") or ""))
             elif part_type == "image_url":
-                total += 16
+                # image_url 的 URL 本身通常很短；但 data:base64 可能非常大。
+                image_url = part.get("image_url")
+                if isinstance(image_url, dict):
+                    url = str(image_url.get("url") or "")
+                else:
+                    url = str(image_url or "")
+                if url.startswith("data:"):
+                    total += max(16, estimate_text_tokens(url))
+                else:
+                    total += 16
             else:
                 total += 4
 

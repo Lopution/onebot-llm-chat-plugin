@@ -23,12 +23,14 @@ AUTO_USAGE_RATIO: float = 0.82
 AUTO_FALLBACK_TOKENS: int = 12_000
 AUTO_MIN_TOKENS: int = 4_000
 
-# Safety-first cap: even if a model supports huge contexts, very large prompts are
-# expensive and tend to be unstable through third-party proxies.
-AUTO_MAX_TOKENS: int = 20_000
+# Default cap: modern models can comfortably handle 100k context, and it's a
+# practical baseline for "300 turns" chatrooms. Users can always override.
+AUTO_MAX_TOKENS: int = 100_000
 
-# For unknown third-party proxy endpoints, keep a lower default cap.
-AUTO_PROXY_MAX_TOKENS: int = 12_000
+# Proxy cap: keep aligned with AUTO_MAX_TOKENS by default. If a proxy endpoint
+# can't handle large requests, users should set an explicit smaller budget via
+# `MIKA_CONTEXT_MAX_TOKENS_SOFT`.
+AUTO_PROXY_MAX_TOKENS: int = 100_000
 
 
 def _is_trusted_endpoint(*, provider: str, base_url: str) -> bool:

@@ -563,7 +563,7 @@ class MikaClient:
 
             if raw_tokens_soft <= 0 and not self._warned_context_tokens_soft_auto:
                 log.info(
-                    f"mika_context_max_tokens_soft<=0，启用自动预算 | resolved={max_tokens_soft} | ratio=0.82 | cap=20000"
+                    f"mika_context_max_tokens_soft<=0，启用自动预算 | resolved={max_tokens_soft} | ratio=0.82 | cap=100000"
                 )
                 self._warned_context_tokens_soft_auto = True
 

@@ -958,7 +958,7 @@ class Config(BaseModel):
     # 上下文最大保留轮次（优先于按消息条数截断）
     mika_context_max_turns: int = 30
     # 软 token 上限（估算），超过后会逐轮裁剪旧上下文
-    mika_context_max_tokens_soft: int = 12000
+    mika_context_max_tokens_soft: int = 100000
     # 是否启用摘要压缩（默认关闭，稳定优先）
     mika_context_summary_enabled: bool = False
     # 摘要文本最大字符数
