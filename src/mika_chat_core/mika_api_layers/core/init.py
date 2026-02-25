@@ -6,6 +6,8 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Callable, DefaultDict, Dict, List, Optional, Tuple
 
+from ...utils.context_token_budget import resolve_context_max_tokens_soft
+
 
 @dataclass(frozen=True)
 class ContextBackendInitResult:
@@ -42,8 +44,12 @@ def init_context_backend(
         max_cache_size=cache_size,
         context_mode=str(getattr(plugin_cfg, "mika_context_mode", "structured")),
         max_turns=int(getattr(plugin_cfg, "mika_context_max_turns", 30) or 30),
-        max_tokens_soft=int(
-            getattr(plugin_cfg, "mika_context_max_tokens_soft", 12000) or 12000
+        max_tokens_soft=resolve_context_max_tokens_soft(
+            plugin_cfg,
+            models=[
+                str(getattr(plugin_cfg, "llm_model", "") or "").strip(),
+                str(getattr(plugin_cfg, "llm_fast_model", "") or "").strip(),
+            ],
         ),
         summary_enabled=bool(
             getattr(plugin_cfg, "mika_context_summary_enabled", False)

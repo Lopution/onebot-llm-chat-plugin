@@ -545,19 +545,27 @@ class MikaClient:
         # return "empty final content" while still responding HTTP 200.
         try:
             from .utils.context_manager import ContextManager
+            from .utils.context_token_budget import resolve_context_max_tokens_soft
 
             context_mode = str(getattr(plugin_config, "mika_context_mode", "structured") or "structured")
             max_turns = int(getattr(plugin_config, "mika_context_max_turns", 30) or 30)
-            max_tokens_soft = int(getattr(plugin_config, "mika_context_max_tokens_soft", 12000) or 12000)
-            # NOTE: Treat <=0 as "auto safe default" (AstrBot-like). A value of 0 used to
-            # effectively disable trimming, which is unsafe in real group chats.
-            if max_tokens_soft <= 0:
-                max_tokens_soft = 12000
-                if not self._warned_context_tokens_soft_auto:
-                    log.warning(
-                        "检测到 mika_context_max_tokens_soft<=0，启用请求期安全默认值 12000 以防上下文无限膨胀"
-                    )
-                    self._warned_context_tokens_soft_auto = True
+            try:
+                raw_tokens_soft = int(getattr(plugin_config, "mika_context_max_tokens_soft", 12000))
+            except Exception:
+                raw_tokens_soft = 12000
+            max_tokens_soft = resolve_context_max_tokens_soft(
+                plugin_config,
+                models=[
+                    str(getattr(plugin_config, "llm_model", "") or "").strip(),
+                    str(getattr(plugin_config, "llm_fast_model", "") or "").strip(),
+                ],
+            )
+
+            if raw_tokens_soft <= 0 and not self._warned_context_tokens_soft_auto:
+                log.info(
+                    f"mika_context_max_tokens_soft<=0，启用自动预算 | resolved={max_tokens_soft} | ratio=0.82 | cap=20000"
+                )
+                self._warned_context_tokens_soft_auto = True
 
             summary_enabled = bool(getattr(plugin_config, "mika_context_summary_enabled", False))
             hard_max_messages = max(
