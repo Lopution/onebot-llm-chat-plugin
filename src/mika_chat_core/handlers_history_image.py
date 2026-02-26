@@ -89,10 +89,14 @@ async def apply_history_image_strategy_flow(
         # 上下文获取失败不应阻断历史图片策略判定（仅影响隐式指代等增强能力）。
         log_obj.debug(f"[历史图片] 获取上下文失败，继续策略判定: {exc}")
 
-    # AstrBot-like: if multimodal history is already stored in context, avoid duplicating
-    # the same image again via "history image injection" (saves cost and reduces noise).
+    # If request-time history already includes multimodal parts, avoid duplicating the same
+    # image again via "history image injection" (saves cost and reduces noise).
+    #
+    # Note: `mika_history_store_multimodal` controls storage format in context backend;
+    # it does NOT necessarily mean we send those images to the provider. The actual
+    # request-time behavior is controlled by `mika_history_send_multimodal`.
     try:
-        if bool(cfg(plugin_config, "mika_history_store_multimodal", False)) and context_messages:
+        if bool(cfg(plugin_config, "mika_history_send_multimodal", False)) and context_messages:
             present_msg_ids: set[str] = set()
             for msg in (context_messages or [])[-20:]:
                 mid = str(msg.get("message_id") or "").strip()

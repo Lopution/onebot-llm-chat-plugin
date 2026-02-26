@@ -1153,6 +1153,10 @@ class Config(BaseModel):
     mika_history_image_mode: str = "hybrid"
     # 历史上下文快照是否保存多模态图片 part（默认开启；上游不支持图片时会自动清洗为占位符/可选 caption）
     mika_history_store_multimodal: bool = True
+    # 是否在「请求发送给 LLM」的历史上下文中直接包含 image_url part。
+    # 强烈不推荐：这会显著增加请求体/网络成本，代理/中转更容易出现空回复或拉取失败。
+    # 默认关闭，推荐使用“历史图片策略(TWO_STAGE 自动回取并附带)”按需带图。
+    mika_history_send_multimodal: bool = False
     # 单次请求直接回注的历史原图数量上限
     mika_history_image_inline_max: int = 1
     # hybrid 模式下触发 inline 的最低置信度阈值

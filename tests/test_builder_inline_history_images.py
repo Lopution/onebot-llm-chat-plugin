@@ -6,13 +6,8 @@ from unittest.mock import AsyncMock
 import pytest
 
 
-class _DummyImageProcessor:
-    async def download_and_encode(self, _url: str):
-        return "abc", "image/png"
-
-
 @pytest.mark.asyncio
-async def test_builder_inlines_history_image_urls_to_data_urls_when_supported():
+async def test_builder_does_not_send_history_image_parts_by_default():
     from mika_chat_core import runtime as runtime_module
     from mika_chat_core.config import Config
     from mika_chat_core.mika_api_layers.core.messages import build_messages
@@ -38,6 +33,8 @@ async def test_builder_inlines_history_image_urls_to_data_urls_when_supported():
             mika_group_whitelist=[],
             mika_llm_supports_images=True,
             mika_media_caption_enabled=False,
+            # Default behavior: keep history media as compact placeholders.
+            mika_history_send_multimodal=False,
         )
     )
 
@@ -67,22 +64,27 @@ async def test_builder_inlines_history_image_urls_to_data_urls_when_supported():
         get_context_async=AsyncMock(return_value=history),
         enable_tools=False,
         use_persistent=False,
-        has_image_processor=True,
-        get_image_processor=lambda _c: _DummyImageProcessor(),
+        has_image_processor=False,
+        get_image_processor=None,
     )
 
-    urls: list[str] = []
+    image_part_urls: list[str] = []
+    text_parts: list[str] = []
     for msg in (result.request_body.get("messages") or []):
         content = msg.get("content")
         if not isinstance(content, list):
             continue
         for part in content:
-            if isinstance(part, dict) and part.get("type") == "image_url":
+            if not isinstance(part, dict):
+                continue
+            if part.get("type") == "image_url":
                 image_url = part.get("image_url") or {}
                 if isinstance(image_url, dict):
-                    urls.append(str(image_url.get("url") or ""))
+                    image_part_urls.append(str(image_url.get("url") or ""))
                 else:
-                    urls.append(str(image_url))
+                    image_part_urls.append(str(image_url))
+            if part.get("type") == "text":
+                text_parts.append(str(part.get("text") or ""))
 
-    assert urls == ["data:image/png;base64,abc"]
-
+    assert image_part_urls == []
+    assert any("[图片" in t for t in text_parts)

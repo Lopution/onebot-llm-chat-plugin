@@ -171,90 +171,6 @@ def _dedupe_image_parts(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return deduped
 
 
-async def _inline_history_images_in_messages(
-    messages: List[Dict[str, Any]],
-    *,
-    max_images: int,
-    plugin_cfg: Any,
-    get_image_processor,
-    log_obj: Any,
-) -> int:
-    """Inline (download+base64) history image_url parts for providers that require inline_data.
-
-    We keep at most `max_images` image_url parts (newest first). Excess history images are
-    replaced with stable placeholders to control cost/latency.
-    """
-    if max_images <= 0:
-        return 0
-    if not callable(get_image_processor):
-        return 0
-
-    try:
-        concurrency = int(getattr(plugin_cfg, "mika_image_download_concurrency", 3) or 3)
-        processor = get_image_processor(concurrency)
-    except Exception as exc:
-        log_obj.warning(f"获取图片处理器失败，跳过历史图片内联: {exc}")
-        return 0
-
-    used = 0
-    replaced = 0
-    failures = 0
-
-    # Walk from newest -> oldest so we keep the most recent media in the budget.
-    for msg in reversed(messages):
-        content = msg.get("content")
-        if not isinstance(content, list):
-            continue
-        for idx in range(len(content) - 1, -1, -1):
-            part = content[idx]
-            if not isinstance(part, dict):
-                continue
-            if str(part.get("type") or "").lower() != "image_url":
-                continue
-
-            placeholder = placeholder_from_content_part(part)
-            image_url = part.get("image_url")
-            if isinstance(image_url, dict):
-                url = str(image_url.get("url") or "").strip()
-            else:
-                url = str(image_url or "").strip()
-
-            if used >= max_images:
-                content[idx] = {"type": "text", "text": placeholder}
-                replaced += 1
-                continue
-
-            if not url:
-                content[idx] = {"type": "text", "text": placeholder}
-                replaced += 1
-                continue
-
-            if url.startswith("data:"):
-                used += 1
-                continue
-
-            if not url.startswith(("http://", "https://")):
-                content[idx] = {"type": "text", "text": placeholder}
-                replaced += 1
-                continue
-
-            try:
-                base64_data, mime_type = await processor.download_and_encode(url)
-                part["image_url"] = {"url": f"data:{mime_type};base64,{base64_data}"}
-                used += 1
-            except Exception as exc:
-                failures += 1
-                content[idx] = {"type": "text", "text": placeholder}
-                replaced += 1
-                log_obj.debug(f"历史图片内联失败，回退占位符: {exc}")
-
-    if used > 0 or replaced > 0:
-        log_obj.info(
-            f"历史图片内联完成 | images={used} replaced={replaced} failures={failures}"
-        )
-    return used
-
-
 def _build_search_context_message(search_result: str) -> str:
     return (
         "[External Search Results | Untrusted]\n"
@@ -384,7 +300,10 @@ async def build_messages_flow(
         context_level=context_level,
         use_persistent=use_persistent,
         context_store=context_store,
-        supports_images=supports_images,
+        # Avoid sending multimodal history parts by default: even a single base64 image
+        # can blow up request size and cause proxy providers to return empty replies.
+        supports_images=bool(getattr(plugin_cfg, "mika_history_send_multimodal", False))
+        and supports_images,
         supports_tools=supports_tools,
         normalize_content_fn=normalize_content_fn,
         sanitize_history_message_for_request_fn=sanitize_history_message_for_request,
@@ -395,23 +314,9 @@ async def build_messages_flow(
         log_obj.info(
             f"历史上下文清洗完成 | dropped_tools={dropped_tool_messages} | "
             f"dropped_images={dropped_unsupported_images} | "
-            f"supports_tools={supports_tools} | supports_images={supports_images}"
+            f"supports_tools={supports_tools} | supports_images={supports_images} | "
+            f"history_send_multimodal={1 if getattr(plugin_cfg, 'mika_history_send_multimodal', False) else 0}"
         )
-
-    # AstrBot-like behavior: keep recent multimodal history visible to the model.
-    # For providers that require inline_data (or proxy endpoints with unstable URL fetch),
-    # we convert history image_url parts to data URLs (bounded by a small budget).
-    if supports_images and bool(has_image_processor):
-        history_budget = int(getattr(plugin_cfg, "mika_history_image_two_stage_max", 2) or 2)
-        history_budget = max(0, min(max_images, history_budget))
-        if history_budget > 0:
-            await _inline_history_images_in_messages(
-                messages,
-                max_images=history_budget,
-                plugin_cfg=plugin_cfg,
-                get_image_processor=get_image_processor,
-                log_obj=log_obj,
-            )
 
     if search_result:
         messages.append({"role": "user", "content": _build_search_context_message(search_result)})
