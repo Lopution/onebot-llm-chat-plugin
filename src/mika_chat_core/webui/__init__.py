@@ -2,26 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Callable, Optional
-
-from fastapi import APIRouter
+from typing import Callable, Optional, TYPE_CHECKING
 
 from ..config import Config
 from ..runtime import get_config as get_runtime_config
-from .api_auth import create_auth_router
-from .api_config import create_config_router
-from .api_dashboard import create_dashboard_router
-from .api_backup import create_backup_router
-from .api_knowledge import create_knowledge_router
-from .api_live_chat import create_live_chat_router
-from .api_log import create_log_router
-from .api_memory import create_memory_router
-from .api_persona import create_persona_router
-from .api_session import create_session_router
-from .api_tools import create_tools_router
-from .api_user_profile import create_user_profile_router
-from .api_trace import create_trace_router
-from .api_maintenance import create_maintenance_router
+
+
+if TYPE_CHECKING:  # pragma: no cover
+    from fastapi import APIRouter
 
 
 def normalize_base_path(value: str) -> str:
@@ -40,7 +28,23 @@ def create_webui_router(
     *,
     settings_getter: Callable[[], Config] = get_runtime_config,
     base_path: Optional[str] = None,
-) -> APIRouter:
+) -> "APIRouter":
+    from fastapi import APIRouter
+    from .api_auth import create_auth_router
+    from .api_backup import create_backup_router
+    from .api_config import create_config_router
+    from .api_dashboard import create_dashboard_router
+    from .api_knowledge import create_knowledge_router
+    from .api_live_chat import create_live_chat_router
+    from .api_log import create_log_router
+    from .api_maintenance import create_maintenance_router
+    from .api_memory import create_memory_router
+    from .api_persona import create_persona_router
+    from .api_session import create_session_router
+    from .api_tools import create_tools_router
+    from .api_trace import create_trace_router
+    from .api_user_profile import create_user_profile_router
+
     config = settings_getter()
     resolved_base_path = normalize_base_path(
         base_path if base_path is not None else getattr(config, "mika_webui_base_path", "/webui")

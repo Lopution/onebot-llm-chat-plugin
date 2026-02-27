@@ -1,12 +1,12 @@
-"""Mika Chat 插件配置模块。
+"""插件配置（单一事实来源）。
 
-提供插件配置的定义和验证，支持：
-- API Key 配置与占位符检测
-- 模型参数验证（温度范围等）
-- HTTP/网络参数配置
-- 多种触发规则配置
-
-配置由宿主适配层在启动时注入到 mika_chat_core.runtime。
+要点：
+- 只使用新环境变量键名：`LLM_*` / `SEARCH_*` / `MIKA_*`。
+- 旧键已切断（Breaking Change）：检测到已移除的旧键会直接报错并阻止启动，
+  避免“看似能跑但行为不确定”的隐式兼容。
+- `Config` 会被宿主适配层在启动时注入到 `mika_chat_core.runtime`；
+  WebUI 写入的是 `.env`，通常需要重启进程后完全生效。
+- 支持 profile 预设（`MIKA_PROFILE`）与配置审计/快照（用于排障与可观测性）。
 """
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from typing import Any, Dict, List, Optional, get_args, get_origin

@@ -19,9 +19,12 @@ from ..config import Config
 from ..runtime import get_config as get_runtime_config
 from ..runtime import set_config as set_runtime_config
 from ..utils.context_db import close_database, get_db_path, init_database
-from .api_config import _build_config_from_env_file
 from .auth import create_webui_auth_dependency
 from .base_route import BaseRouteHelper
+from .config_env import build_config_from_env_file
+
+# Backward-compatible alias used by tests/monkeypatch.
+_build_config_from_env_file = build_config_from_env_file
 
 
 def _repo_root() -> Path:

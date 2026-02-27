@@ -36,6 +36,8 @@ export interface ConfigField {
   type: string
   description?: string
   hint?: string
+  env_key?: string
+  default?: unknown
   options?: string[]
   labels?: string[]
   secret?: boolean

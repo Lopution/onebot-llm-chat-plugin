@@ -10,7 +10,14 @@
     <div v-for="(field, idx) in fields" :key="field.key" class="config-row">
       <!-- 左侧：标签 + 说明 -->
       <div class="config-label">
-        <div class="config-label-text">{{ field.description || field.key }}</div>
+        <div class="config-label-text">
+          {{ field.description || field.key }}
+          <el-tooltip v-if="field.default !== undefined" placement="top" effect="dark">
+            <template #content>默认值: {{ formatDefault(field.default) }}</template>
+            <span class="config-default-badge">默认</span>
+          </el-tooltip>
+        </div>
+        <div v-if="field.env_key" class="config-env"><code>{{ field.env_key }}</code></div>
         <div v-if="field.hint" class="config-hint">{{ field.hint }}</div>
       </div>
 
@@ -78,6 +85,8 @@ interface ConfigField {
   type: string
   description?: string
   hint?: string
+  env_key?: string
+  default?: unknown
   options?: string[]
   labels?: string[]
   secret?: boolean
@@ -89,6 +98,17 @@ defineProps<{
   fields: ConfigField[]
   model: Record<string, any>
 }>()
+
+const formatDefault = (value: unknown) => {
+  if (value === undefined) return ''
+  if (value === null) return 'null'
+  if (typeof value === 'string') return value === '' ? '""' : value
+  try {
+    return JSON.stringify(value)
+  } catch (error) {
+    return String(value)
+  }
+}
 </script>
 
 <style scoped>
@@ -122,6 +142,23 @@ defineProps<{
   color: var(--el-text-color-secondary);
   margin-top: 2px;
   line-height: 1.4;
+}
+
+.config-env {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.config-default-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 10px;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--el-text-color-secondary);
 }
 
 .config-input {

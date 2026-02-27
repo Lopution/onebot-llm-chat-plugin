@@ -6,6 +6,11 @@ export async function getConfigSections() {
   return unwrapResponse(data)
 }
 
+export async function getEffectiveConfigSnapshot() {
+  const { data } = await client.get<ApiResponse<Record<string, unknown>>>('/config/effective')
+  return unwrapResponse(data)
+}
+
 export async function updateConfig(values: Record<string, unknown>) {
   const { data } = await client.put<ApiResponse<Record<string, unknown>>>('/config', values)
   return unwrapResponse(data)

@@ -37,5 +37,8 @@ jobs:
         run: |
           pip install -e ".[docs]"
 
+      - name: Check generated config docs
+        run: python scripts/gen_config_docs.py --check
+
       - name: Build documentation
         run: mkdocs build

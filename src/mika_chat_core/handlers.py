@@ -1,15 +1,15 @@
-"""消息处理器模块。
+"""核心消息处理器（mika_chat_core）。
 
-处理私聊和群聊消息的核心逻辑，包括：
+本模块提供“宿主适配层”需要调用的核心处理逻辑，包括：
 - 私聊消息处理（自动回复）
 - 群聊 @ 消息处理
 - 主动发言判断与触发
 - 图片提取与历史图片上下文增强
 - 会话锁管理（防止并发冲突）
 
-相关模块：
-- [`matchers`](matchers.py:1): 事件匹配器定义
-- [`lifecycle`](lifecycle.py:1): 插件生命周期管理
+说明：
+- 这里不包含平台/框架适配（例如 NoneBot 的 matcher/lifecycle）。
+  NoneBot 适配入口位于 `src/nonebot_plugin_mika_chat/`。
 """
 
 import asyncio

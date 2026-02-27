@@ -23,7 +23,26 @@ With `HOST=0.0.0.0`, `PORT=8080`, `MIKA_WEBUI_BASE_PATH=/webui`:
 
 - `http://127.0.0.1:8080/webui/`
 
+## Quick setup wizard (recommended)
+
+At the top of the Config page, WebUI provides a **Quick setup wizard** to get you running in 2-3 steps:
+
+1. LLM: `LLM_PROVIDER / LLM_BASE_URL / LLM_API_KEY (or list) / LLM_MODEL / LLM_FAST_MODEL`
+2. Identity: `MIKA_MASTER_ID / MIKA_MASTER_NAME / MIKA_BOT_DISPLAY_NAME`
+3. Optional: Search `SEARCH_PROVIDER / SEARCH_API_KEY`
+4. Optional: WebUI token `MIKA_WEBUI_TOKEN`
+
+After saving, a restart is usually required for changes to fully take effect.
+
+## Basic/Advanced and search
+
+On the Config page:
+
+- Use the Basic/Advanced toggle to hide rarely-used settings by default.
+- Use the search box to filter settings by `key / description / hint / ENV KEY`.
+
+Each field shows its `ENV KEY` and default value (the default is shown via tooltip and never leaks secrets).
+
 ## Effective config snapshot
 
 WebUI can show an **effective config snapshot** (defaults + derived values + warnings), useful for debugging and issue reports.
-
