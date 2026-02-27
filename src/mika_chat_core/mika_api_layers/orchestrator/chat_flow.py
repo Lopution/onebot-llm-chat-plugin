@@ -275,13 +275,14 @@ async def resolve_reply(
 ) -> Tuple[str, List[Dict[str, Any]]]:
     if tool_calls and enable_tools:
         result = await handle_tool_calls(
-            messages,
-            assistant_message,
-            tool_calls,
-            api_key,
-            group_id,
-            request_id,
-            tools,
+            messages=messages,
+            assistant_message=assistant_message,
+            tool_calls=tool_calls,
+            api_key=api_key,
+            group_id=group_id,
+            request_id=request_id,
+            session_key=session_key,
+            tools=tools,
             search_state=search_state,
             return_trace=True,
         )

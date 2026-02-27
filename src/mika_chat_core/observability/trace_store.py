@@ -390,7 +390,7 @@ class TraceAgentHooks:
             return
         user_id = str(payload.get("user_id") or "").strip()
         group_id = str(payload.get("group_id") or "").strip()
-        session_key = _resolve_session_key(user_id, group_id)
+        session_key = str(payload.get("session_key") or "").strip() or _resolve_session_key(user_id, group_id)
         await self._store.append_event(
             request_id=rid,
             session_key=session_key or "unknown",
@@ -405,7 +405,7 @@ class TraceAgentHooks:
             return
         user_id = str(payload.get("user_id") or "").strip()
         group_id = str(payload.get("group_id") or "").strip()
-        session_key = _resolve_session_key(user_id, group_id)
+        session_key = str(payload.get("session_key") or "").strip() or _resolve_session_key(user_id, group_id)
         await self._store.append_event(
             request_id=rid,
             session_key=session_key or "unknown",
@@ -416,4 +416,3 @@ class TraceAgentHooks:
 
 
 __all__ = ["SQLiteTraceStore", "TraceAgentHooks", "TraceRow", "get_trace_store"]
-

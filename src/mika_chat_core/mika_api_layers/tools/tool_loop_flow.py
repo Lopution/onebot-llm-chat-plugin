@@ -9,6 +9,8 @@ import time
 import uuid
 from typing import Any, Callable, Dict, List, Optional, Union
 
+from .tool_executor import get_tool_executor
+
 
 def is_duplicate_search_query(base_query: str, candidate_query: str) -> bool:
     """判断补搜 query 是否与预搜索 query 高度重复。"""
@@ -57,6 +59,7 @@ async def handle_tool_calls_flow(
     api_key: str,
     group_id: Optional[str],
     request_id: str,
+    session_key: Optional[str] = None,
     tool_handlers: Dict[str, Callable],
     model: str,
     base_url: str,
@@ -89,6 +92,14 @@ async def handle_tool_calls_flow(
     search_refine_max_rounds = max(
         0, int(getattr(plugin_cfg, "mika_search_tool_refine_max_rounds", 1) or 0)
     )
+
+    tool_cache_ttl = float(getattr(plugin_cfg, "mika_tool_cache_ttl_seconds", 60) or 60)
+    tool_cache_max_entries = int(getattr(plugin_cfg, "mika_tool_cache_max_entries", 500) or 500)
+    # TTL cache requires a stable session_key; otherwise only in-flight de-dupe is used.
+    raw_session_key = str(session_key or "").strip()
+    tool_cache_enabled = bool(getattr(plugin_cfg, "mika_tool_cache_enabled", True)) and bool(raw_session_key)
+    cache_scope = raw_session_key or f"req:{request_id}"
+    tool_executor = get_tool_executor()
 
     current_assistant_message = assistant_message
     current_tool_calls = list(tool_calls or [])
@@ -128,6 +139,7 @@ async def handle_tool_calls_flow(
                 {
                     "request_id": request_id,
                     "group_id": str(group_id or ""),
+                    "session_key": raw_session_key,
                     "round_index": round_idx,
                     "tool_call_id": str(tool_call_id),
                     "tool_name": str(function_name or ""),
@@ -144,6 +156,8 @@ async def handle_tool_calls_flow(
             tool_result = ""
             tool_ok = False
             tool_error = ""
+            cache_hit = False
+            inflight_deduped = False
             if allowlist and function_name not in allowlist and effective_function_name not in allowlist:
                 tool_result = f"工具调用被拒绝: {function_name}"
                 log_obj.warning(f"[req:{request_id}] 工具未在白名单中: {function_name}")
@@ -188,12 +202,26 @@ async def handle_tool_calls_flow(
                 elif effective_function_name in tool_handlers:
                     try:
                         handler = tool_handlers[effective_function_name]
-                        if tool_timeout > 0:
-                            tool_result = await asyncio.wait_for(
-                                handler(args, group_id), timeout=tool_timeout
-                            )
-                        else:
-                            tool_result = await handler(args, group_id)
+                        async def _run() -> str:
+                            if tool_timeout > 0:
+                                out = await asyncio.wait_for(handler(args, group_id), timeout=tool_timeout)
+                            else:
+                                out = await handler(args, group_id)
+                            out = str(out or "")
+                            max_chars = max(200, int(plugin_cfg.mika_tool_result_max_chars))
+                            if len(out) > max_chars:
+                                out = out[:max_chars] + "..."
+                            return out
+
+                        tool_result, cache_hit, inflight_deduped = await tool_executor.execute(
+                            cache_enabled=tool_cache_enabled,
+                            cache_ttl_seconds=tool_cache_ttl,
+                            cache_max_entries=tool_cache_max_entries,
+                            cache_scope=cache_scope,
+                            tool_name=effective_function_name,
+                            args=args,
+                            run=_run,
+                        )
 
                         setattr(search_state, "refine_rounds_used", refine_used + 1)
                         log_obj.info(
@@ -202,9 +230,6 @@ async def handle_tool_calls_flow(
                             f"query='{normalized_query or raw_query}'"
                         )
 
-                        max_chars = max(200, int(plugin_cfg.mika_tool_result_max_chars))
-                        if len(tool_result) > max_chars:
-                            tool_result = tool_result[:max_chars] + "..."
                         log_obj.success(
                             f"[req:{request_id}] 工具 {function_name} 执行成功 | result_len={len(tool_result)}"
                         )
@@ -228,16 +253,27 @@ async def handle_tool_calls_flow(
             elif effective_function_name in tool_handlers:
                 try:
                     handler = tool_handlers[effective_function_name]
-                    if tool_timeout > 0:
-                        tool_result = await asyncio.wait_for(
-                            handler(args, group_id), timeout=tool_timeout
-                        )
-                    else:
-                        tool_result = await handler(args, group_id)
+                    async def _run() -> str:
+                        if tool_timeout > 0:
+                            out = await asyncio.wait_for(handler(args, group_id), timeout=tool_timeout)
+                        else:
+                            out = await handler(args, group_id)
+                        out = str(out or "")
+                        max_chars = max(200, int(plugin_cfg.mika_tool_result_max_chars))
+                        if len(out) > max_chars:
+                            out = out[:max_chars] + "..."
+                        return out
 
-                    max_chars = max(200, int(plugin_cfg.mika_tool_result_max_chars))
-                    if len(tool_result) > max_chars:
-                        tool_result = tool_result[:max_chars] + "..."
+                    tool_result, cache_hit, inflight_deduped = await tool_executor.execute(
+                        cache_enabled=tool_cache_enabled,
+                        cache_ttl_seconds=tool_cache_ttl,
+                        cache_max_entries=tool_cache_max_entries,
+                        cache_scope=cache_scope,
+                        tool_name=effective_function_name,
+                        args=args,
+                        run=_run,
+                    )
+
                     log_obj.success(
                         f"[req:{request_id}] 工具 {function_name} 执行成功 | result_len={len(tool_result)}"
                     )
@@ -264,6 +300,7 @@ async def handle_tool_calls_flow(
                 {
                     "request_id": request_id,
                     "group_id": str(group_id or ""),
+                    "session_key": raw_session_key,
                     "round_index": round_idx,
                     "tool_call_id": str(tool_call_id),
                     "tool_name": str(function_name or ""),
@@ -271,6 +308,8 @@ async def handle_tool_calls_flow(
                     "error": str(tool_error or ""),
                     "result_length": len(str(tool_result or "")),
                     "duration_ms": int(max(0.0, time.monotonic() - tool_started_at) * 1000),
+                    "cache_hit": bool(cache_hit),
+                    "inflight_deduped": bool(inflight_deduped),
                 },
             )
 

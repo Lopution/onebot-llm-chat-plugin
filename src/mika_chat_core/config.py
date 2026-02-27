@@ -711,6 +711,20 @@ class Config(BaseModel):
         if v < 1:
             raise ValueError("mika_tool_schema_fallback_ttl_seconds 必须大于等于 1")
         return v
+    
+    @field_validator("mika_tool_cache_ttl_seconds")
+    @classmethod
+    def validate_tool_cache_ttl_seconds(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("mika_tool_cache_ttl_seconds 必须大于等于 1")
+        return v
+
+    @field_validator("mika_tool_cache_max_entries")
+    @classmethod
+    def validate_tool_cache_max_entries(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("mika_tool_cache_max_entries 必须大于等于 1")
+        return v
 
     @field_validator("mika_prompt_injection_guard_action")
     @classmethod
@@ -1059,6 +1073,8 @@ class Config(BaseModel):
     mika_planner_timeout_seconds: float = 4.0
     # 强制声明主上游是否支持图片输入（None=按 provider 推断；对 openai_compat 代理尤为关键）
     mika_llm_supports_images: Optional[bool] = None
+    # 强制声明主上游是否支持 tools（None=按 provider 推断；对不兼容 tools 的中转尤为关键）
+    mika_llm_supports_tools: Optional[bool] = None
     # 多模态默认策略：
     # - none: 仅保留占位符（不发图、不 caption）
     # - caption: 优先 caption（不发原图给主上游；用 caption 文本辅助理解）
@@ -1290,6 +1306,10 @@ class Config(BaseModel):
     # 回退 full schema 的会话级持续时间（秒）
     mika_tool_schema_fallback_ttl_seconds: int = 600
     mika_tool_result_max_chars: int = 4000
+    # 工具结果缓存（TTL）与并发去重（in-flight）。TTL 缓存仅在 session_key 可用时启用。
+    mika_tool_cache_enabled: bool = True
+    mika_tool_cache_ttl_seconds: int = 60
+    mika_tool_cache_max_entries: int = 500
 
     # 出站内容安全（发送前）
     mika_content_safety_enabled: bool = False

@@ -265,6 +265,10 @@ async def build_messages_flow(
     forced_supports_images = getattr(plugin_cfg, "mika_llm_supports_images", None)
     if forced_supports_images is not None:
         supports_images = bool(forced_supports_images)
+    
+    forced_supports_tools = getattr(plugin_cfg, "mika_llm_supports_tools", None)
+    if forced_supports_tools is not None:
+        supports_tools = bool(forced_supports_tools) and bool(enable_tools)
 
     original_content, api_content = await service_build_original_and_api_content(
         message=message,
@@ -397,14 +401,11 @@ async def build_messages_flow(
         log_obj=log_obj,
     )
 
-    request_body: Dict[str, Any] = {
-        "model": model,
-        "messages": messages,
-        "stream": False,
-        "tools": filtered_tools,
-    }
+    request_body: Dict[str, Any] = {"model": model, "messages": messages, "stream": False}
+    if supports_tools:
+        request_body["tools"] = filtered_tools
 
-    if plugin_cfg.mika_enable_builtin_search:
+    if plugin_cfg.mika_enable_builtin_search and supports_tools:
         request_body_tools = list(filtered_tools) if filtered_tools else []
         request_body_tools.append({"type": "google_search"})
         request_body["tools"] = request_body_tools
