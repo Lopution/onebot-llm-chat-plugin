@@ -102,29 +102,55 @@ async def run_chat_main_loop(
     client._log_search_result_status(search_result, request_id)
     client._log_search_decision(request_id, search_state, phase="pre_send")
 
-    if bool(getattr(plugin_cfg, "mika_memory_retrieval_enabled", False)):
-        system_injection = await client._inject_memory_retrieval_context(
+    # -------------------- Retrieval pipeline (plan-driven) --------------------
+    # Align with MaiBot/AstrBot: store full history, but inject a controlled working set.
+    # The planner owns "whether to retrieve / inject knowledge"; injection is best-effort.
+    try:
+        from ...memory.retrieval_pipeline import apply_retrieval_pipeline
+        from ...planning.planner import build_request_plan
+
+        plan_for_injection = build_request_plan(
+            plugin_cfg=plugin_cfg,
+            enable_tools=bool(enable_tools),
+            is_proactive=False,
+            message=message,
+            image_urls_count=len(list(image_urls or [])),
+            system_injection=system_injection,
+        )
+        system_injection = await apply_retrieval_pipeline(
+            client=client,
+            plan=plan_for_injection,
             message=message,
             user_id=user_id,
             group_id=group_id,
             request_id=request_id,
             system_injection=system_injection,
         )
-    else:
-        system_injection = await client._inject_long_term_memory(
-            message=message,
-            user_id=user_id,
-            group_id=group_id,
-            request_id=request_id,
-            system_injection=system_injection,
-        )
-        system_injection = await client._inject_knowledge_context(
-            message=message,
-            user_id=user_id,
-            group_id=group_id,
-            request_id=request_id,
-            system_injection=system_injection,
-        )
+    except Exception:
+        # Legacy fallback (should rarely happen).
+        if bool(getattr(plugin_cfg, "mika_memory_retrieval_enabled", False)):
+            system_injection = await client._inject_memory_retrieval_context(
+                message=message,
+                user_id=user_id,
+                group_id=group_id,
+                request_id=request_id,
+                system_injection=system_injection,
+            )
+        else:
+            system_injection = await client._inject_long_term_memory(
+                message=message,
+                user_id=user_id,
+                group_id=group_id,
+                request_id=request_id,
+                system_injection=system_injection,
+            )
+            system_injection = await client._inject_knowledge_context(
+                message=message,
+                user_id=user_id,
+                group_id=group_id,
+                request_id=request_id,
+                system_injection=system_injection,
+            )
     update_prompt_context_fn({"system_injection": system_injection or ""})
 
     # -------------------- Request Plan (heuristic) --------------------

@@ -1339,6 +1339,8 @@ class Config(BaseModel):
     mika_memory_retrieval_enabled: bool = False
     mika_memory_retrieval_max_iterations: int = 3
     mika_memory_retrieval_timeout: float = 15.0
+    # 注入到 system 的检索/记忆/知识文本硬上限（字符）。避免把请求体撑爆。
+    mika_retrieval_injection_max_chars: int = 6000
     # ==================== 知识库 RAG 配置 ====================
     mika_knowledge_enabled: bool = False
     # 默认知识库（可按群/场景在工具调用中覆盖 corpus_id）

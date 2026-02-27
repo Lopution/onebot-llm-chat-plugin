@@ -11,6 +11,51 @@ from ..infra.logging import logger as log
 from ..utils.prompt_context import update_prompt_context
 
 
+def _resolve_injection_max_chars(plugin_cfg: Any) -> int:
+    try:
+        raw = int(getattr(plugin_cfg, "mika_retrieval_injection_max_chars", 6000) or 0)
+    except Exception:
+        raw = 0
+    return raw if raw > 0 else 6000
+
+
+def _truncate_block(text: str, *, max_chars: int) -> tuple[str, bool]:
+    value = str(text or "")
+    limit = max(1, int(max_chars or 1))
+    if len(value) <= limit:
+        return value, False
+    if limit <= 3:
+        return value[:limit], True
+    return value[: max(0, limit - 3)] + "...", True
+
+
+async def _append_trace_event(
+    *,
+    request_id: str,
+    session_key: str,
+    user_id: str,
+    group_id: str,
+    event: Dict[str, Any],
+) -> None:
+    """Best-effort trace event append (never breaks main flow)."""
+
+    rid = str(request_id or "").strip()
+    if not rid:
+        return
+    try:
+        from ..observability.trace_store import get_trace_store
+
+        await get_trace_store().append_event(
+            request_id=rid,
+            session_key=str(session_key or "").strip(),
+            user_id=str(user_id or "").strip(),
+            group_id=str(group_id or "").strip(),
+            event=event,
+        )
+    except Exception:
+        return
+
+
 async def inject_memory_retrieval_context(
     *,
     message: str,
@@ -60,14 +105,46 @@ async def inject_memory_retrieval_context(
             update_prompt_context({"retrieval_context": ""})
             return system_injection
 
-        update_prompt_context({"retrieval_context": retrieval_text})
-        context_text = "[多源记忆检索结果]\n" + retrieval_text
+        prefix = "[多源记忆检索结果]\n"
+        context_text = prefix + retrieval_text
+        max_chars = _resolve_injection_max_chars(plugin_cfg)
+        context_text, truncated = _truncate_block(context_text, max_chars=max_chars)
+
+        # prompt_context 用于模板渲染与诊断，保持与实际注入一致
+        update_prompt_context({"retrieval_context": context_text[len(prefix) :] if context_text.startswith(prefix) else context_text})
         log.info(f"[req:{request_id}] ReAct 记忆检索命中 | session={session_key}")
+        await _append_trace_event(
+            request_id=request_id,
+            session_key=session_key,
+            user_id=str(user_id or ""),
+            group_id=str(group_id or ""),
+            event={
+                "type": "injection",
+                "kind": "memory_retrieval",
+                "ok": True,
+                "truncated": bool(truncated),
+                "max_chars": int(max_chars),
+                "injected_chars": int(len(context_text)),
+            },
+        )
         if system_injection:
             return f"{system_injection}\n\n{context_text}"
         return context_text
     except Exception as exc:
         log.warning(f"[req:{request_id}] ReAct 记忆检索失败: {exc}")
+        await _append_trace_event(
+            request_id=request_id,
+            session_key=memory_session_key(user_id, group_id),
+            user_id=str(user_id or ""),
+            group_id=str(group_id or ""),
+            event={
+                "type": "injection",
+                "kind": "memory_retrieval",
+                "ok": False,
+                "error_type": type(exc).__name__,
+                "error_message": str(exc),
+            },
+        )
         update_prompt_context({"retrieval_context": ""})
         return system_injection
 
@@ -116,18 +193,55 @@ async def inject_long_term_memory(
             update_prompt_context({"memory_snippets": ""})
             return system_injection
 
-        memory_text = "[你记得的相关信息（长期记忆）]\n" + "\n".join(memory_lines)
-        update_prompt_context({"memory_snippets": "\n".join(memory_lines)})
+        prefix = "[你记得的相关信息（长期记忆）]\n"
+        memory_text = prefix + "\n".join(memory_lines)
+        max_chars = _resolve_injection_max_chars(plugin_cfg)
+        memory_text, truncated = _truncate_block(memory_text, max_chars=max_chars)
+        update_prompt_context(
+            {
+                "memory_snippets": (
+                    memory_text[len(prefix) :] if memory_text.startswith(prefix) else memory_text
+                )
+            }
+        )
         for entry, _ in memories:
             await memory_store.update_recall(entry.id)
         top_score = memories[0][1] if memories else 0.0
         log.info(f"[req:{request_id}] 长期记忆命中 {len(memories)} 条 | top_score={top_score:.3f}")
+        await _append_trace_event(
+            request_id=request_id,
+            session_key=session_key,
+            user_id=str(user_id or ""),
+            group_id=str(group_id or ""),
+            event={
+                "type": "injection",
+                "kind": "long_term_memory",
+                "ok": True,
+                "truncated": bool(truncated),
+                "max_chars": int(max_chars),
+                "injected_chars": int(len(memory_text)),
+                "count": int(len(memories)),
+            },
+        )
 
         if system_injection:
             return f"{system_injection}\n\n{memory_text}"
         return memory_text
     except Exception as exc:
         log.warning(f"[req:{request_id}] 长期记忆检索失败: {exc}")
+        await _append_trace_event(
+            request_id=request_id,
+            session_key=memory_session_key(user_id, group_id),
+            user_id=str(user_id or ""),
+            group_id=str(group_id or ""),
+            event={
+                "type": "injection",
+                "kind": "long_term_memory",
+                "ok": False,
+                "error_type": type(exc).__name__,
+                "error_message": str(exc),
+            },
+        )
         update_prompt_context({"memory_snippets": ""})
         return system_injection
 
@@ -196,18 +310,55 @@ async def inject_knowledge_context(
             lines.append(f"- ({score:.3f}) [{title}] {snippet}")
             await store.update_recall(entry.id)
 
-        knowledge_text = (
+        prefix = (
             "[Knowledge Context | Retrieved]\n"
             "以下是从本地知识库检索到的相关片段，可作为事实参考：\n"
-            + "\n".join(lines)
         )
-        update_prompt_context({"knowledge_context": "\n".join(lines)})
+        knowledge_text = prefix + "\n".join(lines)
+        max_chars = _resolve_injection_max_chars(plugin_cfg)
+        knowledge_text, truncated = _truncate_block(knowledge_text, max_chars=max_chars)
+        update_prompt_context(
+            {
+                "knowledge_context": (
+                    knowledge_text[len(prefix) :] if knowledge_text.startswith(prefix) else knowledge_text
+                )
+            }
+        )
         log.info(f"[req:{request_id}] 知识库自动注入命中 {len(results)} 条")
+        await _append_trace_event(
+            request_id=request_id,
+            session_key=session_key,
+            user_id=str(user_id or ""),
+            group_id=str(group_id or ""),
+            event={
+                "type": "injection",
+                "kind": "knowledge_auto_inject",
+                "ok": True,
+                "truncated": bool(truncated),
+                "max_chars": int(max_chars),
+                "injected_chars": int(len(knowledge_text)),
+                "count": int(len(results)),
+                "corpus_id": str(corpus_id or ""),
+            },
+        )
         if system_injection:
             return f"{system_injection}\n\n{knowledge_text}"
         return knowledge_text
     except Exception as exc:
         log.warning(f"[req:{request_id}] 知识库自动注入失败: {exc}")
+        await _append_trace_event(
+            request_id=request_id,
+            session_key=memory_session_key(user_id, group_id),
+            user_id=str(user_id or ""),
+            group_id=str(group_id or ""),
+            event={
+                "type": "injection",
+                "kind": "knowledge_auto_inject",
+                "ok": False,
+                "error_type": type(exc).__name__,
+                "error_message": str(exc),
+            },
+        )
         update_prompt_context({"knowledge_context": ""})
         return system_injection
 
@@ -312,4 +463,3 @@ async def run_topic_summary(
             )
     except Exception as exc:
         log.warning(f"[req:{request_id}] 话题摘要后台任务失败: {exc}")
-
