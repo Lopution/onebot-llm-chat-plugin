@@ -407,6 +407,14 @@ async def run_chat_main_loop(
             max_iterations=int(getattr(plugin_cfg, "mika_dream_max_iterations", 5) or 5),
             request_id=request_id,
         )
+    
+    # -------------------- DB Maintenance (best-effort) --------------------
+    try:
+        from ...utils.db_maintenance import maybe_schedule_db_maintenance
+
+        await maybe_schedule_db_maintenance(plugin_cfg=plugin_cfg, request_id=request_id)
+    except Exception:
+        pass
 
     if search_result:
         log_obj.debug(

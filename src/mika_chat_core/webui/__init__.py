@@ -21,6 +21,7 @@ from .api_session import create_session_router
 from .api_tools import create_tools_router
 from .api_user_profile import create_user_profile_router
 from .api_trace import create_trace_router
+from .api_maintenance import create_maintenance_router
 
 
 def normalize_base_path(value: str) -> str:
@@ -56,6 +57,7 @@ def create_webui_router(
     router.include_router(create_tools_router(settings_getter=settings_getter))
     router.include_router(create_user_profile_router(settings_getter=settings_getter))
     router.include_router(create_trace_router(settings_getter=settings_getter))
+    router.include_router(create_maintenance_router(settings_getter=settings_getter))
     router.include_router(create_backup_router(settings_getter=settings_getter))
     router.include_router(create_live_chat_router(settings_getter=settings_getter))
     return router

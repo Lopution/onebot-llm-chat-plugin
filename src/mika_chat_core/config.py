@@ -164,6 +164,16 @@ class Config(BaseModel):
     mika_trace_enabled: bool = True
     mika_trace_retention_days: int = 7
     mika_trace_max_rows: int = 20000
+    
+    # ==================== DB Maintenance（长期可运维） ====================
+    # 注意：维护任务应在后台运行，不应阻塞主流程。
+    mika_db_maintenance_enabled: bool = True
+    # message_archive 过期保留天数（按时间删）
+    mika_db_prune_archive_max_days: int = 14
+    # message_archive 每会话最多保留行数（按行数删）
+    mika_db_prune_archive_max_rows_per_session: int = 20000
+    # VACUUM/ANALYZE 运行间隔（小时）
+    mika_db_vacuum_interval_hours: int = 72
 
     @staticmethod
     def _parse_env_bool(value: str) -> bool:
@@ -196,6 +206,30 @@ class Config(BaseModel):
         v = int(v)
         if v <= 0:
             raise ValueError("mika_trace_max_rows 必须大于 0")
+        return v
+    
+    @field_validator("mika_db_prune_archive_max_days")
+    @classmethod
+    def validate_db_prune_archive_max_days(cls, v: int) -> int:
+        v = int(v)
+        if v <= 0:
+            raise ValueError("mika_db_prune_archive_max_days 必须大于 0")
+        return v
+    
+    @field_validator("mika_db_prune_archive_max_rows_per_session")
+    @classmethod
+    def validate_db_prune_archive_max_rows_per_session(cls, v: int) -> int:
+        v = int(v)
+        if v <= 0:
+            raise ValueError("mika_db_prune_archive_max_rows_per_session 必须大于 0")
+        return v
+    
+    @field_validator("mika_db_vacuum_interval_hours")
+    @classmethod
+    def validate_db_vacuum_interval_hours(cls, v: int) -> int:
+        v = int(v)
+        if v <= 0:
+            raise ValueError("mika_db_vacuum_interval_hours 必须大于 0")
         return v
 
     @field_validator("mika_request_body_max_bytes")
