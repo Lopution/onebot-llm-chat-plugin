@@ -126,6 +126,32 @@ async def run_chat_main_loop(
             system_injection=system_injection,
         )
     update_prompt_context_fn({"system_injection": system_injection or ""})
+
+    # -------------------- Request Plan (heuristic) --------------------
+    # Best-effort: this should never block the main chat flow.
+    try:
+        if bool(getattr(plugin_cfg, "mika_planner_enabled", True)):
+            from ...observability.trace_store import get_trace_store
+            from ...planning.planner import build_request_plan
+
+            plan = build_request_plan(
+                plugin_cfg=plugin_cfg,
+                enable_tools=bool(enable_tools),
+                is_proactive=False,
+                message=message,
+                image_urls_count=len(list(image_urls or [])),
+                system_injection=system_injection,
+            )
+            await get_trace_store().set_plan(
+                request_id=request_id,
+                session_key=session_key,
+                user_id=str(user_id or ""),
+                group_id=str(group_id or ""),
+                plan=plan.to_dict(),
+            )
+    except Exception:
+        pass
+
     rendered_system_prompt = client._render_system_prompt_with_context()
     client._runtime_system_prompt_override = rendered_system_prompt
 
@@ -144,6 +170,26 @@ async def run_chat_main_loop(
 
     client._log_request_messages(messages, api_content, request_id)
 
+    # Add request budget estimates into trace hooks for easier debugging.
+    estimated_request_bytes = 0
+    estimated_message_tokens = 0
+    try:
+        import json
+
+        dumped = json.dumps(request_body, ensure_ascii=False, separators=(",", ":"))
+        estimated_request_bytes = len(dumped.encode("utf-8"))
+    except Exception:
+        estimated_request_bytes = 0
+    try:
+        from ...utils.context_schema import estimate_message_tokens
+
+        for m in messages:
+            if not isinstance(m, dict):
+                continue
+            estimated_message_tokens += int(estimate_message_tokens(m))
+    except Exception:
+        estimated_message_tokens = 0
+
     hook_base_payload: Dict[str, Any] = {
         "request_id": request_id,
         "user_id": str(user_id or ""),
@@ -151,6 +197,8 @@ async def run_chat_main_loop(
         "model": str(request_body.get("model") or client.model),
         "enable_tools": bool(enable_tools),
         "context_level": int(context_level),
+        "estimated_request_bytes": int(estimated_request_bytes),
+        "estimated_message_tokens": int(estimated_message_tokens),
     }
     await emit_agent_hook_fn(
         "on_before_llm",

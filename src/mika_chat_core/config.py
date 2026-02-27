@@ -471,6 +471,13 @@ class Config(BaseModel):
             raise ValueError("mika_media_caption_timeout_seconds 必须大于 0")
         return v
 
+    @field_validator("mika_planner_timeout_seconds")
+    @classmethod
+    def validate_planner_timeout(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("mika_planner_timeout_seconds 必须大于 0")
+        return v
+
     @field_validator("mika_message_split_threshold")
     @classmethod
     def validate_message_split_threshold(cls, v: int) -> int:
@@ -624,6 +631,15 @@ class Config(BaseModel):
         allowed = {"none", "caption", "images"}
         if value not in allowed:
             raise ValueError("mika_media_policy_default 仅支持 none / caption / images")
+        return value
+
+    @field_validator("mika_planner_mode")
+    @classmethod
+    def validate_planner_mode(cls, v: str) -> str:
+        value = (v or "").strip().lower()
+        allowed = {"heuristic", "llm"}
+        if value not in allowed:
+            raise ValueError("mika_planner_mode 仅支持 heuristic / llm")
         return value
 
     @field_validator("mika_media_attach_max_images")
@@ -1036,6 +1052,11 @@ class Config(BaseModel):
     mika_dream_max_iterations: int = 5
     # 多模态严格模式：清理不合法的历史多模态块，避免接口报错
     mika_multimodal_strict: bool = True
+    # Planner（规划层）：输出可解释的“本次请求计划”，用于 trace 与后续扩展
+    mika_planner_enabled: bool = True
+    mika_planner_mode: str = "heuristic"  # heuristic | llm（失败自动回退 heuristic）
+    mika_planner_model: str = ""          # llm 模式下的 planner model（空=复用 llm_fast_model）
+    mika_planner_timeout_seconds: float = 4.0
     # 强制声明主上游是否支持图片输入（None=按 provider 推断；对 openai_compat 代理尤为关键）
     mika_llm_supports_images: Optional[bool] = None
     # 多模态默认策略：
