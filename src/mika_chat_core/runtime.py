@@ -89,6 +89,21 @@ config_proxy = _ConfigProxy()
 
 def set_config(config: "Config") -> None:
     _runtime.config = config
+    # Best-effort: surface risky config combos early (like MaiBot-style "why it broke").
+    try:
+        from .utils.config_audit import audit_config
+
+        for item in audit_config(config):
+            level = str(getattr(item, "level", "warning") or "warning").lower()
+            msg = str(getattr(item, "message", "") or "")
+            hint = str(getattr(item, "hint", "") or "")
+            prefix = f"[config-audit:{getattr(item, 'code', 'unknown')}]"
+            if level == "info":
+                log.info("%s %s%s", prefix, msg, f" | hint={hint}" if hint else "")
+            else:
+                log.warning("%s %s%s", prefix, msg, f" | hint={hint}" if hint else "")
+    except Exception:
+        pass
 
 
 def get_config() -> "Config":

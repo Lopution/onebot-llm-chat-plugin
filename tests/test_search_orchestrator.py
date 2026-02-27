@@ -112,6 +112,9 @@ async def test_pre_search_return_meta_contains_refine_decision():
     weak_search_result = "1. 【A】 摘要: 简短结果"
 
     with patch(
+        "mika_chat_core.mika_api_layers.core.messages.plugin_config.mika_search_presearch_enabled",
+        True,
+    ), patch(
         "mika_chat_core.mika_api_layers.core.messages.plugin_config.mika_search_llm_gate_enabled",
         False,
     ), patch(

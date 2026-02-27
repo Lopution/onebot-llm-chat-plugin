@@ -426,6 +426,9 @@ async def test_search_injection_in_build_messages():
     tool_handlers = {"web_search": AsyncMock()}
 
     with patch(
+        "mika_chat_core.mika_api_layers.core.messages.plugin_config.mika_search_presearch_enabled",
+        True,
+    ), patch(
         "mika_chat_core.mika_api_layers.core.messages.plugin_config.mika_search_llm_gate_enabled",
         False,
     ), patch("mika_chat_core.utils.search_engine.should_search", return_value=True), patch(
@@ -524,6 +527,9 @@ async def test_pre_search_llm_gate_needs_search_triggers_serper():
     tool_handlers = {"web_search": AsyncMock()}
 
     with patch(
+        "mika_chat_core.mika_api_layers.core.messages.plugin_config.mika_search_presearch_enabled",
+        True,
+    ), patch(
         "mika_chat_core.mika_api_layers.core.messages.plugin_config.mika_search_llm_gate_enabled",
         True,
     ), patch(
@@ -800,6 +806,9 @@ async def test_pre_search_llm_gate_failure_strong_timeliness_fallback():
 
     # classify 返回 (False, 未知, "") 视为失败，且消息命中强时效词（如“比赛结果”）应回退外搜
     with patch(
+        "mika_chat_core.mika_api_layers.core.messages.plugin_config.mika_search_presearch_enabled",
+        True,
+    ), patch(
         "mika_chat_core.mika_api_layers.core.messages.plugin_config.mika_search_llm_gate_enabled",
         True,
     ), patch(
@@ -1282,6 +1291,9 @@ async def test_pre_search_llm_gate_disabled_still_uses_should_search():
     tool_handlers = {"web_search": AsyncMock()}
 
     with patch(
+        "mika_chat_core.mika_api_layers.core.messages.plugin_config.mika_search_presearch_enabled",
+        True,
+    ), patch(
         "mika_chat_core.mika_api_layers.core.messages.plugin_config.mika_search_llm_gate_enabled",
         False,
     ), patch(

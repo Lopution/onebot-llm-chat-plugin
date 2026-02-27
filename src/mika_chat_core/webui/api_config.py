@@ -767,6 +767,18 @@ def create_config_router(
             sections.append({"name": section["name"], "fields": fields})
         return BaseRouteHelper.ok({"sections": sections})
 
+    @router.get("/effective")
+    async def get_effective_config_snapshot() -> Dict[str, Any]:
+        """Return the effective runtime config snapshot (masked) + derived values + audit warnings."""
+        config = settings_getter()
+        try:
+            from ..utils.config_snapshot import build_effective_config_snapshot
+
+            snapshot = build_effective_config_snapshot(config)
+        except Exception as exc:
+            return BaseRouteHelper.error_response(f"snapshot failed: {exc}")
+        return BaseRouteHelper.ok(snapshot)
+
     @router.put("")
     async def update_config_values(payload: Dict[str, Any]) -> Dict[str, Any]:
         if not isinstance(payload, dict):

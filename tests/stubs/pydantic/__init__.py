@@ -159,6 +159,13 @@ class BaseModel:
 
             setattr(self, field, value)
 
+        # 记录显式传入的字段集合（pydantic v2: model_fields_set）
+        # 用于仓库内配置治理/别名注入逻辑：不能覆盖用户显式设置。
+        try:
+            self.model_fields_set = {k for k in data.keys() if k in annotations}
+        except Exception:
+            self.model_fields_set = set()
+
         # 允许额外字段（pydantic 默认 forbids/ignores 取决于配置；这里简化为接受）
         for k, v in data.items():
             if k not in annotations:
@@ -175,4 +182,3 @@ class BaseModel:
 
         if errors:
             raise ValidationError(errors)
-

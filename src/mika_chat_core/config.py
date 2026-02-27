@@ -113,6 +113,14 @@ class Config(BaseModel):
     # 这里必须忽略无关键，否则会把 driver/host/port 等宿主字段误判为非法。
     # 旧键切断由 _ensure_removed_legacy_* 显式校验负责。
     model_config = ConfigDict(extra="ignore")
+
+    # ==================== Config Governance ====================
+    # Profile presets（可选）：stable | agentic | dev。
+    # - 留空：不应用任何预设（完全按你已有显式配置/默认值运行）
+    # - stable：稳定优先（关闭高风险项，开启自愈与 trace）
+    # - agentic：更偏 Agent（planner/tools/retrieval 等更积极）
+    # - dev：更偏排障（更多 trace/调试输出）
+    mika_profile: str = ""
     
     # API 配置（单一入口）
     llm_provider: str = "openai_compat"  # openai_compat | anthropic | google_genai
@@ -247,6 +255,15 @@ class Config(BaseModel):
         if v <= 0:
             raise ValueError("mika_chatroom_transcript_line_max_chars 必须大于 0")
         return v
+
+    @field_validator("mika_profile")
+    @classmethod
+    def validate_profile(cls, v: str) -> str:
+        value = str(v or "").strip().lower()
+        allowed = {"", "stable", "agentic", "dev"}
+        if value not in allowed:
+            raise ValueError("mika_profile 仅支持 stable / agentic / dev（或留空）")
+        return value
 
     @classmethod
     def _parse_env_value_for_field(cls, field_name: str, raw_value: str) -> Any:
@@ -456,7 +473,93 @@ class Config(BaseModel):
             raise ValueError("mika_health_check_api_probe_ttl_seconds 必须大于等于 1")
         if self.mika_context_trace_sample_rate < 0 or self.mika_context_trace_sample_rate > 1:
             raise ValueError("概率参数必须在 0.0 到 1.0 之间")
-    
+
+    def _apply_profile_presets(self) -> None:
+        """Apply optional profile presets without overriding explicit user settings.
+
+        Rules:
+        - Only applies when `mika_profile` is set to a supported value.
+        - Never overrides fields explicitly provided by the user (model_fields_set).
+        - Never overrides fields already changed away from their declared default
+          (e.g. via env aliases fallback in minimal test env).
+        """
+        profile = str(getattr(self, "mika_profile", "") or "").strip().lower()
+        if not profile:
+            return
+
+        presets: dict[str, dict[str, Any]] = {
+            # 稳定优先：默认保持“能跑 + 可观测 + 可自愈”，关闭容易引发成本/不确定性的功能。
+            "stable": {
+                "mika_trace_enabled": True,
+                "mika_transport_self_heal_enabled": True,
+                "mika_reply_stream_enabled": False,
+                "mika_search_presearch_enabled": False,
+                "mika_context_summary_enabled": False,
+                "mika_topic_summary_enabled": False,
+                "mika_dream_enabled": False,
+                "mika_memory_retrieval_enabled": False,
+                "mika_knowledge_auto_inject": False,
+                "mika_media_policy_default": "caption",
+                "mika_media_caption_enabled": False,
+                "mika_planner_enabled": True,
+                "mika_planner_mode": "heuristic",
+            },
+            # 更偏 Agent：启用 planner(llm)/检索/知识注入（仍保留传输自愈与 trace）。
+            "agentic": {
+                "mika_trace_enabled": True,
+                "mika_transport_self_heal_enabled": True,
+                "mika_reply_stream_enabled": False,
+                "mika_search_presearch_enabled": False,
+                "mika_memory_retrieval_enabled": True,
+                "mika_knowledge_enabled": True,
+                "mika_knowledge_auto_inject": True,
+                "mika_media_policy_default": "caption",
+                "mika_media_caption_enabled": False,
+                "mika_planner_enabled": True,
+                "mika_planner_mode": "llm",
+            },
+            # 更偏排障：打开更详细的 trace（日常使用不建议）。
+            "dev": {
+                "mika_trace_enabled": True,
+                "mika_transport_self_heal_enabled": True,
+                "mika_context_trace_enabled": True,
+                "mika_context_trace_sample_rate": 1.0,
+            },
+        }
+
+        selected = presets.get(profile)
+        if not selected:
+            return
+
+        explicit_fields = set(getattr(self, "model_fields_set", set()) or set())
+        _missing = object()
+        model_fields = getattr(type(self), "model_fields", None)
+
+        for field_name, preset_value in selected.items():
+            if field_name in explicit_fields:
+                continue
+            if not hasattr(self, field_name):
+                continue
+
+            current = getattr(self, field_name)
+            default_value: Any = _missing
+            if isinstance(model_fields, dict):
+                field_info = model_fields.get(field_name)
+                if field_info is not None:
+                    default_value = getattr(field_info, "default", _missing)
+            if default_value is _missing:
+                default_value = getattr(type(self), field_name, _missing)
+            if default_value is _missing:
+                continue
+            if current != default_value:
+                continue
+
+            try:
+                object.__setattr__(self, field_name, preset_value)
+            except Exception:
+                # Best-effort: presets should never block startup.
+                continue
+	    
     @field_validator('mika_temperature', 'mika_proactive_temperature')
     @classmethod
     def validate_temperature(cls, v: float) -> float:
@@ -842,6 +945,7 @@ class Config(BaseModel):
         self._ensure_removed_legacy_inputs_blocked()
         self._apply_mika_aliases_fallback()
         self._apply_mika_observability_aliases()
+        self._apply_profile_presets()
 
         llm_api_key = str(self.llm_api_key or "").strip()
         llm_api_key_list = [str(item or "").strip() for item in (self.llm_api_key_list or []) if str(item or "").strip()]
@@ -1265,7 +1369,7 @@ class Config(BaseModel):
 
     # ==================== 外置搜索 LLM Gate 配置 ====================
     # 预搜索总开关：关闭后不会在主请求前自动外搜（关键词触发/智能分类/LLM gate 全部停用）
-    mika_search_presearch_enabled: bool = True
+    mika_search_presearch_enabled: bool = False
     # 是否启用“全量 LLM 判定 gate”：低信号/本地时间过滤后，每条消息都先调用 LLM 判 needs_search
     mika_search_llm_gate_enabled: bool = False
     # LLM 判定失败时回退策略：
