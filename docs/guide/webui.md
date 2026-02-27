@@ -1,0 +1,51 @@
+# WebUI 使用指南
+
+WebUI 用于“可视化查看与修改配置、查看日志与运行状态、导出/导入配置备份”等。
+
+## 启用 WebUI
+
+在 `.env` 或 `.env.prod` 中配置：
+
+```env
+MIKA_WEBUI_ENABLED=true
+# 空=仅允许本机访问；要远程访问必须设置 token
+MIKA_WEBUI_TOKEN="CHANGE_ME"
+MIKA_WEBUI_BASE_PATH="/webui"
+```
+
+说明：
+- `MIKA_WEBUI_TOKEN` 为空时，仅允许 loopback（`127.0.0.1/localhost`）访问。
+- 远程访问建议使用反向代理并启用 HTTPS，同时设置强随机 token。
+
+## 访问地址
+
+默认情况下（`HOST=0.0.0.0`、`PORT=8080`、`MIKA_WEBUI_BASE_PATH=/webui`）：
+
+- `http://127.0.0.1:8080/webui/`
+
+## 快速配置向导（推荐）
+
+WebUI 顶部提供“快速配置向导”（2-3 步跑起来）：
+
+1. LLM：`LLM_PROVIDER / LLM_BASE_URL / LLM_API_KEY(or list) / LLM_MODEL / LLM_FAST_MODEL`
+2. 身份：`MIKA_MASTER_ID / MIKA_MASTER_NAME / MIKA_BOT_DISPLAY_NAME`
+3. 可选：联网搜索 `SEARCH_PROVIDER / SEARCH_API_KEY`
+4. 可选：WebUI 安全 `MIKA_WEBUI_TOKEN`
+
+保存后通常需要重启进程才能完全生效（取决于具体配置项与宿主加载方式）。
+
+## 查看“生效配置（effective snapshot）”
+
+很多配置有默认值与派生值（例如“模型能力推断”“预算计算”等）。WebUI 提供“生效配置”视图，用于回答：
+
+- 我到底开了什么？
+- 哪些配置互相冲突？
+- 本次运行的预算/阈值是多少？
+
+当你排障或提 Issue 时，优先提供该视图导出的脱敏信息。
+
+## 常见安全问题
+
+- 不要把真实 `LLM_API_KEY` 写进公开的文档、截图或仓库文件。
+- 如果要分享日志/配置，优先使用 WebUI 的脱敏导出能力。
+

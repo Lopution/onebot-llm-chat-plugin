@@ -1,5 +1,11 @@
 # 小步拆分回归验证清单（兼容入口保持）
 
+!!! warning "ARCHIVED / 已归档"
+    本文是历史计划文档，不再保证与当前代码一致（尤其是模块拆分与导入路径）。
+    
+    - 项目总路线图：`docs/roadmap.md`
+    - 长期架构方向：`docs/refactor_direction.md`
+
 本次拆分仅新增内部模块并让 [`mika_api.py`](../src/mika_chat_core/mika_api.py:1) 作为兼容入口继续对外提供同名接口。
 
 ## ✅ 回归验证清单
