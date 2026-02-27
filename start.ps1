@@ -60,9 +60,11 @@ if (Test-Path ".env.prod") {
     $configCheckFile = ".env.prod"
     Write-Host "✅ 使用生产环境配置 (.env.prod)"
     $env:ENVIRONMENT = "prod"
+    $env:DOTENV_PATH = (Resolve-Path ".env.prod").Path
 } elseif (Test-Path ".env") {
     $configCheckFile = ".env"
     Write-Host "✅ 使用默认环境配置 (.env)"
+    $env:DOTENV_PATH = (Resolve-Path ".env").Path
 }
 
 if ($configCheckFile) {

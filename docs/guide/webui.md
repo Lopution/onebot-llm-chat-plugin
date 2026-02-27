@@ -56,6 +56,18 @@ WebUI 配置页右上角提供：
 
 当你排障或提 Issue 时，优先提供该视图导出的脱敏信息。
 
+## WebUI 读写哪个 env 文件？
+
+WebUI 的配置读写会使用以下规则选择 env 文件：
+
+1. 若设置了 `DOTENV_PATH`：读写该路径指向的文件。
+2. 否则若 `ENVIRONMENT=prod` 且存在 `.env.prod`：读写 `.env.prod`。
+3. 否则：读写 `.env`。
+
+部署建议：
+
+- 如果你用 `.env.prod` 跑生产环境，建议在启动脚本/服务里设置 `DOTENV_PATH=/path/to/.env.prod`，避免 WebUI 写到 `.env` 导致“看起来保存了但运行没变”。
+
 ## 常见安全问题
 
 - 不要把真实 `LLM_API_KEY` 写进公开的文档、截图或仓库文件。

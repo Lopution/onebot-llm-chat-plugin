@@ -35,6 +35,11 @@ def _resolve_env_path() -> Path:
     env_path = str(os.getenv("DOTENV_PATH", "") or "").strip()
     if env_path:
         return Path(env_path).expanduser().resolve()
+    env = str(os.getenv("ENVIRONMENT") or "").strip().lower()
+    if env == "prod":
+        candidate = _repo_root() / ".env.prod"
+        if candidate.exists():
+            return candidate
     return _repo_root() / ".env"
 
 

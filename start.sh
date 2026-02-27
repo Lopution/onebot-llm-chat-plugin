@@ -196,8 +196,11 @@ fi
 if [ -f ".env.prod" ]; then
     echo -e "${GREEN}✅ 使用生产环境配置 (.env.prod)${NC}"
     export ENVIRONMENT=prod
+    # Make WebUI/config APIs read & write the same env file as the runtime.
+    export DOTENV_PATH="$SCRIPT_DIR/.env.prod"
 elif [ -f ".env" ]; then
     echo -e "${GREEN}✅ 使用默认环境配置 (.env)${NC}"
+    export DOTENV_PATH="$SCRIPT_DIR/.env"
 fi
 
 echo

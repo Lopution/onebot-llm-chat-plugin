@@ -34,6 +34,12 @@ def resolve_env_path() -> Path:
         if not path.is_absolute():
             path = _project_root() / path
         return path
+
+    env = str(os.getenv("ENVIRONMENT") or "").strip().lower()
+    if env == "prod":
+        prod = _project_root() / ".env.prod"
+        if prod.exists():
+            return prod
     return _project_root() / ".env"
 
 

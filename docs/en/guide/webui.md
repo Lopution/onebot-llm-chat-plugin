@@ -46,3 +46,14 @@ Each field shows its `ENV KEY` and default value (the default is shown via toolt
 ## Effective config snapshot
 
 WebUI can show an **effective config snapshot** (defaults + derived values + warnings), useful for debugging and issue reports.
+
+## Which env file does WebUI read/write?
+
+WebUI selects the env file with this precedence:
+
+1. If `DOTENV_PATH` is set: read/write that file.
+2. Else if `ENVIRONMENT=prod` and `.env.prod` exists: read/write `.env.prod`.
+3. Else: read/write `.env`.
+
+Deployment tip:
+- If you run with `.env.prod`, set `DOTENV_PATH=/path/to/.env.prod` in your startup script/service to avoid editing the wrong file from WebUI.
