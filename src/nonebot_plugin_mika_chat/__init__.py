@@ -28,7 +28,7 @@ if PluginMetadata is not None:
         description="NoneBot adapter for Mika Chat Core (OneBot v11/v12)",
         usage="配置 LLM_API_KEY 和 MIKA_MASTER_ID 后启动；群聊通过 @ 触发回复。",
         type="application",
-        homepage="https://github.com/Lopution/mika-chat-core",
+        homepage="https://github.com/Lopution/onebot-llm-chat-plugin",
         config=Config,
         supported_adapters={"~onebot.v11", "~onebot.v12"},
     )

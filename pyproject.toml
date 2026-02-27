@@ -82,9 +82,9 @@ mcp = [
 webui = []
 
 [project.urls]
-Homepage = "https://github.com/Lopution/mika-chat-core"
-Repository = "https://github.com/Lopution/mika-chat-core.git"
-Issues = "https://github.com/Lopution/mika-chat-core/issues"
+Homepage = "https://github.com/Lopution/onebot-llm-chat-plugin"
+Repository = "https://github.com/Lopution/onebot-llm-chat-plugin.git"
+Issues = "https://github.com/Lopution/onebot-llm-chat-plugin/issues"
 
 [project.scripts]
 mika-chat = "mika_chat_cli:main"

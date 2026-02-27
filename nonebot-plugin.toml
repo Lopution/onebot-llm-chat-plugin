@@ -1,6 +1,6 @@
 [plugin]
 module_name = "nonebot_plugin_mika_chat"
-project_link = "https://github.com/Lopution/mika-chat-core"
+project_link = "https://github.com/Lopution/onebot-llm-chat-plugin"
 supported_adapters = ["~onebot.v11", "~onebot.v12"]
 description = "NoneBot adapter for Mika Chat Core（OneBot 聊天核心）"
-homepage = "https://github.com/Lopution/mika-chat-core"
+homepage = "https://github.com/Lopution/onebot-llm-chat-plugin"

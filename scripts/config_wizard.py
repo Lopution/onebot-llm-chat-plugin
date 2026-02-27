@@ -110,14 +110,29 @@ def main() -> int:
     lines = load_env_lines(ENV_PATH)
     env_values = parse_env_values(lines)
 
+    removed_keys = {
+        "MIKA_API_KEY": "LLM_API_KEY",
+        "MIKA_API_KEY_LIST": "LLM_API_KEY_LIST",
+        "MIKA_BASE_URL": "LLM_BASE_URL",
+        "MIKA_MODEL": "LLM_MODEL",
+        "MIKA_FAST_MODEL": "LLM_FAST_MODEL",
+        "SERPER_API_KEY": "SEARCH_API_KEY",
+        "MIKA_HISTORY_IMAGE_ENABLE_COLLAGE": "MIKA_HISTORY_COLLAGE_ENABLED",
+    }
+    for old_key, new_key in removed_keys.items():
+        if old_key in env_values:
+            print(f"❌ 检测到 .env 中仍包含已移除环境变量 {old_key}（破坏性升级）")
+            print(f"💡 请删除 {old_key} 并改用 {new_key}，详见 docs/guide/upgrade.md")
+            return 1
+
     updates: dict[str, str] = {}
 
-    current_api_key = str(env_values.get("MIKA_API_KEY", "")).strip()
-    current_key_list = str(env_values.get("MIKA_API_KEY_LIST", "")).strip()
+    current_api_key = str(env_values.get("LLM_API_KEY", "")).strip()
+    current_key_list = str(env_values.get("LLM_API_KEY_LIST", "")).strip()
     need_api = args.all or (not current_api_key and not current_key_list)
     if need_api:
-        api_key = ask_input("请输入 MIKA_API_KEY（单 key）", default=current_api_key, required=True)
-        updates["MIKA_API_KEY"] = api_key
+        api_key = ask_input("请输入 LLM_API_KEY（单 key）", default=current_api_key, required=True)
+        updates["LLM_API_KEY"] = api_key
 
     current_master = str(env_values.get("MIKA_MASTER_ID", "")).strip()
     need_master = args.all or (not current_master or current_master == "0")
@@ -126,6 +141,18 @@ def main() -> int:
         updates["MIKA_MASTER_ID"] = master_id
 
     if args.all:
+        llm_provider = ask_input("LLM_PROVIDER", default=env_values.get("LLM_PROVIDER", "openai_compat"))
+        llm_base_url = ask_input(
+            "LLM_BASE_URL",
+            default=env_values.get("LLM_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/"),
+        )
+        llm_model = ask_input("LLM_MODEL", default=env_values.get("LLM_MODEL", "gemini-3-pro-high"))
+        llm_fast_model = ask_input("LLM_FAST_MODEL", default=env_values.get("LLM_FAST_MODEL", "gemini-2.5-flash-lite"))
+        updates["LLM_PROVIDER"] = llm_provider
+        updates["LLM_BASE_URL"] = llm_base_url
+        updates["LLM_MODEL"] = llm_model
+        updates["LLM_FAST_MODEL"] = llm_fast_model
+
         host = ask_input("HOST", default=env_values.get("HOST", "0.0.0.0"))
         port = ask_input("PORT", default=env_values.get("PORT", "8080"))
         updates["HOST"] = host

@@ -37,6 +37,10 @@ def read_env(path: Path) -> dict[str, str]:
 
 
 def find_env_file() -> Path | None:
+    # Prefer production env when present; this matches start.sh/start.ps1 behavior.
+    prod = ROOT_DIR / ".env.prod"
+    if prod.exists():
+        return prod
     candidate = ROOT_DIR / ".env"
     if candidate.exists():
         return candidate
@@ -91,8 +95,32 @@ def check_env() -> tuple[CheckResult, dict[str, str]]:
             {},
         )
     env_map = read_env(env_file)
-    api_key = str(env_map.get("MIKA_API_KEY", "")).strip()
-    key_list = str(env_map.get("MIKA_API_KEY_LIST", "")).strip()
+
+    # Legacy env keys are removed (breaking change). Keep the message explicit so
+    # users fix the root cause instead of hitting confusing validation errors.
+    removed_keys = {
+        "MIKA_API_KEY": "LLM_API_KEY",
+        "MIKA_API_KEY_LIST": "LLM_API_KEY_LIST",
+        "MIKA_BASE_URL": "LLM_BASE_URL",
+        "MIKA_MODEL": "LLM_MODEL",
+        "MIKA_FAST_MODEL": "LLM_FAST_MODEL",
+        "SERPER_API_KEY": "SEARCH_API_KEY",
+        "MIKA_HISTORY_IMAGE_ENABLE_COLLAGE": "MIKA_HISTORY_COLLAGE_ENABLED",
+    }
+    for old_key, new_key in removed_keys.items():
+        if old_key in env_map:
+            return (
+                CheckResult(
+                    "FAIL",
+                    "环境文件",
+                    f"{env_file.name} 包含已移除环境变量 {old_key}",
+                    f"请删除 {old_key} 并改用 {new_key}（详见 docs/guide/upgrade.md）。",
+                ),
+                env_map,
+            )
+
+    api_key = str(env_map.get("LLM_API_KEY", "")).strip()
+    key_list = str(env_map.get("LLM_API_KEY_LIST", "")).strip()
     master_id = str(env_map.get("MIKA_MASTER_ID", "")).strip()
     if (api_key or key_list) and master_id and master_id != "0":
         return CheckResult("PASS", "关键配置", f"使用 {env_file.name}"), env_map
@@ -100,7 +128,7 @@ def check_env() -> tuple[CheckResult, dict[str, str]]:
         CheckResult(
             "FAIL",
             "关键配置",
-            f"{env_file.name} 缺少 MIKA_API_KEY(或 KEY_LIST) / MIKA_MASTER_ID",
+            f"{env_file.name} 缺少 LLM_API_KEY(或 KEY_LIST) / MIKA_MASTER_ID",
             "运行: python scripts/config_wizard.py",
         ),
         env_map,

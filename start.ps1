@@ -45,7 +45,7 @@ if (-not (Test-Path ".env") -and -not (Test-Path ".env.prod")) {
         Copy-Item ".env.example" ".env" -Force
         Write-Host "✅ 已生成 .env（来自 .env.example）"
         Write-Host "⚠️  请先编辑 .env，至少填写："
-        Write-Host "   - MIKA_API_KEY（或 MIKA_API_KEY_LIST）"
+        Write-Host "   - LLM_API_KEY（或 LLM_API_KEY_LIST）"
         Write-Host "   - MIKA_MASTER_ID"
         Write-Host ""
         Write-Host "编辑完成后重新运行 start.ps1 即可"
@@ -66,18 +66,33 @@ if (Test-Path ".env.prod") {
 }
 
 if ($configCheckFile) {
+    # 旧键已切断：如果仍存在这些环境变量，启动会直接失败（请迁移）。
+    $legacyPattern = '^(MIKA_API_KEY|MIKA_API_KEY_LIST|MIKA_BASE_URL|MIKA_MODEL|MIKA_FAST_MODEL|SERPER_API_KEY|MIKA_HISTORY_IMAGE_ENABLE_COLLAGE)='
+    if (Select-String -Path $configCheckFile -Pattern $legacyPattern -Quiet) {
+        Write-Host "❌ 检测到 $configCheckFile 中仍包含已移除的旧环境变量（存在即不再支持）"
+        Write-Host "💡 请迁移到新键："
+        Write-Host "   - MIKA_API_KEY -> LLM_API_KEY"
+        Write-Host "   - MIKA_API_KEY_LIST -> LLM_API_KEY_LIST"
+        Write-Host "   - MIKA_BASE_URL -> LLM_BASE_URL"
+        Write-Host "   - MIKA_MODEL -> LLM_MODEL"
+        Write-Host "   - MIKA_FAST_MODEL -> LLM_FAST_MODEL"
+        Write-Host "   - SERPER_API_KEY -> SEARCH_API_KEY"
+        Write-Host "   - MIKA_HISTORY_IMAGE_ENABLE_COLLAGE -> MIKA_HISTORY_COLLAGE_ENABLED"
+        exit 1
+    }
+
     if (Select-String -Path $configCheckFile -Pattern '^MIKA_MASTER_ID=0$' -Quiet) {
         Write-Host "⚠️  检测到 $configCheckFile 中 MIKA_MASTER_ID 仍为 0（示例值）"
         Write-Host "💡 请编辑 $configCheckFile，设置为你的 QQ 号，例如：MIKA_MASTER_ID=123456789"
         exit 0
     }
 
-    if (Select-String -Path $configCheckFile -Pattern '^MIKA_API_KEY=\"\"$' -Quiet) {
-        $hasKeyList = Select-String -Path $configCheckFile -Pattern '^MIKA_API_KEY_LIST=' -Quiet
-        $keyListEmpty = Select-String -Path $configCheckFile -Pattern '^MIKA_API_KEY_LIST=\[\s*\]$' -Quiet
+    if (Select-String -Path $configCheckFile -Pattern '^LLM_API_KEY=\"\"$' -Quiet) {
+        $hasKeyList = Select-String -Path $configCheckFile -Pattern '^LLM_API_KEY_LIST=' -Quiet
+        $keyListEmpty = Select-String -Path $configCheckFile -Pattern '^LLM_API_KEY_LIST=\[\s*\]$' -Quiet
         if (-not $hasKeyList -or $keyListEmpty) {
-            Write-Host "⚠️  检测到 $configCheckFile 中 MIKA_API_KEY 仍为空（示例值）"
-            Write-Host "💡 请编辑 $configCheckFile，填写 MIKA_API_KEY 或 MIKA_API_KEY_LIST"
+            Write-Host "⚠️  检测到 $configCheckFile 中 LLM_API_KEY 仍为空（示例值）"
+            Write-Host "💡 请编辑 $configCheckFile，填写 LLM_API_KEY 或 LLM_API_KEY_LIST"
             exit 0
         }
     }

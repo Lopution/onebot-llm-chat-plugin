@@ -1,7 +1,7 @@
 site_name: Mika Bot API 文档
 site_description: 基于 OneBot 协议、使用 OpenAI 兼容格式 API 的智能 QQ 聊天机器人
 site_author: Bot Developer
-repo_url: https://github.com/Lopution/mika-chat-core
+repo_url: https://github.com/Lopution/onebot-llm-chat-plugin
 
 theme:
   name: material

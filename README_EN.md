@@ -11,7 +11,7 @@
 [![NoneBot2](https://img.shields.io/badge/NoneBot-2.0+-red.svg)](https://nonebot.dev/)
 [![OneBot](https://img.shields.io/badge/OneBot-v11%20%2F%20v12-black.svg)](https://onebot.dev/)
 
-[📖 Docs](docs/index.md) · [🐛 Report Issues](https://github.com/Lopution/mika-chat-core/issues) · [💡 Feature Requests](https://github.com/Lopution/mika-chat-core/issues)
+[📖 Docs](docs/index.md) · [🐛 Report Issues](https://github.com/Lopution/onebot-llm-chat-plugin/issues) · [💡 Feature Requests](https://github.com/Lopution/onebot-llm-chat-plugin/issues)
 
 </div>
 
@@ -62,8 +62,8 @@ OneBot v11/v12 support with best-effort auto-degradation
 
 ```bash
 # 1. Clone
-git clone https://github.com/Lopution/mika-chat-core.git
-cd mika-chat-core
+git clone https://github.com/Lopution/onebot-llm-chat-plugin.git
+cd onebot-llm-chat-plugin
 
 # 2. One-click bootstrap
 # (create .venv, install deps, generate .env, and fill minimum required config)
@@ -146,8 +146,8 @@ After the bot starts, configure your OneBot implementation/client as a reverse W
 ### 1. Clone
 
 ```bash
-git clone https://github.com/Lopution/mika-chat-core.git
-cd mika-chat-core
+git clone https://github.com/Lopution/onebot-llm-chat-plugin.git
+cd onebot-llm-chat-plugin
 ```
 
 ### 2. Create a virtual environment (recommended)
@@ -180,48 +180,30 @@ python3 scripts/config_wizard.py
 
 #### Config Reference
 
-Use the `MIKA_*` prefix consistently for environment variables.
+There are 3 env namespaces (single source of truth):
+- `LLM_*`: LLM connection and models
+- `SEARCH_*`: Web search (optional)
+- `MIKA_*`: Plugin behaviors and feature toggles
 
-| Key | Description | Required | Default |
-|-----|-------------|:--------:|---------|
-| `MIKA_API_KEY` | Mika API key | ✅ | - |
-| `MIKA_BASE_URL` | API base URL (for proxy/gateway) | ❌ | - |
-| `MIKA_MODEL` | Primary model | ❌ | `gemini-3-pro-high` |
-| `MIKA_MASTER_ID` | Master QQ ID | ✅ | - |
-| `MIKA_GROUP_WHITELIST` | Group whitelist | ❌ | - |
-| `MIKA_OFFLINE_SYNC_ENABLED` | Offline sync (non-standard API, off by default) | ❌ | `false` |
-| `MIKA_CONTEXT_MODE` | Context mode (`legacy`/`structured`) | ❌ | `structured` |
-| `MIKA_CONTEXT_MAX_TURNS` | Max context turns (applied before raw message count trim) | ❌ | `30` |
-| `MIKA_CONTEXT_MAX_TOKENS_SOFT` | Soft token threshold for context trimming (estimated) | ❌ | `12000` |
-| `MIKA_CONTEXT_SUMMARY_ENABLED` | Enable summary compression (disabled by default) | ❌ | `false` |
-| `MIKA_MULTIMODAL_STRICT` | Strict multimodal sanitation when capability is missing | ❌ | `true` |
-| `MIKA_QUOTE_IMAGE_CAPTION_ENABLED` | Add caption hint for quoted images (best-effort) | ❌ | `true` |
-| `MIKA_QUOTE_IMAGE_CAPTION_PROMPT` | Quote-image hint template (supports `{count}`) | ❌ | `[引用图片共{count}张]` |
-| `MIKA_QUOTE_IMAGE_CAPTION_TIMEOUT_SECONDS` | Quote message parsing timeout (seconds) | ❌ | `3.0` |
-| `MIKA_LONG_REPLY_IMAGE_FALLBACK_ENABLED` | Enable rendered-image fallback on send failure | ❌ | `true` |
-| `MIKA_LONG_REPLY_IMAGE_MAX_CHARS` | Max chars for rendered long-reply image | ❌ | `12000` |
-| `MIKA_LONG_REPLY_IMAGE_MAX_WIDTH` | Rendered image width (px) | ❌ | `960` |
-| `MIKA_LONG_REPLY_IMAGE_FONT_SIZE` | Rendered image font size | ❌ | `24` |
-| `MIKA_LONG_MESSAGE_CHUNK_SIZE` | Compatibility-only (not used in main fallback chain) | ❌ | `800` |
-| `MIKA_EMPTY_REPLY_LOCAL_RETRIES` | Transport-level local retries on empty replies (without replaying full chain) | ❌ | `1` |
-| `MIKA_EMPTY_REPLY_LOCAL_RETRY_DELAY_SECONDS` | Delay between local empty-reply retries (seconds) | ❌ | `0.4` |
-| `MIKA_TRANSPORT_TIMEOUT_RETRIES` | Transport-level local retries for timeout only | ❌ | `1` |
-| `MIKA_TRANSPORT_TIMEOUT_RETRY_DELAY_SECONDS` | Delay between timeout retries (seconds) | ❌ | `0.6` |
-| `MIKA_EMPTY_REPLY_CONTEXT_DEGRADE_ENABLED` | Enable business-level context degradation on empty replies | ❌ | `false` |
-| `MIKA_EMPTY_REPLY_CONTEXT_DEGRADE_MAX_LEVEL` | Max degradation level for business-level context retries | ❌ | `2` |
-| `MIKA_METRICS_PROMETHEUS_ENABLED` | Enable Prometheus text output on `/metrics` | ❌ | `true` |
-| `MIKA_HEALTH_CHECK_API_PROBE_ENABLED` | Enable active API probe in `/health` | ❌ | `false` |
-| `MIKA_HEALTH_CHECK_API_PROBE_TIMEOUT_SECONDS` | API health probe timeout (seconds) | ❌ | `3.0` |
-| `MIKA_HEALTH_CHECK_API_PROBE_TTL_SECONDS` | API health probe cache TTL (seconds) | ❌ | `30` |
-| `MIKA_CONTEXT_TRACE_ENABLED` | Enable context-build trace logs | ❌ | `false` |
-| `MIKA_CONTEXT_TRACE_SAMPLE_RATE` | Context trace sampling ratio (0~1) | ❌ | `1.0` |
-| `MIKA_ACTIVE_REPLY_LTM_ENABLED` | Global gate for proactive LTM-like reply | ❌ | `true` |
-| `MIKA_ACTIVE_REPLY_PROBABILITY` | Final probability gate for proactive reply (0~1) | ❌ | `1.0` |
-| `MIKA_ACTIVE_REPLY_WHITELIST` | Group whitelist for proactive reply (empty = no extra limit) | ❌ | `[]` |
-| `SERPER_API_KEY` | Serper API key | ❌ | - |
-| `MIKA_STRICT_STARTUP` | Strict startup mode (fail-fast on loader errors) | ❌ | `false` |
+Minimum required (only these 2 to get started):
+- `LLM_API_KEY` (or `LLM_API_KEY_LIST`)
+- `MIKA_MASTER_ID`
 
-> 📖 Full config: [`docs/api/config.md`](docs/api/config.md)
+Common options (defaults will be used if omitted):
+
+| Key | Description | Default |
+|-----|-------------|---------|
+| `LLM_PROVIDER` | LLM provider | `openai_compat` |
+| `LLM_BASE_URL` | OpenAI-compatible API base URL | `https://generativelanguage.googleapis.com/v1beta/openai/` |
+| `LLM_MODEL` | Primary model | `gemini-3-pro-high` |
+| `LLM_FAST_MODEL` | Fast/light model (summary/extraction) | `gemini-2.5-flash-lite` |
+| `SEARCH_PROVIDER` | Search provider (optional) | `serper` |
+| `SEARCH_API_KEY` | Search API key (optional) | empty |
+| `MIKA_WEBUI_ENABLED` | WebUI (optional) | `false` |
+
+⚠️ Breaking change: legacy keys (e.g. `MIKA_API_KEY` / `SERPER_API_KEY`) are removed. If present, startup will fail fast.
+
+> 📖 Full config: [`docs/guide/configuration.md`](docs/guide/configuration.md)
 
 ### Custom Prompt (V2)
 
@@ -285,25 +267,17 @@ For dual-repo maintenance (open-source dev repo + local deployment repo), see:
 ## 📁 Project Structure
 
 ```
-mika-chat-core/
+onebot-llm-chat-plugin/
 ├── bot.py                 # Bot entrypoint
 ├── start.sh               # Startup script (Linux/WSL)
+├── start.ps1              # Startup script (Windows)
 ├── .env.example           # Env template
-├── requirements.txt       # Python dependencies
+├── pyproject.toml         # Python deps / packaging config
 ├── mkdocs.yml             # Docs config
 │
 ├── src/mika_chat_core/            # Host-agnostic core module
-│       ├── config.py
-│       ├── mika_api.py
-│       ├── handlers.py
-│       ├── matchers.py
-│       ├── lifecycle.py
-│       ├── tools.py
-│       ├── metrics.py
-│       └── utils/
-│
 ├── src/nonebot_plugin_mika_chat/  # NoneBot adapter layer (thin entry)
-│       └── __init__.py
+├── webui/                 # WebUI (frontend)
 │
 ├── docs/                  # Documentation
 └── tests/                 # Tests
@@ -316,11 +290,10 @@ mika-chat-core/
 | Document | Description |
 |----------|-------------|
 | [Docs Home](docs/index.md) | Documentation entry |
-| [API Client](docs/api/mika_api.md) | API client usage |
-| [Handlers](docs/api/handlers.md) | Message handling flow |
-| [Search Engine](docs/api/search_engine.md) | Web search module |
-| [Context Store](docs/api/context_store.md) | Context management |
-| [Config](docs/api/config.md) | Full configuration |
+| [Quickstart](docs/guide/quickstart.md) | Shortest path (WebUI recommended) |
+| [WebUI](docs/guide/webui.md) | Wizard, basic/advanced, effective snapshot |
+| [Troubleshooting](docs/guide/troubleshooting.md) | Empty replies/context overflow/media/tools |
+| [Upgrade](docs/guide/upgrade.md) | Breaking changes and migration checklist |
 | [OneBot Compatibility](docs/deploy/onebot.md) | v11/v12 compatibility notes |
 | [Cross-platform Acceptance Matrix](docs/deploy/acceptance-matrix.md) | Linux/Windows/WSL2 validation checklist |
 | [Release Process](docs/release-process.md) | Tag/Release flow and rollback |

@@ -23,7 +23,7 @@ if [ ! -f ".env" ] && [ ! -f ".env.prod" ]; then
         cp .env.example .env
         echo -e "${GREEN}✅ 已生成 .env（来自 .env.example）${NC}"
         echo -e "${YELLOW}⚠️  请先编辑 .env，至少填写：${NC}"
-        echo -e "${YELLOW}   - MIKA_API_KEY（或 MIKA_API_KEY_LIST）${NC}"
+        echo -e "${YELLOW}   - LLM_API_KEY（或 LLM_API_KEY_LIST）${NC}"
         echo -e "${YELLOW}   - MIKA_MASTER_ID${NC}"
         echo
         echo -e "${CYAN}💡 编辑完成后重新运行本脚本即可${NC}"
@@ -42,6 +42,22 @@ elif [ -f ".env" ]; then
     CONFIG_CHECK_NAME=".env"
 fi
 
+# 旧键已切断：如果仍存在这些环境变量，启动会直接失败（请迁移）。
+if [ -n "$CONFIG_CHECK_FILE" ]; then
+    if grep -qE '^(MIKA_API_KEY|MIKA_API_KEY_LIST|MIKA_BASE_URL|MIKA_MODEL|MIKA_FAST_MODEL|SERPER_API_KEY|MIKA_HISTORY_IMAGE_ENABLE_COLLAGE)=' "$CONFIG_CHECK_FILE"; then
+        echo -e "${RED}❌ 检测到 ${CONFIG_CHECK_NAME} 中仍包含已移除的旧环境变量（存在即不再支持）${NC}"
+        echo -e "${CYAN}💡 请迁移到新键：${NC}"
+        echo -e "${CYAN}   - MIKA_API_KEY -> LLM_API_KEY${NC}"
+        echo -e "${CYAN}   - MIKA_API_KEY_LIST -> LLM_API_KEY_LIST${NC}"
+        echo -e "${CYAN}   - MIKA_BASE_URL -> LLM_BASE_URL${NC}"
+        echo -e "${CYAN}   - MIKA_MODEL -> LLM_MODEL${NC}"
+        echo -e "${CYAN}   - MIKA_FAST_MODEL -> LLM_FAST_MODEL${NC}"
+        echo -e "${CYAN}   - SERPER_API_KEY -> SEARCH_API_KEY${NC}"
+        echo -e "${CYAN}   - MIKA_HISTORY_IMAGE_ENABLE_COLLAGE -> MIKA_HISTORY_COLLAGE_ENABLED${NC}"
+        exit 1
+    fi
+fi
+
 # 若配置仍是示例默认值，提前提示，避免用户一上来看到一堆报错堆栈
 if [ -n "$CONFIG_CHECK_FILE" ]; then
     if grep -q '^MIKA_MASTER_ID=0' "$CONFIG_CHECK_FILE"; then
@@ -50,11 +66,11 @@ if [ -n "$CONFIG_CHECK_FILE" ]; then
         exit 0
     fi
 
-    if grep -q '^MIKA_API_KEY=\"\"' "$CONFIG_CHECK_FILE"; then
+    if grep -q '^LLM_API_KEY=\"\"' "$CONFIG_CHECK_FILE"; then
         # 若用户未配置 key_list（或仍为空），提示先填写
-        if ! grep -q '^MIKA_API_KEY_LIST=' "$CONFIG_CHECK_FILE" || grep -q '^MIKA_API_KEY_LIST=\[[[:space:]]*\]$' "$CONFIG_CHECK_FILE"; then
-            echo -e "${YELLOW}⚠️  检测到 ${CONFIG_CHECK_NAME} 中 MIKA_API_KEY 仍为空（示例值）${NC}"
-            echo -e "${CYAN}💡 请编辑 ${CONFIG_CHECK_NAME}，填写 MIKA_API_KEY 或 MIKA_API_KEY_LIST${NC}"
+        if ! grep -q '^LLM_API_KEY_LIST=' "$CONFIG_CHECK_FILE" || grep -q '^LLM_API_KEY_LIST=\[[[:space:]]*\]$' "$CONFIG_CHECK_FILE"; then
+            echo -e "${YELLOW}⚠️  检测到 ${CONFIG_CHECK_NAME} 中 LLM_API_KEY 仍为空（示例值）${NC}"
+            echo -e "${CYAN}💡 请编辑 ${CONFIG_CHECK_NAME}，填写 LLM_API_KEY 或 LLM_API_KEY_LIST${NC}"
             exit 0
         fi
     fi

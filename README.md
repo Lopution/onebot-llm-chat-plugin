@@ -11,7 +11,7 @@
 [![NoneBot2](https://img.shields.io/badge/NoneBot-2.0+-red.svg)](https://nonebot.dev/)
 [![OneBot](https://img.shields.io/badge/OneBot-v11%20%2F%20v12-black.svg)](https://onebot.dev/)
 
-[📖 文档](docs/index.md) · [🐛 报告问题](https://github.com/Lopution/mika-chat-core/issues) · [💡 功能建议](https://github.com/Lopution/mika-chat-core/issues)
+[📖 文档](docs/index.md) · [🐛 报告问题](https://github.com/Lopution/onebot-llm-chat-plugin/issues) · [💡 功能建议](https://github.com/Lopution/onebot-llm-chat-plugin/issues)
 
 </div>
 
@@ -62,8 +62,8 @@
 
 ```bash
 # 1. 克隆项目
-git clone https://github.com/Lopution/mika-chat-core.git
-cd mika-chat-core
+git clone https://github.com/Lopution/onebot-llm-chat-plugin.git
+cd onebot-llm-chat-plugin
 
 # 2. 一键初始化（自动创建 .venv / 安装依赖 / 生成 .env / 补齐最小配置）
 python3 scripts/bootstrap.py
@@ -145,8 +145,8 @@ Bot 启动后，需要在你的 OneBot 实现/客户端侧配置“反向 WebSoc
 ### 1. 克隆项目
 
 ```bash
-git clone https://github.com/Lopution/mika-chat-core.git
-cd mika-chat-core
+git clone https://github.com/Lopution/onebot-llm-chat-plugin.git
+cd onebot-llm-chat-plugin
 ```
 
 ### 2. 创建虚拟环境（推荐）
@@ -179,48 +179,30 @@ python3 scripts/config_wizard.py
 
 #### 配置项说明
 
-统一使用 `MIKA_*` 前缀配置环境变量。
+统一使用三类前缀（单一入口）：
+- `LLM_*`：LLM 连接与模型
+- `SEARCH_*`：联网搜索（可选）
+- `MIKA_*`：插件自身行为与功能开关
 
-| 配置项 | 说明 | 必填 | 默认值 |
-|--------|------|:----:|--------|
-| `MIKA_API_KEY` | Mika API Key | ✅ | - |
-| `MIKA_BASE_URL` | API 基础地址（使用中转时填写） | ❌ | - |
-| `MIKA_MODEL` | 主模型名称 | ❌ | `gemini-3-pro-high` |
-| `MIKA_MASTER_ID` | 主人 QQ 号 | ✅ | - |
-| `MIKA_GROUP_WHITELIST` | 群组白名单 | ❌ | - |
-| `MIKA_OFFLINE_SYNC_ENABLED` | 离线同步（非标准 API，默认关闭） | ❌ | `false` |
-| `MIKA_CONTEXT_MODE` | 上下文模式（`legacy`/`structured`） | ❌ | `structured` |
-| `MIKA_CONTEXT_MAX_TURNS` | 上下文最大轮次（先于按条数截断） | ❌ | `30` |
-| `MIKA_CONTEXT_MAX_TOKENS_SOFT` | 上下文软 token 阈值（估算） | ❌ | `12000` |
-| `MIKA_CONTEXT_SUMMARY_ENABLED` | 启用摘要压缩（默认关闭） | ❌ | `false` |
-| `MIKA_MULTIMODAL_STRICT` | 多模态严格模式（不支持时自动清洗） | ❌ | `true` |
-| `MIKA_QUOTE_IMAGE_CAPTION_ENABLED` | 引用消息图片注释（best-effort） | ❌ | `true` |
-| `MIKA_QUOTE_IMAGE_CAPTION_PROMPT` | 引用图片提示模板（支持 `{count}` 占位符） | ❌ | `[引用图片共{count}张]` |
-| `MIKA_QUOTE_IMAGE_CAPTION_TIMEOUT_SECONDS` | 引用消息解析超时（秒） | ❌ | `3.0` |
-| `MIKA_LONG_REPLY_IMAGE_FALLBACK_ENABLED` | 发送失败后启用图片渲染兜底 | ❌ | `true` |
-| `MIKA_LONG_REPLY_IMAGE_MAX_CHARS` | 长回复渲染图片的最大字符数 | ❌ | `12000` |
-| `MIKA_LONG_REPLY_IMAGE_MAX_WIDTH` | 长回复渲染图片宽度（像素） | ❌ | `960` |
-| `MIKA_LONG_REPLY_IMAGE_FONT_SIZE` | 长回复渲染图片字号 | ❌ | `24` |
-| `MIKA_LONG_MESSAGE_CHUNK_SIZE` | 兼容保留（当前主链路不再使用） | ❌ | `800` |
-| `MIKA_EMPTY_REPLY_LOCAL_RETRIES` | 空回复传输层本地重试次数（不重跑整链路） | ❌ | `1` |
-| `MIKA_EMPTY_REPLY_LOCAL_RETRY_DELAY_SECONDS` | 空回复本地重试间隔（秒） | ❌ | `0.4` |
-| `MIKA_TRANSPORT_TIMEOUT_RETRIES` | 传输层超时本地重试次数（仅超时） | ❌ | `1` |
-| `MIKA_TRANSPORT_TIMEOUT_RETRY_DELAY_SECONDS` | 传输层超时重试间隔（秒） | ❌ | `0.6` |
-| `MIKA_EMPTY_REPLY_CONTEXT_DEGRADE_ENABLED` | 空回复时启用业务级上下文降级 | ❌ | `false` |
-| `MIKA_EMPTY_REPLY_CONTEXT_DEGRADE_MAX_LEVEL` | 业务级上下文降级最大层级 | ❌ | `2` |
-| `MIKA_METRICS_PROMETHEUS_ENABLED` | 启用 `/metrics` Prometheus 文本导出 | ❌ | `true` |
-| `MIKA_HEALTH_CHECK_API_PROBE_ENABLED` | 在 `/health` 启用 API 主动探测 | ❌ | `false` |
-| `MIKA_HEALTH_CHECK_API_PROBE_TIMEOUT_SECONDS` | 健康探测超时（秒） | ❌ | `3.0` |
-| `MIKA_HEALTH_CHECK_API_PROBE_TTL_SECONDS` | 健康探测结果缓存 TTL（秒） | ❌ | `30` |
-| `MIKA_CONTEXT_TRACE_ENABLED` | 上下文构建 trace 日志开关 | ❌ | `false` |
-| `MIKA_CONTEXT_TRACE_SAMPLE_RATE` | 上下文 trace 采样率（0~1） | ❌ | `1.0` |
-| `MIKA_ACTIVE_REPLY_LTM_ENABLED` | 主动回复 LTM 门控总开关 | ❌ | `true` |
-| `MIKA_ACTIVE_REPLY_PROBABILITY` | 主动回复最终概率门控（0~1） | ❌ | `1.0` |
-| `MIKA_ACTIVE_REPLY_WHITELIST` | 允许主动回复的群白名单（空=不额外限制） | ❌ | `[]` |
-| `SERPER_API_KEY` | Serper 搜索 API Key | ❌ | - |
-| `MIKA_STRICT_STARTUP` | 严格启动模式（加载失败直接退出） | ❌ | `false` |
+最小必填（只要这 2 项就能跑起来）：
+- `LLM_API_KEY`（或 `LLM_API_KEY_LIST` 二选一）
+- `MIKA_MASTER_ID`
 
-> 📖 完整配置说明请参阅 [`docs/api/config.md`](docs/api/config.md)
+常用项（不填则使用默认值）：
+
+| 配置项 | 说明 | 默认值 |
+|--------|------|--------|
+| `LLM_PROVIDER` | LLM Provider | `openai_compat` |
+| `LLM_BASE_URL` | OpenAI 兼容 API Base URL | `https://generativelanguage.googleapis.com/v1beta/openai/` |
+| `LLM_MODEL` | 主模型 | `gemini-3-pro-high` |
+| `LLM_FAST_MODEL` | 轻量模型（摘要/抽取等） | `gemini-2.5-flash-lite` |
+| `SEARCH_PROVIDER` | 搜索 Provider（可选） | `serper` |
+| `SEARCH_API_KEY` | 搜索 API Key（可选） | 空 |
+| `MIKA_WEBUI_ENABLED` | WebUI（可选） | `false` |
+
+⚠️ 破坏性升级：旧键（如 `MIKA_API_KEY` / `SERPER_API_KEY`）已切断，存在即启动失败。
+
+> 📖 完整配置说明请参阅 [`docs/guide/configuration.md`](docs/guide/configuration.md)
 
 ### 自定义 Prompt（V2）
 
@@ -284,25 +266,17 @@ python3 scripts/doctor.py
 ## 📁 项目结构
 
 ```
-mika-chat-core/
+onebot-llm-chat-plugin/
 ├── bot.py                 # 机器人入口
-├── start.sh               # 启动脚本
+├── start.sh               # 启动脚本（Linux/WSL）
+├── start.ps1              # 启动脚本（Windows）
 ├── .env.example           # 环境变量配置示例
-├── requirements.txt       # Python 依赖
+├── pyproject.toml         # Python 依赖/打包配置
 ├── mkdocs.yml             # 文档配置
 │
 ├── src/mika_chat_core/            # 中立核心模块（宿主无关）
-│       ├── config.py      # 配置管理
-│       ├── mika_api.py  # OpenAI 兼容格式 API 客户端
-│       ├── handlers.py    # 消息处理器
-│       ├── matchers.py    # 消息匹配器
-│       ├── lifecycle.py   # 生命周期管理
-│       ├── tools.py       # 工具函数定义
-│       ├── metrics.py     # 指标统计
-│       └── utils/         # 工具模块
-│
 ├── src/nonebot_plugin_mika_chat/  # NoneBot 适配层（薄入口）
-│       └── __init__.py    # 插件入口/注册
+├── webui/                 # WebUI（前端）
 │
 ├── docs/                  # 文档
 └── tests/                 # 测试用例
@@ -314,14 +288,11 @@ mika-chat-core/
 
 | 文档 | 说明 |
 |------|------|
-| [API 文档首页](docs/index.md) | 文档入口 |
-| [API 客户端](docs/api/mika_api.md) | API 客户端使用说明 |
-| [消息处理器](docs/api/handlers.md) | 消息处理逻辑 |
-| [搜索引擎](docs/api/search_engine.md) | 联网搜索功能 |
-| [上下文存储](docs/api/context_store.md) | 上下文管理 |
-| [配置说明](docs/api/config.md) | 完整配置参考 |
-| [OneBot 兼容性](docs/deploy/onebot.md) | v11/v12 兼容性说明 |
-| [跨平台验收矩阵](docs/deploy/acceptance-matrix.md) | Linux/Windows/WSL2 验收步骤 |
+| [文档首页](docs/index.md) | 文档入口 |
+| [快速开始](docs/guide/quickstart.md) | 最短启动路径（推荐走 WebUI） |
+| [WebUI 使用](docs/guide/webui.md) | 向导、基础/高级、effective snapshot |
+| [排错](docs/guide/troubleshooting.md) | 空回复/上下文爆/图片/工具等常见问题 |
+| [升级指南](docs/guide/upgrade.md) | 破坏性变更与迁移清单 |
 | [发布流程](docs/release-process.md) | Tag/Release 发布与回滚 |
 
 ### 构建文档站点

@@ -78,8 +78,8 @@ def ensure_env(force: bool) -> None:
 
 def env_has_required_values(path: Path) -> bool:
     env_map = read_env_map(path)
-    api_key = str(env_map.get("MIKA_API_KEY", "")).strip()
-    key_list = str(env_map.get("MIKA_API_KEY_LIST", "")).strip()
+    api_key = str(env_map.get("LLM_API_KEY", "")).strip()
+    key_list = str(env_map.get("LLM_API_KEY_LIST", "")).strip()
     master_id = str(env_map.get("MIKA_MASTER_ID", "")).strip()
     return bool((api_key or key_list) and master_id and master_id != "0")
 
