@@ -94,6 +94,152 @@ IMPLICIT_MEDIA_QUESTION_KEYWORDS = [
     "这啥意思",
 ]
 
+_IMPLICIT_MEDIA_REACTION_TOKENS = {
+    # punctuation-only / very short follow-ups often mean "about that image"
+    "?",
+    "？",
+    "??",
+    "？？",
+    "???",
+    "？？？",
+    "!",
+    "！",
+    "!!",
+    "！！",
+    "...",
+    "……",
+    "。。。",
+    "。。",
+    # common short reactions / acknowledgements
+    "嗯",
+    "呃",
+    "啊",
+    "哈",
+    "哈哈",
+    "哈哈哈",
+    "笑死",
+    "草",
+    "艹",
+    "离谱",
+    "牛",
+    "666",
+    "233",
+    "xswl",
+    "xd",
+}
+
+_PUNCTUATION_ONLY_RE = re.compile(r"^[\?\？\!\！\.\。\…~～]+$")
+
+
+def _normalize_compact(text: str) -> str:
+    return re.sub(r"\s+", "", str(text or "").strip().lower())
+
+
+def _looks_like_low_signal_followup(text: str) -> bool:
+    """判断是否像“几乎没有信息量，但可能在追问刚刚媒体”的跟进消息。"""
+    cleaned = _normalize_compact(text)
+    if not cleaned:
+        return False
+    if len(cleaned) > 12:
+        return False
+    if cleaned in _IMPLICIT_MEDIA_REACTION_TOKENS:
+        return True
+    if cleaned.isdigit() and len(cleaned) <= 4:
+        return True
+    if _PUNCTUATION_ONLY_RE.fullmatch(cleaned):
+        return True
+    # emoji-only / symbol-only (best-effort): short non-ascii without CJK
+    if len(cleaned) <= 4 and all(ord(ch) > 127 for ch in cleaned) and not any(
+        "\u4e00" <= ch <= "\u9fff" for ch in cleaned
+    ):
+        return True
+    return False
+
+
+def _looks_like_deictic_followup(text: str) -> bool:
+    """判断是否像“用代词/指代词接着聊”的场景，例如：这个/那/上面/里面。"""
+    cleaned = _normalize_compact(text)
+    if not cleaned:
+        return False
+    if len(cleaned) > 40:
+        return False
+    deictic_tokens = [
+        "这个",
+        "那个",
+        "这",
+        "那",
+        "上面",
+        "里面",
+        "这里",
+        "刚才",
+        "前面",
+        "上一条",
+        "上条",
+    ]
+    if not any(tok in cleaned for tok in deictic_tokens):
+        return False
+    # 代词 + 疑问/求解释语气，优先认为需要媒体语义
+    cue_tokens = ["啥", "什么", "怎么", "咋", "哪", "呢", "吗", "啊", "嘛", "呀", "呗"]
+    return any(tok in cleaned for tok in cue_tokens)
+
+
+def _message_has_media_placeholder(msg: Dict[str, Any]) -> bool:
+    content = msg.get("content", "")
+    # 中文占位符（含稳定 id）：[图片] / [图片×3] / [图片][picid:...] / [表情] / [表情][emoji:...]
+    cn_pattern = re.compile(r"\[(图片|表情)(?:×(\d+))?\]")
+    # 兼容旧形态：[Image: xxx]
+    legacy_pattern = re.compile(r"\[(?:image)(?::[^\]]*)?\]", re.IGNORECASE)
+
+    if isinstance(content, str):
+        return bool(cn_pattern.search(content) or legacy_pattern.search(content))
+
+    # history_store_multimodal=True 时，content 是 list[part]，需要直接识别 image_url。
+    if isinstance(content, list):
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            part_type = str(part.get("type") or "").lower()
+            if part_type == "image_url":
+                return True
+            if part_type == "text":
+                text = str(part.get("text") or "")
+                if cn_pattern.search(text) or legacy_pattern.search(text):
+                    return True
+    return False
+
+
+def _extract_recent_media_msg_ids(
+    context_messages: List[Dict[str, Any]], lookback: int = 12
+) -> List[str]:
+    """从最近上下文里提取“带媒体占位”的 message_id（新->旧）。"""
+    msg_ids: List[str] = []
+    if not context_messages:
+        return msg_ids
+    for msg in reversed(context_messages[-lookback:]):
+        if not isinstance(msg, dict):
+            continue
+        if not _message_has_media_placeholder(msg):
+            continue
+        mid = str(msg.get("message_id") or "").strip()
+        if not mid:
+            continue
+        if mid in msg_ids:
+            continue
+        msg_ids.append(mid)
+    return msg_ids
+
+
+def _recent_media_distance(
+    context_messages: List[Dict[str, Any]], lookback: int = 12
+) -> Optional[int]:
+    """返回“距离最近一条媒体消息”的消息间隔（0=最近一条就是媒体）。"""
+    if not context_messages:
+        return None
+    for idx, msg in enumerate(reversed(context_messages[-lookback:])):
+        if isinstance(msg, dict) and _message_has_media_placeholder(msg):
+            return idx
+    return None
+
 
 def _has_any_keyword(text: str, keywords: List[str]) -> bool:
     """检查文本是否包含任一关键词"""
@@ -102,7 +248,7 @@ def _has_any_keyword(text: str, keywords: List[str]) -> bool:
 
 def _looks_like_implicit_media_question(text: str) -> bool:
     """判断是否像“隐式指代媒体”的短问句。"""
-    cleaned = re.sub(r"\s+", "", str(text or "").strip().lower())
+    cleaned = _normalize_compact(text)
     if not cleaned:
         return False
     # 过长通常不是“刚才那张是啥”的隐式指代场景，避免误触发。
@@ -162,6 +308,8 @@ def determine_history_image_action(
     inline_threshold: float = 0.85,
     two_stage_threshold: float = 0.5,
     custom_keywords: Optional[List[str]] = None,
+    *,
+    actor_user_id: Optional[str] = None,
 ) -> HistoryImageDecision:
     """判定历史图片处理策略
     
@@ -209,10 +357,20 @@ def determine_history_image_action(
     has_comparison = _has_any_keyword(message_text, COMPARISON_KEYWORDS)
     has_general_ref = _has_any_keyword(message_text, effective_general_keywords)
     
-    # 检查上下文中是否有图片占位符
+    # 检查上下文中是否有图片占位符（用于隐式指代/短回复跟进）
     context_has_images = False
+    recent_media_msg_ids: List[str] = []
+    recent_media_gap: Optional[int] = None
     if context_messages:
         context_has_images = _count_image_placeholders_in_context(context_messages) > 0
+        try:
+            recent_media_msg_ids = _extract_recent_media_msg_ids(context_messages)
+            recent_media_gap = _recent_media_distance(context_messages)
+            if recent_media_gap is not None:
+                context_has_images = True
+        except Exception:
+            recent_media_msg_ids = []
+            recent_media_gap = None
     
     # 计算置信度
     confidence = 0.0
@@ -225,13 +383,22 @@ def determine_history_image_action(
     elif context_has_images:
         confidence = 0.3
 
-    # 隐式指代：上下文出现过媒体占位，当前消息像“短问句/求解释”
-    # 目标：避免用户不引用、不说“图/表情”，只说“啥意思”时漏掉 TWO_STAGE。
-    if context_has_images and _looks_like_implicit_media_question(message_text):
-        confidence = max(confidence, float(two_stage_threshold))
-    
-    # 无明确触发信号
-    if confidence < 0.3:
+    # 隐式指代：上下文出现过媒体占位，当前消息像“短问句/求解释/短反应/代词指代”
+    # 目标：避免用户不引用、不说“图/表情”等显式词，也能正确触发补图。
+    implicit_trigger = False
+    if context_has_images:
+        # “最近出现媒体”的强约束：越接近当前消息，越可能是对媒体的跟进。
+        gap_ok = recent_media_gap is None or recent_media_gap <= 4
+        if gap_ok and (
+            _looks_like_implicit_media_question(message_text)
+            or _looks_like_low_signal_followup(message_text)
+            or _looks_like_deictic_followup(message_text)
+        ):
+            implicit_trigger = True
+            confidence = max(confidence, float(two_stage_threshold))
+
+    # 无明确触发信号（仅“上下文里有媒体”不足以触发，避免误注入导致爆上下文）
+    if not (has_strong_ref or has_comparison or has_general_ref or implicit_trigger):
         return HistoryImageDecision(
             action=HistoryImageAction.NONE,
             reason="no_trigger_signal",
@@ -271,8 +438,25 @@ def determine_history_image_action(
 
     # two-stage：允许中等置信（包括 general/comparison/context）按需取图
     if mode in ("two_stage", "hybrid") and confidence >= two_stage_threshold:
+        ordered_candidates = list(candidate_images)
+        if recent_media_msg_ids:
+            index_map = {mid: idx for idx, mid in enumerate(recent_media_msg_ids)}
+            in_recent = [
+                img
+                for img in ordered_candidates
+                if str(getattr(img, "message_id", "") or "").strip() in index_map
+            ]
+            if in_recent:
+                ordered_candidates = sorted(
+                    in_recent,
+                    key=lambda img: index_map.get(
+                        str(getattr(img, "message_id", "") or "").strip(),
+                        10**9,
+                    ),
+                )
+
         msg_ids: List[str] = []
-        for image in candidate_images:
+        for image in ordered_candidates:
             message_id = str(image.message_id or "").strip()
             if not message_id:
                 continue
@@ -285,7 +469,10 @@ def determine_history_image_action(
             return HistoryImageDecision(
                 action=HistoryImageAction.TWO_STAGE,
                 candidate_msg_ids=msg_ids,
-                reason=f"two_stage:confidence={confidence:.2f}",
+                reason=(
+                    f"two_stage:confidence={confidence:.2f}"
+                    + (f",implicit_gap={recent_media_gap}" if implicit_trigger else "")
+                ),
                 confidence=confidence,
             )
 

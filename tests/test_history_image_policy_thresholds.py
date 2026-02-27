@@ -149,3 +149,36 @@ def test_implicit_reference_with_multimodal_history_triggers_two_stage():
 
     assert decision.action == HistoryImageAction.TWO_STAGE
     assert decision.candidate_msg_ids == ["m1"]
+
+
+def test_implicit_followup_punctuation_triggers_two_stage_when_recent_media_present():
+    decision = determine_history_image_action(
+        message_text="？",
+        candidate_images=[_image("m1")],
+        context_messages=[{"role": "user", "content": "[图片][picid:abc123]", "message_id": "m1"}],
+        mode="hybrid",
+        inline_max=1,
+        two_stage_max=1,
+        enable_collage=False,
+        inline_threshold=0.85,
+        two_stage_threshold=0.5,
+    )
+
+    assert decision.action == HistoryImageAction.TWO_STAGE
+    assert decision.candidate_msg_ids == ["m1"]
+
+
+def test_punctuation_without_media_does_not_trigger_two_stage():
+    decision = determine_history_image_action(
+        message_text="？",
+        candidate_images=[_image("m1")],
+        context_messages=[{"role": "user", "content": "随便聊聊"}],
+        mode="hybrid",
+        inline_max=1,
+        two_stage_max=1,
+        enable_collage=False,
+        inline_threshold=0.85,
+        two_stage_threshold=0.5,
+    )
+
+    assert decision.action == HistoryImageAction.NONE
