@@ -1151,6 +1151,10 @@ class Config(BaseModel):
     # 传输层超时本地重试（仅针对 TimeoutException）
     mika_transport_timeout_retries: int = 1
     mika_transport_timeout_retry_delay_seconds: float = 0.6
+    # 传输层自愈：当空回复/请求过大/上下文超限时，自动降级（缩上下文/禁 tools/禁 images）后重试
+    # 仅影响本次请求，不改持久化历史（默认开启，稳定性优先）
+    mika_transport_self_heal_enabled: bool = True
+    mika_transport_self_heal_max_attempts: int = 3
     # 是否允许空回复触发业务级上下文降级重试（默认关闭，便于排障）
     mika_empty_reply_context_degrade_enabled: bool = False
     mika_empty_reply_context_degrade_max_level: int = 2
