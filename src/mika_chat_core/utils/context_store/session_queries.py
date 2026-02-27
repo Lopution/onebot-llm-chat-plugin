@@ -388,7 +388,7 @@ async def get_recent_archive_messages(
 
     placeholders = ",".join(["?"] * len(role_list))
     sql = (
-        "SELECT role, content, message_id, timestamp "
+        "SELECT role, content, message_id, timestamp, user_id "
         "FROM message_archive "
         f"WHERE context_key = ? AND role IN ({placeholders}) "
         "ORDER BY COALESCE(timestamp, 0) DESC, id DESC "
@@ -410,6 +410,7 @@ async def get_recent_archive_messages(
                     "content": row[1],
                     "message_id": str(row[2] or ""),
                     "timestamp": float(row[3] or 0.0),
+                    "user_id": str(row[4] or ""),
                 }
             )
         return out

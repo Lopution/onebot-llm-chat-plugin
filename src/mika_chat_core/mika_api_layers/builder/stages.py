@@ -185,7 +185,11 @@ async def append_history_messages(
         try:
             from ...utils.context_db import get_db
             from ...utils.context_store.session_queries import get_recent_archive_messages
-            from ...utils.transcript_builder import build_transcript_block, build_transcript_lines
+            from ...utils.transcript_builder import (
+                build_participants_line,
+                build_transcript_block,
+                build_transcript_lines,
+            )
 
             bot_name = str(getattr(plugin_cfg, "mika_bot_display_name", "Mika") or "Mika").strip() or "Mika"
             max_lines = int(getattr(plugin_cfg, "mika_proactive_chatroom_history_lines", 300) or 300)
@@ -213,6 +217,9 @@ async def append_history_messages(
                 max_lines=max(0, max_lines),
                 line_max_chars=line_max_chars,
             )
+            participants_line = build_participants_line(lines, bot_name=bot_name)
+            if participants_line:
+                lines = [participants_line, *lines]
             block = build_transcript_block(lines)
             messages.append({"role": "system", "content": block.text})
         except Exception as exc:

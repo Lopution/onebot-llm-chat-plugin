@@ -37,7 +37,7 @@ async def test_builder_group_uses_archive_transcript(temp_database, monkeypatch)
         INSERT INTO message_archive (context_key, user_id, role, content, message_id, timestamp)
         VALUES (?, ?, ?, ?, ?, ?)
         """,
-        ("group:g1", "u1", "user", "[Alice(1)]: hello", "m1", 1.0),
+        ("group:g1", "1", "user", "[Alice(1)]: hello", "m1", 1.0),
     )
     await temp_database.execute(
         """
@@ -69,6 +69,5 @@ async def test_builder_group_uses_archive_transcript(temp_database, monkeypatch)
     sys_msgs = [m for m in (result.request_body.get("messages") or []) if m.get("role") == "system"]
     assert any("[Chatroom Transcript]" in str(m.get("content") or "") for m in sys_msgs)
     transcript = next(str(m.get("content") or "") for m in sys_msgs if "[Chatroom Transcript]" in str(m.get("content") or ""))
-    assert "Alice(1): hello" in transcript
+    assert "Alice: hello" in transcript
     assert "Mika: ok" in transcript
-

@@ -44,20 +44,34 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
 
 
 def _render_context_preview(context_messages: List[Dict[str, Any]], max_lines: int = 12) -> str:
-    lines: List[str] = []
-    for msg in (context_messages or [])[-max_lines:]:
-        role = str(msg.get("role") or "").strip().lower()
-        if role not in {"user", "assistant"}:
-            continue
-        content = msg.get("content", "")
-        text = str(content if isinstance(content, str) else "").replace("\n", " ").strip()
-        if not text:
-            continue
-        if len(text) > 120:
-            text = text[:120] + "..."
-        speaker = "Mika" if role == "assistant" else "User"
-        lines.append(f"{speaker}: {text}")
-    return "\n".join(lines).strip()
+    # Use the same transcript rules as the main group working set so we don't
+    # lose speaker identity in multi-user chatrooms.
+    try:
+        from ..utils.transcript_builder import build_transcript_lines
+
+        rendered = build_transcript_lines(
+            context_messages or [],
+            bot_name="Mika",
+            max_lines=max(1, int(max_lines or 12)),
+            line_max_chars=120,
+        )
+        return "\n".join(rendered).strip()
+    except Exception:
+        # Fallback to a minimal preview on any unexpected errors.
+        lines: List[str] = []
+        for msg in (context_messages or [])[-max_lines:]:
+            role = str(msg.get("role") or "").strip().lower()
+            if role not in {"user", "assistant"}:
+                continue
+            content = msg.get("content", "")
+            text = str(content if isinstance(content, str) else "").replace("\n", " ").strip()
+            if not text:
+                continue
+            if len(text) > 120:
+                text = text[:120] + "..."
+            speaker = "Mika" if role == "assistant" else "User"
+            lines.append(f"{speaker}: {text}")
+        return "\n".join(lines).strip()
 
 
 class RelevanceFilter:

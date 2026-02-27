@@ -2,29 +2,18 @@
 
 from __future__ import annotations
 
-import re
 from typing import Any, Dict, List
 
-from .utils.media_semantics import placeholder_from_content_part
+from .utils.transcript_builder import (
+    build_participants_line,
+    build_transcript_lines,
+    render_transcript_content as _render_transcript_content,
+)
 
 
 def render_transcript_content(content: Any) -> str:
-    if isinstance(content, str):
-        text = content
-    elif isinstance(content, list):
-        parts: List[str] = []
-        for item in content:
-            if not isinstance(item, dict):
-                continue
-            item_type = item.get("type")
-            if item_type == "text":
-                parts.append(str(item.get("text") or ""))
-            elif item_type == "image_url":
-                parts.append(placeholder_from_content_part(item))
-        text = " ".join(part for part in parts if part)
-    else:
-        text = str(content or "")
-    return " ".join(text.split())
+    # Keep a stable, shared rendering rule with the group transcript builder.
+    return _render_transcript_content(content)
 
 
 def build_proactive_chatroom_injection(
@@ -38,39 +27,15 @@ def build_proactive_chatroom_injection(
     if max_lines <= 0:
         return ""
 
-    lines: List[str] = []
-    for msg in (history or [])[-max_lines:]:
-        role = msg.get("role")
-        content = render_transcript_content(msg.get("content"))
-        if not content:
-            continue
-
-        content = content.replace("\n", " ").strip()
-        if len(content) > 200:
-            content = content[:200] + "…"
-
-        # 当 transcript 行包含媒体占位符时，附加 <msg_id:...>，方便后续两阶段回取关联。
-        msg_id = str(msg.get("message_id") or "").strip()
-        if (
-            msg_id
-            and "<msg_id:" not in content
-            and ("[图片" in content or "[表情" in content)
-        ):
-            content = f"{content} <msg_id:{msg_id}>"
-
-        if role == "assistant":
-            lines.append(f"{bot_name}: {content}")
-            continue
-
-        matched = re.match(r"^\[(.*?)\]:\s*(.*)$", content)
-        if matched:
-            speaker = (matched.group(1) or "").strip()
-            said = (matched.group(2) or "").strip()
-            if speaker and said:
-                lines.append(f"{speaker}: {said}")
-                continue
-
-        lines.append(content)
+    lines = build_transcript_lines(
+        history,
+        bot_name=bot_name,
+        max_lines=max_lines,
+        line_max_chars=200,
+    )
+    participants_line = build_participants_line(lines, bot_name=bot_name)
+    if participants_line:
+        lines = [participants_line, *lines]
 
     transcript = "\n".join(lines).strip()
     if not transcript:
