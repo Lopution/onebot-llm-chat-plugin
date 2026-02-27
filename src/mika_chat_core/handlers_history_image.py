@@ -174,63 +174,58 @@ async def apply_history_image_strategy_flow(
 
     if decision.action == history_image_action_cls.TWO_STAGE:
         metrics_obj.history_image_two_stage_triggered_total += 1
-        context_key = f"group:{group_id}" if group_id else f"private:{user_id}"
-        max_images = int(cfg(plugin_config, "mika_history_image_two_stage_max", 2) or 2)
-
-        # 优先后端自动回取并附带媒体，避免“必须工具/必须引用”才能看图。
-        fetched: list[dict[str, str]] = []
-        try:
-            from .utils.history_image_fetcher import fetch_history_images_data_urls
-
-            fetched = await fetch_history_images_data_urls(
-                context_key=context_key,
-                msg_ids=list(decision.candidate_msg_ids or []),
-                max_images=max(1, max_images),
-                plugin_config=plugin_config,
-                get_image_cache_fn=lambda: image_cache,
-                metrics_obj=None,
-            )
-        except Exception as exc:
-            log_obj.warning(f"[历史图片] TWO_STAGE 自动回取失败: {exc}")
-            fetched = []
-
-        if fetched:
-            sender_map = {
-                str(img.message_id): str(img.sender_name or "").strip()
-                for img in candidate_images
-                if str(getattr(img, "message_id", "") or "").strip()
-            }
-            for item in fetched:
-                mid = str(item.get("msg_id") or "").strip()
-                sender = sender_map.get(mid)
-                if sender:
-                    item["sender_name"] = sender
-
-            final_image_urls = [str(item.get("data_url") or "").strip() for item in fetched]
-            final_image_urls = [u for u in final_image_urls if u.startswith("data:")]
-            if final_image_urls:
-                mapping_parts = [
-                    f"Image {i+1} from <msg_id:{item.get('msg_id','')}> (sent by {item.get('sender_name','某人')})"
-                    for i, item in enumerate(fetched)
-                ]
-                cached_hint = (
-                    "[System Note: Attached history images mapping: "
-                    + ", ".join(mapping_parts)
-                    + "]"
-                )
-                metrics_obj.history_image_images_injected_total += len(final_image_urls)
-                log_obj.info(
-                    f"[历史图片] TWO_STAGE 自动回取成功 | {scope_info} | images={len(final_image_urls)} | reason={decision.reason}"
-                )
-                return final_image_urls, cached_hint
-
-        # 自动回取失败时：回退到“候选提示 + 工具兜底”（群聊可用；私聊提示重发图片）。
+        hint_parts: list[str] = []
         if group_id:
-            cached_hint = build_candidate_hint_fn(decision.candidate_msg_ids)
+            candidate_hint = build_candidate_hint_fn(decision.candidate_msg_ids)
+            if candidate_hint:
+                hint_parts.append(candidate_hint)
         else:
-            cached_hint = "[System Note: 历史图片自动回取失败；如需识别图片，请重新发送图片。]"
+            hint_parts.append("[System Note: 私聊历史图片不支持自动回取；如需识别图片，请重新发送图片。]")
+
+        # Caption-first: avoid attaching `data:base64` to the main request (too large / proxy-unfriendly).
+        media_policy = str(cfg(plugin_config, "mika_media_policy_default", "caption") or "caption").strip().lower()
+        caption_enabled = bool(cfg(plugin_config, "mika_media_caption_enabled", False))
+        if caption_enabled and media_policy == "caption" and decision.candidate_msg_ids:
+            max_images = int(cfg(plugin_config, "mika_history_image_two_stage_max", 2) or 2)
+            # Best-effort: use cached URLs; no base64 in storage/request.
+            msg_id_to_url: dict[str, str] = {}
+            for img in candidate_images:
+                mid = str(getattr(img, "message_id", "") or "").strip()
+                url = str(getattr(img, "url", "") or "").strip()
+                if mid and url and mid not in msg_id_to_url:
+                    msg_id_to_url[mid] = url
+
+            image_parts: list[dict[str, Any]] = []
+            for mid in list(decision.candidate_msg_ids or [])[: max(1, max_images)]:
+                url = msg_id_to_url.get(str(mid))
+                if not url:
+                    continue
+                image_parts.append({"type": "image_url", "image_url": {"url": url}})
+
+            if image_parts:
+                try:
+                    from .utils.media_captioner import caption_images
+
+                    captions = await caption_images(
+                        image_parts,
+                        request_id=str(message_id or "history_image"),
+                        cfg=plugin_config,
+                    )
+                except Exception as exc:
+                    log_obj.warning(f"[历史图片] TWO_STAGE caption 生成失败: {exc}")
+                    captions = []
+
+                if captions:
+                    lines = ["[Context Media Captions | Untrusted]"]
+                    for i, caption in enumerate(captions):
+                        text = str(caption or "").strip()
+                        if text:
+                            lines.append(f"- Image {i+1}: {text}")
+                    hint_parts.append("\n".join(lines).strip())
+
+        cached_hint = "\n\n".join([p for p in hint_parts if str(p or "").strip()]).strip() or None
         log_obj.info(
-            f"[历史图片] TWO_STAGE | {scope_info} | candidates={len(decision.candidate_msg_ids)} | reason={decision.reason}"
+            f"[历史图片] TWO_STAGE(caption-first) | {scope_info} | candidates={len(decision.candidate_msg_ids)} | reason={decision.reason}"
         )
 
     return final_image_urls, cached_hint

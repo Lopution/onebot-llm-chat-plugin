@@ -617,6 +617,22 @@ class Config(BaseModel):
             )
         return value
 
+    @field_validator("mika_media_policy_default")
+    @classmethod
+    def validate_media_policy_default(cls, v: str) -> str:
+        value = (v or "").strip().lower()
+        allowed = {"none", "caption", "images"}
+        if value not in allowed:
+            raise ValueError("mika_media_policy_default 仅支持 none / caption / images")
+        return value
+
+    @field_validator("mika_media_attach_max_images")
+    @classmethod
+    def validate_media_attach_max_images(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("mika_media_attach_max_images 必须大于等于 0")
+        return v
+
     @field_validator("search_provider")
     @classmethod
     def validate_search_provider(cls, v: str) -> str:
@@ -1022,6 +1038,13 @@ class Config(BaseModel):
     mika_multimodal_strict: bool = True
     # 强制声明主上游是否支持图片输入（None=按 provider 推断；对 openai_compat 代理尤为关键）
     mika_llm_supports_images: Optional[bool] = None
+    # 多模态默认策略：
+    # - none: 仅保留占位符（不发图、不 caption）
+    # - caption: 优先 caption（不发原图给主上游；用 caption 文本辅助理解）
+    # - images: 允许发原图（更准但更容易炸 body/代理不兼容）
+    mika_media_policy_default: str = "caption"
+    # 附带原图的数量上限（仅在策略允许 images 时使用）
+    mika_media_attach_max_images: int = 2
     # 当主上游不支持图片输入时：是否启用“看图转文字(caption)兜底”
     mika_media_caption_enabled: bool = False
     # caption provider（空=复用主 llm_provider）

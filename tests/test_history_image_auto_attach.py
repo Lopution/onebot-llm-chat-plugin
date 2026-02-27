@@ -29,7 +29,7 @@ class _DummyProcessor:
 
 
 @pytest.mark.asyncio
-async def test_two_stage_auto_attach_returns_data_url_and_mapping_hint(temp_database, monkeypatch):
+async def test_two_stage_caption_first_injects_caption_and_hint(temp_database, monkeypatch):
     from mika_chat_core.handlers_history_image import apply_history_image_strategy_flow
     from mika_chat_core.utils.history_image_policy import (
         HistoryImageAction,
@@ -73,6 +73,8 @@ async def test_two_stage_auto_attach_returns_data_url_and_mapping_hint(temp_data
         mika_history_inline_threshold=0.85,
         mika_history_two_stage_threshold=0.5,
         mika_history_image_trigger_keywords=[],
+        mika_media_policy_default="caption",
+        mika_media_caption_enabled=True,
     )
 
     metrics = SimpleNamespace(
@@ -90,8 +92,10 @@ async def test_two_stage_auto_attach_returns_data_url_and_mapping_hint(temp_data
     mika_client = AsyncMock()
     mika_client.get_context = AsyncMock(return_value=[])
 
-    monkeypatch.setattr("mika_chat_core.utils.context_db.get_db", AsyncMock(return_value=temp_database))
-    monkeypatch.setattr("mika_chat_core.utils.image_processor.get_image_processor", lambda: _DummyProcessor())
+    monkeypatch.setattr(
+        "mika_chat_core.utils.media_captioner.caption_images",
+        AsyncMock(return_value=["cap-1"]),
+    )
 
     final_urls, hint = await apply_history_image_strategy_flow(
         ctx=ctx,
@@ -111,8 +115,8 @@ async def test_two_stage_auto_attach_returns_data_url_and_mapping_hint(temp_data
         is_collage_available_fn=lambda: False,
     )
 
-    assert final_urls and final_urls[0].startswith("data:image/jpeg;base64,")
+    assert final_urls == []
     assert hint is not None
     assert "<msg_id:m1>" in hint
-    assert "Tester" in hint
-
+    assert "[Context Media Captions | Untrusted]" in hint
+    assert "cap-1" in hint
