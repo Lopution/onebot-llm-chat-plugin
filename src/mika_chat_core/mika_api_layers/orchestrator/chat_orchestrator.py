@@ -105,11 +105,12 @@ async def run_chat_main_loop(
     # -------------------- Retrieval pipeline (plan-driven) --------------------
     # Align with MaiBot/AstrBot: store full history, but inject a controlled working set.
     # The planner owns "whether to retrieve / inject knowledge"; injection is best-effort.
+    plan_for_injection = None
     try:
         from ...memory.retrieval_pipeline import apply_retrieval_pipeline
-        from ...planning.planner import build_request_plan
+        from ...planning.planner import build_request_plan_async
 
-        plan_for_injection = build_request_plan(
+        plan_for_injection = await build_request_plan_async(
             plugin_cfg=plugin_cfg,
             enable_tools=bool(enable_tools),
             is_proactive=False,
@@ -160,7 +161,7 @@ async def run_chat_main_loop(
             from ...observability.trace_store import get_trace_store
             from ...planning.planner import build_request_plan
 
-            plan = build_request_plan(
+            plan = plan_for_injection or build_request_plan(
                 plugin_cfg=plugin_cfg,
                 enable_tools=bool(enable_tools),
                 is_proactive=False,
