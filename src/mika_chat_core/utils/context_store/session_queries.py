@@ -366,3 +366,53 @@ async def get_stats(
     except Exception as exc:
         log_obj.error(f"获取统计信息失败: {exc}", exc_info=True)
         return {"error": str(exc)}
+
+
+async def get_recent_archive_messages(
+    context_key: str,
+    *,
+    limit: int,
+    roles: tuple[str, ...] = ("user", "assistant"),
+    get_db_fn,
+    log_obj,
+) -> List[Dict[str, Any]]:
+    """从 message_archive 拉取最近 N 条消息（按时间升序返回）。"""
+    resolved_key = str(context_key or "").strip()
+    if not resolved_key:
+        return []
+
+    resolved_limit = max(1, min(1000, int(limit or 50)))
+    role_list = [str(r or "").strip().lower() for r in (roles or ()) if str(r or "").strip()]
+    if not role_list:
+        role_list = ["user", "assistant"]
+
+    placeholders = ",".join(["?"] * len(role_list))
+    sql = (
+        "SELECT role, content, message_id, timestamp "
+        "FROM message_archive "
+        f"WHERE context_key = ? AND role IN ({placeholders}) "
+        "ORDER BY COALESCE(timestamp, 0) DESC, id DESC "
+        "LIMIT ?"
+    )
+    params = [resolved_key, *role_list, resolved_limit]
+
+    try:
+        db = await get_db_fn()
+        async with db.execute(sql, tuple(params)) as cursor:
+            rows = await cursor.fetchall()
+
+        # Reverse to chronological order (old -> new).
+        out: List[Dict[str, Any]] = []
+        for row in reversed(rows or []):
+            out.append(
+                {
+                    "role": str(row[0] or "").strip().lower(),
+                    "content": row[1],
+                    "message_id": str(row[2] or ""),
+                    "timestamp": float(row[3] or 0.0),
+                }
+            )
+        return out
+    except Exception as exc:
+        log_obj.debug(f"get_recent_archive_messages failed: {exc}")
+        return []

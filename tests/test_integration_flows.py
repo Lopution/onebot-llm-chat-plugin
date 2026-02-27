@@ -971,7 +971,7 @@ async def test_build_messages_strips_tool_history_when_tools_disabled():
     result = await build_messages(
         "继续",
         user_id="u1",
-        group_id="g1",
+        group_id=None,
         image_urls=None,
         search_result="",
         model="mika-test",

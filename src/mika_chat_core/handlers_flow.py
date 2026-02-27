@@ -236,27 +236,6 @@ async def _group_stage_build_injection(state: GroupFlowState) -> None:
     if state.cached_hint:
         state.injection_parts.append(state.cached_hint)
 
-    if (
-        state.is_proactive
-        and bool(getattr(state.plugin_config, "mika_proactive_chatroom_enabled", True))
-        and callable(state.deps.build_proactive_chatroom_injection)
-    ):
-        try:
-            max_lines = int(getattr(state.plugin_config, "mika_proactive_chatroom_history_lines", 30) or 30)
-            history = await state.mika_client.get_context(state.user_id_int, str(state.ctx.group_id))
-            chatroom_injection = state.deps.build_proactive_chatroom_injection(
-                history,
-                bot_name=getattr(state.plugin_config, "mika_bot_display_name", "Mika") or "Mika",
-                max_lines=max(0, max_lines),
-                trigger_message=state.raw_text,
-                trigger_sender=state.tag,
-            )
-            if chatroom_injection:
-                state.injection_parts.append(chatroom_injection)
-            state.history_override = []
-        except Exception as exc:
-            log.warning(f"[主动发言][chatroom] 构建 transcript 失败，回退原模式: {exc}")
-
     state.system_injection_content = "\n".join([p for p in state.injection_parts if p]).strip() or None
 
 

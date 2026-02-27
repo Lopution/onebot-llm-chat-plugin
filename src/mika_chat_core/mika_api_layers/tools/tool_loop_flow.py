@@ -127,6 +127,7 @@ async def handle_tool_calls_flow(
                 "on_tool_start",
                 {
                     "request_id": request_id,
+                    "group_id": str(group_id or ""),
                     "round_index": round_idx,
                     "tool_call_id": str(tool_call_id),
                     "tool_name": str(function_name or ""),
@@ -262,6 +263,7 @@ async def handle_tool_calls_flow(
                 "on_tool_end",
                 {
                     "request_id": request_id,
+                    "group_id": str(group_id or ""),
                     "round_index": round_idx,
                     "tool_call_id": str(tool_call_id),
                     "tool_name": str(function_name or ""),

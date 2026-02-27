@@ -296,6 +296,33 @@ async def init_database() -> None:
         """
     )
 
+    # -------------------- Observability (agent traces) --------------------
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS agent_traces (
+            request_id TEXT PRIMARY KEY,
+            session_key TEXT NOT NULL,
+            user_id TEXT NOT NULL DEFAULT '',
+            group_id TEXT NOT NULL DEFAULT '',
+            created_at REAL NOT NULL,
+            plan_json TEXT NOT NULL DEFAULT '',
+            events_json TEXT NOT NULL DEFAULT '[]'
+        )
+        """
+    )
+    await db.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_agent_traces_session_created
+        ON agent_traces(session_key, created_at)
+        """
+    )
+    await db.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_agent_traces_created
+        ON agent_traces(created_at)
+        """
+    )
+
     await db.commit()
     log.success("数据库初始化完成")
 

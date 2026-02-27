@@ -169,17 +169,58 @@ async def append_history_messages(
     context_level: int,
     use_persistent: bool,
     context_store,
+    plugin_cfg: Any,
     supports_images: bool,
     supports_tools: bool,
     normalize_content_fn,
     sanitize_history_message_for_request_fn,
     log_obj: Any,
 ) -> Tuple[List[Dict[str, Any]], int, int]:
-    history = (
-        await get_context_async(user_id, group_id)
-        if history_override is None
-        else list(history_override)
-    )
+    resolved_group_id = str(group_id or "").strip()
+
+    # Group chat: build a compact transcript from message_archive (working set).
+    # This avoids blindly sending the whole structured snapshot upstream, which
+    # often leads to HTTP 200 but empty content on proxy endpoints.
+    if resolved_group_id:
+        try:
+            from ...utils.context_db import get_db
+            from ...utils.context_store.session_queries import get_recent_archive_messages
+            from ...utils.transcript_builder import build_transcript_block, build_transcript_lines
+
+            bot_name = str(getattr(plugin_cfg, "mika_bot_display_name", "Mika") or "Mika").strip() or "Mika"
+            max_lines = int(getattr(plugin_cfg, "mika_proactive_chatroom_history_lines", 300) or 300)
+            line_max_chars = int(getattr(plugin_cfg, "mika_chatroom_transcript_line_max_chars", 240) or 240)
+
+            # Business-level context degradation keeps working: shrink transcript working set.
+            if int(context_level or 0) >= 2:
+                max_lines = max(20, int(max_lines * 0.3))
+            elif int(context_level or 0) == 1:
+                max_lines = max(50, int(max_lines * 0.7))
+
+            if history_override is not None:
+                history = list(history_override)
+            else:
+                history = await get_recent_archive_messages(
+                    f"group:{resolved_group_id}",
+                    limit=max(1, max_lines * 2),
+                    get_db_fn=get_db,
+                    log_obj=log_obj,
+                )
+
+            lines = build_transcript_lines(
+                history,
+                bot_name=bot_name,
+                max_lines=max(0, max_lines),
+                line_max_chars=line_max_chars,
+            )
+            block = build_transcript_block(lines)
+            messages.append({"role": "system", "content": block.text})
+        except Exception as exc:
+            log_obj.debug(f"group transcript build failed, fallback to structured history: {exc}")
+        else:
+            return messages, 0, 0
+
+    history = (await get_context_async(user_id, group_id) if history_override is None else list(history_override))
     dropped_tool_messages = 0
     dropped_unsupported_images = 0
 

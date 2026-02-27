@@ -8,6 +8,7 @@ from nonebot import logger as log
 from mika_chat_core.runtime import (
     set_config as set_runtime_config,
     set_host_event_port as set_runtime_host_event_port,
+    set_agent_run_hooks as set_runtime_agent_run_hooks,
     set_logger_port as set_runtime_logger_port,
     set_message_port as set_runtime_message_port,
     set_paths_port as set_runtime_paths_port,
@@ -35,6 +36,12 @@ if PluginMetadata is not None:
 plugin_config = get_plugin_config(Config)
 set_runtime_config(plugin_config)
 set_runtime_logger_port(log)
+try:
+    from mika_chat_core.observability.trace_store import TraceAgentHooks
+
+    set_runtime_agent_run_hooks(TraceAgentHooks())
+except Exception as exc:  # pragma: no cover - optional
+    log.warning("Trace hooks init failed (ignored): %s", exc)
 
 from .runtime_ports_nb import get_runtime_ports_bundle
 

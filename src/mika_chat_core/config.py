@@ -159,6 +159,12 @@ class Config(BaseModel):
     mika_context_trace_enabled: bool = False
     mika_context_trace_sample_rate: float = 1.0
 
+    # ==================== Observability: Trace Store (WebUI 可查) ====================
+    # 注意：这是“本地可观测”能力，必须是 best-effort，不能影响主流程稳定性。
+    mika_trace_enabled: bool = True
+    mika_trace_retention_days: int = 7
+    mika_trace_max_rows: int = 20000
+
     @staticmethod
     def _parse_env_bool(value: str) -> bool:
         normalized = str(value).strip().lower()
@@ -175,6 +181,38 @@ class Config(BaseModel):
     @staticmethod
     def _parse_env_float(value: str) -> float:
         return float(str(value).strip())
+
+    @field_validator("mika_trace_retention_days")
+    @classmethod
+    def validate_trace_retention_days(cls, v: int) -> int:
+        v = int(v)
+        if v <= 0:
+            raise ValueError("mika_trace_retention_days 必须大于 0")
+        return v
+
+    @field_validator("mika_trace_max_rows")
+    @classmethod
+    def validate_trace_max_rows(cls, v: int) -> int:
+        v = int(v)
+        if v <= 0:
+            raise ValueError("mika_trace_max_rows 必须大于 0")
+        return v
+
+    @field_validator("mika_request_body_max_bytes")
+    @classmethod
+    def validate_request_body_max_bytes(cls, v: int) -> int:
+        v = int(v)
+        if v <= 0:
+            raise ValueError("mika_request_body_max_bytes 必须大于 0")
+        return v
+
+    @field_validator("mika_chatroom_transcript_line_max_chars")
+    @classmethod
+    def validate_chatroom_transcript_line_max_chars(cls, v: int) -> int:
+        v = int(v)
+        if v <= 0:
+            raise ValueError("mika_chatroom_transcript_line_max_chars 必须大于 0")
+        return v
 
     @classmethod
     def _parse_env_value_for_field(cls, field_name: str, raw_value: str) -> Any:
@@ -937,6 +975,9 @@ class Config(BaseModel):
             "health_api_probe_ttl_seconds": self.mika_health_check_api_probe_ttl_seconds,
             "context_trace_enabled": self.mika_context_trace_enabled,
             "context_trace_sample_rate": self.mika_context_trace_sample_rate,
+            "trace_enabled": self.mika_trace_enabled,
+            "trace_retention_days": self.mika_trace_retention_days,
+            "trace_max_rows": self.mika_trace_max_rows,
         }
     
     # ==================== 用户标识配置 ====================
@@ -959,6 +1000,10 @@ class Config(BaseModel):
     mika_context_max_turns: int = 30
     # 软 token 上限（估算），超过后会逐轮裁剪旧上下文
     mika_context_max_tokens_soft: int = 100000
+    # 单次请求体大小软上限（字节）。代理/中转常因 body 过大而返回 HTTP 200 但 content 为空。
+    mika_request_body_max_bytes: int = 1_800_000
+    # 群聊 transcript 单行最大字符数（避免一条超长消息把 working set 撑爆）
+    mika_chatroom_transcript_line_max_chars: int = 240
     # 是否启用摘要压缩（默认关闭，稳定优先）
     mika_context_summary_enabled: bool = False
     # 摘要文本最大字符数
@@ -1259,7 +1304,8 @@ class Config(BaseModel):
     # ==================== 主动发言 Chatroom 模式 ====================
     # 借鉴 AstrBot：主动发言时将群聊记录拼成 transcript 注入，并清空上下文 contexts，减少“已读乱回”
     mika_proactive_chatroom_enabled: bool = True
-    mika_proactive_chatroom_history_lines: int = 30
+    # 群聊 transcript 默认行数（对齐 AstrBot 体验：working set=300 行）
+    mika_proactive_chatroom_history_lines: int = 300
     
     # ==================== 用户档案 LLM 抽取配置 ====================
     # 基础开关

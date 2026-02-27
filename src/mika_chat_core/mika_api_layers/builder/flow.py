@@ -300,6 +300,7 @@ async def build_messages_flow(
         context_level=context_level,
         use_persistent=use_persistent,
         context_store=context_store,
+        plugin_cfg=plugin_cfg,
         # Avoid sending multimodal history parts by default: even a single base64 image
         # can blow up request size and cause proxy providers to return empty replies.
         supports_images=bool(getattr(plugin_cfg, "mika_history_send_multimodal", False))
@@ -414,6 +415,90 @@ async def build_messages_flow(
             f"消息构建完成 | original_len={len(str(original_content))} | "
             f"search_injected_as_system=False"
         )
+
+    # -------------------- Group working set budgets (tokens/bytes) --------------------
+    # Even with large-context models, proxy endpoints often impose small request-body
+    # limits and may return HTTP 200 with empty content. We proactively shrink the
+    # transcript working set when we are over budget.
+    try:
+        import json
+
+        from ...utils.context_schema import estimate_message_tokens
+        from ...utils.context_token_budget import resolve_context_max_tokens_soft
+        from ...utils.transcript_builder import TRANSCRIPT_HEADER, shrink_transcript_block
+
+        def _estimate_request_body_bytes(body: Dict[str, Any]) -> int:
+            try:
+                dumped = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
+                return len(dumped.encode("utf-8"))
+            except Exception:
+                return len(str(body or "").encode("utf-8"))
+
+        def _estimate_messages_tokens(msgs: List[Dict[str, Any]]) -> int:
+            total = 0
+            for item in msgs or []:
+                if not isinstance(item, dict):
+                    continue
+                role = str(item.get("role") or "").strip().lower()
+                msg: Dict[str, Any] = {"role": role, "content": item.get("content", "")}
+                if role == "assistant" and isinstance(item.get("tool_calls"), list):
+                    msg["tool_calls"] = item["tool_calls"]
+                if role == "tool" and item.get("tool_call_id"):
+                    msg["tool_call_id"] = item["tool_call_id"]
+                total += int(estimate_message_tokens(msg))
+            return int(total)
+
+        max_bytes = int(getattr(plugin_cfg, "mika_request_body_max_bytes", 1_800_000) or 1_800_000)
+        max_bytes = max(200_000, max_bytes)
+
+        max_tokens_soft = int(resolve_context_max_tokens_soft(plugin_cfg, models=[model]) or 0)
+        max_tokens_soft = max(0, max_tokens_soft)
+        transcript_budget_tokens = int(max_tokens_soft * 0.6) if max_tokens_soft > 0 else 0
+
+        bytes_before = _estimate_request_body_bytes(request_body)
+        tokens_before = _estimate_messages_tokens(messages)
+
+        # Find the transcript message (if any).
+        transcript_idx: Optional[int] = None
+        for idx, msg in enumerate(messages):
+            if not isinstance(msg, dict):
+                continue
+            if str(msg.get("role") or "").strip().lower() != "system":
+                continue
+            content = msg.get("content")
+            if isinstance(content, str) and TRANSCRIPT_HEADER in content:
+                transcript_idx = idx
+                break
+
+        if transcript_idx is not None and (bytes_before > max_bytes or (transcript_budget_tokens and tokens_before > max_tokens_soft)):
+            ratios = [0.7, 0.5, 0.3]
+            for ratio in ratios:
+                content = messages[transcript_idx].get("content")
+                if not isinstance(content, str):
+                    break
+                shrunk = shrink_transcript_block(content, keep_ratio=ratio)
+                messages[transcript_idx]["content"] = shrunk.text
+
+                bytes_after = _estimate_request_body_bytes(request_body)
+                tokens_after = _estimate_messages_tokens(messages)
+
+                if bytes_after <= max_bytes and (not max_tokens_soft or tokens_after <= max_tokens_soft):
+                    log_obj.warning(
+                        f"request budget shrink_transcript ok | keep_ratio={ratio:.2f} | "
+                        f"bytes={bytes_before}->{bytes_after} | tokens={tokens_before}->{tokens_after}"
+                    )
+                    break
+            else:
+                bytes_after = _estimate_request_body_bytes(request_body)
+                tokens_after = _estimate_messages_tokens(messages)
+                if bytes_after > max_bytes or (max_tokens_soft and tokens_after > max_tokens_soft):
+                    log_obj.warning(
+                        f"request budget still high after transcript shrink | "
+                        f"bytes={bytes_before}->{bytes_after} | tokens={tokens_before}->{tokens_after}"
+                    )
+    except Exception:
+        # Budgets are best-effort and must not break the request build.
+        pass
 
     return {
         "messages": messages,
