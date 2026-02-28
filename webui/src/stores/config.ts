@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import {
   exportConfig,
+  getConfigEnvPath,
   getConfigSections,
   importConfig,
   reloadConfig,
@@ -12,9 +13,19 @@ export const useConfigStore = defineStore('config', {
   state: () => ({
     loading: false,
     sections: [] as ConfigSection[],
+    envPath: '',
     error: '',
   }),
   actions: {
+    async loadEnvPath() {
+      try {
+        const data = await getConfigEnvPath()
+        this.envPath = String(data?.path ?? '')
+      } catch (error) {
+        this.envPath = ''
+        throw error
+      }
+    },
     async load() {
       this.loading = true
       this.error = ''

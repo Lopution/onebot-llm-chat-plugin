@@ -133,11 +133,18 @@ const reloading = ref(false)
 const importFileInput = ref<HTMLInputElement | null>(null)
 const showAdvanced = ref(false)
 const searchQuery = ref('')
+const envPath = computed(() => store.envPath || '')
 
 const effectiveExpanded = ref(false)
 const effectiveLoading = ref(false)
 const effectiveError = ref('')
 const effectiveSnapshot = ref<any | null>(null)
+
+const envLabel = computed(() => {
+  const raw = String(envPath.value || '').trim()
+  if (!raw) return '.env'
+  return raw.replaceAll('\\', '/').split('/').pop() || raw
+})
 
 const toFormValue = (field: any) => {
   const v = field?.value
@@ -244,7 +251,7 @@ const onSave = async () => {
   saving.value = true
   try {
     await store.save(form)
-    ElMessage.success('配置已写入 .env（请重启生效）')
+    ElMessage.success(`配置已写入 ${envLabel.value}（请重启生效）`)
   } catch (error) {
     ElMessage.error(String(error))
   } finally {
@@ -258,7 +265,7 @@ const onReload = async () => {
     await store.reload()
     await store.load()
     syncFormFromSections(store.sections as any[], false)
-    ElMessage.success('已从 .env 热重载配置')
+    ElMessage.success(`已从 ${envLabel.value} 热重载配置`)
   } catch (error) {
     ElMessage.error(String(error))
   } finally {
@@ -314,6 +321,11 @@ const onImportFileSelected = async (event: Event) => {
 
 onMounted(async () => {
   await store.load()
+  try {
+    await store.loadEnvPath()
+  } catch (error) {
+    ElMessage.error(`加载 env 路径失败: ${String(error)}`)
+  }
 })
 </script>
 

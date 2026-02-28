@@ -1,6 +1,11 @@
 import client, { unwrapResponse, type ApiResponse } from '../http'
 import type { ConfigSection } from '../types'
 
+export async function getConfigEnvPath() {
+  const { data } = await client.get<ApiResponse<{ path: string }>>('/config/env-path')
+  return unwrapResponse(data)
+}
+
 export async function getConfigSections() {
   const { data } = await client.get<ApiResponse<{ sections: ConfigSection[] }>>('/config')
   return unwrapResponse(data)
