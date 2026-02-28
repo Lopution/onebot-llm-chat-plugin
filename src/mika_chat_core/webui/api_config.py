@@ -97,7 +97,7 @@ def create_config_router(
     router = APIRouter(prefix="/config", tags=["mika-webui-config"], dependencies=[Depends(auth_dependency)])
 
     @router.get("/env-path")
-    async def config_env_path() -> Dict[str, str]:
+    async def config_env_path() -> Dict[str, Any]:
         return BaseRouteHelper.ok({"path": str(resolve_env_path())})
 
     @router.get("")
