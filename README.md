@@ -107,7 +107,7 @@ Bot 启动后，需要在你的 OneBot 实现/客户端侧配置“反向 WebSoc
 - **OneBot v11**：`ws://<HOST>:<PORT>/onebot/v11/ws`
 - **OneBot v12**：`ws://<HOST>:<PORT>/onebot/v12/ws`
 
-其中 `<HOST>/<PORT>` 对应你的 `.env` 配置（默认 `0.0.0.0:8080`）。
+其中 `<HOST>/<PORT>` 对应你实际使用的环境文件（默认 `.env`；若你使用 `./start.sh` / `.\start.ps1` 且存在 `.env.prod`，则会优先使用 `.env.prod`）。
 
 > 📌 详细说明与不同实现的差异见：`docs/deploy/onebot.md`
 
@@ -165,10 +165,12 @@ pip install -r requirements.txt
 
 ### 4. 配置环境变量
 
-复制 `.env.example` 为 `.env` 并根据需要修改配置：
+复制 `.env.example` 为环境文件并根据需要修改配置：
 
 ```bash
 cp .env.example .env
+# 或生产环境（推荐脚本启动时使用）
+cp .env.example .env.prod
 ```
 
 你也可以直接运行交互式向导自动补齐最小配置：
@@ -203,6 +205,10 @@ python3 scripts/config_wizard.py
 ⚠️ 破坏性升级：旧键（如 `MIKA_API_KEY` / `SERPER_API_KEY`）已切断，存在即启动失败。
 
 > 📖 完整配置说明请参阅 [`docs/guide/configuration.md`](docs/guide/configuration.md)
+
+提示：
+- `scripts/doctor.py` 与 `start.sh/start.ps1` 会在 `.env.prod` 存在时优先使用它。
+- WebUI 保存配置时，会写入 `DOTENV_PATH` 指定的 env 文件；使用启动脚本时已自动设置为 `.env` 或 `.env.prod`，保证 WebUI 与运行时使用同一份配置。
 
 ### 自定义 Prompt（V2）
 
