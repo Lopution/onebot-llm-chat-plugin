@@ -10,32 +10,32 @@
     </el-space>
     <el-row :gutter="12">
       <el-col :span="6">
-        <el-card shadow="never">
+        <el-card class="acrylic-panel">
           <div class="stat-label">请求总数</div>
           <div class="stat-value">{{ dashboard.metrics.requests_total || 0 }}</div>
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="never">
+        <el-card class="acrylic-panel">
           <div class="stat-label">工具调用</div>
           <div class="stat-value">{{ dashboard.metrics.tool_calls_total || 0 }}</div>
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="never">
+        <el-card class="acrylic-panel">
           <div class="stat-label">记忆条数</div>
           <div class="stat-value">{{ dashboard.stats.memory_count || 0 }}</div>
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="never">
+        <el-card class="acrylic-panel">
           <div class="stat-label">知识块数</div>
           <div class="stat-value">{{ dashboard.stats.knowledge_count || 0 }}</div>
         </el-card>
       </el-col>
     </el-row>
 
-    <el-card shadow="never" style="margin-top: 12px">
+    <el-card class="acrylic-panel" style="margin-top: 12px">
       <template #header>24h 时序指标（每小时）</template>
       <el-table :data="recentTimeline" size="small">
         <el-table-column label="时间" min-width="160">

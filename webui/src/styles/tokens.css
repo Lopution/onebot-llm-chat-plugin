@@ -13,6 +13,13 @@
   --mika-spacing-lg: 16px;
   --mika-spacing-xl: 24px;
 
+  /* --- Fluent Background & Mica Utilities --- */
+  /* Fallback for browsers not supporting backdrop-filter */
+  --mika-bg-acrylic-fallback: rgba(240, 240, 240, 0.95);
+  --mika-bg-acrylic: rgba(240, 240, 240, 0.95);
+  /* Default to fallback */
+  --mika-backdrop-filter: none;
+
   /* --- Typography --- */
   --mika-font-size-xs: 12px;
   --mika-font-size-sm: 13px;
@@ -26,15 +33,20 @@
   /* --- Layout --- */
   --mika-sidebar-width: 220px;
   --mika-header-height: 60px;
-  --mika-border-radius: 6px;
+  --mika-border-radius: 8px;
+  /* Fluent Design 2.0 rounded corners */
   --mika-content-padding: 16px;
 
   /* --- Colors (semantic aliases for Element Plus) --- */
-  --mika-color-primary: var(--el-color-primary, #409eff);
-  --mika-color-success: var(--el-color-success, #67c23a);
-  --mika-color-warning: var(--el-color-warning, #e6a23c);
-  --mika-color-danger: var(--el-color-danger, #f56c6c);
-  --mika-color-info: var(--el-color-info, #909399);
+  /* Re-exporting Element variables for internal use, though now globally defined */
+  --mika-color-primary: var(--el-color-primary, #0078D4);
+  --mika-color-success: var(--el-color-success, #107C10);
+  /* Fluent Success */
+  --mika-color-warning: var(--el-color-warning, #D83B01);
+  /* Fluent Warning */
+  --mika-color-danger: var(--el-color-danger, #A4262C);
+  /* Fluent Danger */
+  --mika-color-info: var(--el-color-info, #605E5C);
   --mika-color-text-primary: var(--el-text-color-primary, #303133);
   --mika-color-text-secondary: var(--el-text-color-secondary, #909399);
   --mika-color-border: var(--el-border-color, #dcdfe6);
@@ -42,8 +54,10 @@
   --mika-color-bg-page: var(--el-bg-color-page, #f2f3f5);
 
   /* --- Shadows --- */
-  --mika-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
-  --mika-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --mika-shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.04),
+  0 0px 2px rgba(0, 0, 0, 0.06);
+  --mika-shadow-md: 0 4px 8px rgba(0, 0, 0, 0.04),
+  0 0px 4px rgba(0, 0, 0, 0.06);
 
   /* --- Transitions --- */
   --mika-transition-fast: 0.15s ease;
@@ -53,4 +67,12 @@
   --mika-chat-bg: #fafafa;
   --mika-chat-min-height: 360px;
   --mika-chat-max-height: 520px;
+}
+
+/* Avoid relying on CSS nesting support (browser-dependent). */
+@supports (backdrop-filter: blur(1px)) {
+  :root {
+    --mika-bg-acrylic: rgba(255, 255, 255, 0.65);
+    --mika-backdrop-filter: blur(20px) saturate(125%);
+  }
 }

@@ -1,0 +1,93 @@
+/**
+ * Fluent Design 2.0 Overrides for Element Plus
+ * 
+ * This file overrides specific element-plus components to give them
+ * an acrylic/mica feel with modern corner radii and shadows.
+ */
+
+:root {
+    /* Enforce Fluent Blue on all Element Plus components */
+    --el-color-primary: #0078D4;
+}
+
+/* Base Fluent Animations */
+@media (prefers-reduced-motion: no-preference) {
+
+    .el-button,
+    .el-input__wrapper,
+    .el-card {
+        transition: all var(--mika-transition-fast);
+    }
+}
+
+/* Buttons */
+.el-button {
+    border-radius: var(--mika-border-radius);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    background-color: rgba(255, 255, 255, 0.7);
+}
+
+html.dark .el-button {
+    border-color: rgba(255, 255, 255, 0.08);
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.el-button--primary {
+    border: none;
+    background-color: var(--el-color-primary);
+    color: white;
+}
+
+/* Fix Focus Visibility for A11y */
+.el-button:focus-visible,
+.el-input__wrapper:focus-within {
+    outline: 2px solid var(--el-color-primary);
+    outline-offset: 2px;
+}
+
+/* Acrylic Panel Container (Scoped Usage) */
+.acrylic-panel {
+    background-color: var(--mika-bg-acrylic-fallback);
+    border-radius: var(--mika-border-radius);
+    box-shadow: var(--mika-shadow-md);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+@supports (backdrop-filter: blur(1px)) {
+    .acrylic-panel {
+        background-color: var(--mika-bg-acrylic);
+        backdrop-filter: var(--mika-backdrop-filter);
+    }
+}
+
+html.dark .acrylic-panel {
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Inputs */
+.el-input__wrapper {
+    border-radius: var(--mika-border-radius);
+    background-color: rgba(255, 255, 255, 0.6);
+    box-shadow: none !important;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+@supports (backdrop-filter: blur(1px)) {
+    .el-input__wrapper {
+        backdrop-filter: blur(10px);
+    }
+}
+
+.el-input__wrapper:focus-within {
+    border-bottom-color: var(--el-color-primary);
+    background-color: #fff;
+}
+
+html.dark .el-input__wrapper {
+    background-color: rgba(255, 255, 255, 0.05);
+    border-bottom-color: rgba(255, 255, 255, 0.2);
+}
+
+html.dark .el-input__wrapper:focus-within {
+    background-color: rgba(0, 0, 0, 0.5);
+}

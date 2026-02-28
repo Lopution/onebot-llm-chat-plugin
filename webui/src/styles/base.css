@@ -6,6 +6,28 @@
 
 @import './tokens.css';
 
+/* Global Body Styling for Fluent Design Effect */
+body,
+html {
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  width: 100vw;
+  font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* Background gradient to show through acrylic components */
+.app-bg {
+  background: linear-gradient(135deg, #f0f4f8 0%, #d9e6f2 100%);
+  min-height: 100vh;
+  position: relative;
+  overflow: hidden;
+}
+
+html.dark .app-bg {
+  background: linear-gradient(135deg, #20262e 0%, #101418 100%);
+}
+
 /* Page-level heading style */
 .page-title {
   margin: 0 0 var(--mika-spacing-md) 0;

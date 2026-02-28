@@ -2,7 +2,7 @@
   <div>
     <h2 class="page-title">WebUI 测试对话</h2>
 
-    <el-card style="margin-bottom: 12px">
+    <el-card class="acrylic-panel" style="margin-bottom: 12px">
       <template #header>会话参数</template>
       <el-row :gutter="8">
         <el-col :span="8"><el-input v-model="sessionId" placeholder="session_id (private:webui_admin)" /></el-col>
@@ -20,7 +20,7 @@
       </div>
     </el-card>
 
-    <el-card>
+    <el-card class="acrylic-panel">
       <template #header>对话面板</template>
       <div class="chat-box">
         <div v-for="item in chat.messages.value" :key="item.id" class="chat-item">

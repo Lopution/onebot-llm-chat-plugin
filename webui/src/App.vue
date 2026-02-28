@@ -1,7 +1,8 @@
 <template>
-  <el-container style="height: 100vh">
-    <el-aside width="220px" style="border-right: 1px solid #eee">
-      <div style="padding: 16px; font-weight: 700">Mika WebUI</div>
+  <div class="app-bg">
+    <el-container style="height: 100vh; background: transparent;">
+      <el-aside width="220px" class="acrylic-panel" style="margin: 16px 0 16px 16px; height: calc(100vh - 32px); display: flex; flex-direction: column;">
+        <div style="padding: 24px; font-weight: 700; font-size: 18px;">Mika WebUI</div>
       <el-menu :default-active="activePath" router>
         <el-menu-item index="/dashboard">仪表盘</el-menu-item>
         <el-menu-item index="/logs">实时日志</el-menu-item>
@@ -15,9 +16,9 @@
         <el-menu-item index="/live-chat">测试对话</el-menu-item>
         <el-menu-item index="/backup">备份恢复</el-menu-item>
       </el-menu>
-    </el-aside>
-    <el-container>
-      <el-header style="border-bottom: 1px solid #eee; display: flex; align-items: center">
+      </el-aside>
+      <el-container style="background: transparent;">
+        <el-header class="acrylic-panel" style="margin: 16px 16px 0 16px; display: flex; align-items: center;">
         <el-input
           v-model="token"
           placeholder="WebUI Token（可选）"
@@ -25,12 +26,13 @@
           style="max-width: 360px"
           @change="saveToken"
         />
-      </el-header>
-      <el-main style="padding: 16px">
-        <router-view />
-      </el-main>
+        </el-header>
+        <el-main style="padding: 16px; overflow-y: auto;">
+          <router-view />
+        </el-main>
+      </el-container>
     </el-container>
-  </el-container>
+  </div>
 </template>
 
 <script setup lang="ts">
