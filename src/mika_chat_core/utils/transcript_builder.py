@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .context_schema import normalize_content
 from .media_semantics import placeholder_from_content_part
+from .speaker_labels import parse_speaker_tagged_message, speaker_label_for_user_id
 
 
 TRANSCRIPT_HEADER = "[Chatroom Transcript]"
@@ -72,7 +73,6 @@ def _clip_line(text: str, *, max_chars: int) -> str:
 
 
 _SPEAKER_RE = re.compile(r"^\[(.*?)\]:\s*(.*)$")
-_SPEAKER_TAG_RE = re.compile(r"^(?P<nick>.*)\((?P<uid>[^()]+)\)$")
 _RENDERED_SPEAKER_RE = re.compile(r"^(?:\[[^\]]+\]\s+)?(?P<speaker>[^:]{1,80}):\s+")
 
 
@@ -81,19 +81,6 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return float(value)
     except Exception:
         return default
-
-
-def _sanitize_display_name(name: str, *, max_chars: int = 24) -> str:
-    cleaned = " ".join(str(name or "").split()).strip()
-    if not cleaned:
-        return ""
-    # Keep it "name-like": drop high-noise punctuation while keeping CJK/ASCII letters/digits.
-    cleaned = re.sub(r"[^\u4e00-\u9fa5a-zA-Z0-9\-_ ]", "", cleaned).strip()
-    if not cleaned:
-        return ""
-    if len(cleaned) > max_chars:
-        cleaned = cleaned[:max_chars].rstrip()
-    return cleaned
 
 
 def _format_time_hint(ts: float, baseline_ts: float) -> str:
@@ -195,10 +182,7 @@ def build_transcript_lines(
     if baseline_ts <= 0:
         baseline_ts = _safe_float(time.time(), 0.0)
 
-    # First pass: parse all lines, keep a stable display name for each user_id.
     entries: List[Dict[str, Any]] = []
-    display_by_uid: Dict[str, str] = {}
-
     lines: List[str] = []
     for msg in normalized_history[-max_lines:]:
         role = str(msg.get("role") or "").strip().lower()
@@ -215,67 +199,32 @@ def build_transcript_lines(
         ts = _safe_float(msg.get("timestamp"), 0.0)
         time_hint = _format_time_hint(ts, baseline_ts)
 
-        if role == "assistant":
-            matched = _SPEAKER_RE.match(content)
-            speaker = ""
-            said = ""
-            if matched:
-                speaker = (matched.group(1) or "").strip()
-                said = (matched.group(2) or "").strip()
-            speaker = _sanitize_display_name(speaker) or str(bot_name or "").strip() or "Assistant"
-            said = said or content
-            entries.append(
-                {
-                    "time_hint": time_hint,
-                    "role": role,
-                    "uid": "",
-                    "speaker": speaker,
-                    "said": said,
-                }
-            )
-            continue
-
-        matched = _SPEAKER_RE.match(content)
         speaker_raw = ""
-        said = ""
+        said = content
+        matched = _SPEAKER_RE.match(content)
         if matched:
             speaker_raw = (matched.group(1) or "").strip()
-            said = (matched.group(2) or "").strip()
-        said = said or content
+            said = (matched.group(2) or "").strip() or content
 
         uid = str(msg.get("user_id") or "").strip()
-        nick = ""
-        if speaker_raw:
-            tag_match = _SPEAKER_TAG_RE.match(speaker_raw)
-            if tag_match:
-                nick = (tag_match.group("nick") or "").strip()
-                tag_uid = (tag_match.group("uid") or "").strip()
-                if not uid and tag_uid:
-                    uid = tag_uid
-            else:
-                nick = speaker_raw
+        if not uid and speaker_raw:
+            parsed = parse_speaker_tagged_message(f"[{speaker_raw}]: {said}")
+            if parsed and parsed.uid:
+                uid = parsed.uid
 
-        nick = _sanitize_display_name(nick, max_chars=24)
-        if uid and nick:
-            # Keep the newest nickname for each user_id (stable mapping).
-            display_by_uid[uid] = nick
+        if role == "assistant":
+            speaker = str(bot_name or "").strip() or "Assistant"
+        else:
+            speaker = speaker_label_for_user_id(uid) if uid else "User"
 
         entries.append(
             {
                 "time_hint": time_hint,
                 "role": role,
-                "uid": uid,
-                "speaker_raw": speaker_raw,
+                "speaker": speaker,
                 "said": said,
             }
         )
-
-    # Determine which display names collide; only then we append "(user_id)".
-    name_counts: Dict[str, int] = {}
-    for name in (display_by_uid or {}).values():
-        if not name:
-            continue
-        name_counts[name] = name_counts.get(name, 0) + 1
 
     for ent in entries:
         role = str(ent.get("role") or "").strip().lower()
@@ -286,23 +235,7 @@ def build_transcript_lines(
 
         prefix = f"{time_hint} " if time_hint else ""
 
-        if role == "assistant":
-            speaker = str(ent.get("speaker") or "").strip() or str(bot_name or "").strip() or "Assistant"
-            lines.append(f"{prefix}{speaker}: {said}")
-            continue
-
-        uid = str(ent.get("uid") or "").strip()
-        speaker_raw = str(ent.get("speaker_raw") or "").strip()
-        speaker = ""
-        if uid and uid in display_by_uid:
-            speaker = display_by_uid[uid]
-        if not speaker:
-            # Fallback to raw tag or generic label.
-            speaker = _sanitize_display_name(speaker_raw) or "User"
-
-        if uid and speaker and name_counts.get(speaker, 0) > 1:
-            speaker = f"{speaker}({uid})"
-
+        speaker = str(ent.get("speaker") or "").strip() or "User"
         lines.append(f"{prefix}{speaker}: {said}")
 
     return lines

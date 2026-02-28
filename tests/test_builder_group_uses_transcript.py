@@ -10,6 +10,7 @@ async def test_builder_group_uses_archive_transcript(temp_database, monkeypatch)
     from mika_chat_core import runtime as runtime_module
     from mika_chat_core.config import Config
     from mika_chat_core.mika_api_layers.core.messages import build_messages
+    from mika_chat_core.utils.speaker_labels import speaker_label_for_user_id
 
     runtime_module.set_config(
         Config(
@@ -69,5 +70,5 @@ async def test_builder_group_uses_archive_transcript(temp_database, monkeypatch)
     sys_msgs = [m for m in (result.request_body.get("messages") or []) if m.get("role") == "system"]
     assert any("[Chatroom Transcript]" in str(m.get("content") or "") for m in sys_msgs)
     transcript = next(str(m.get("content") or "") for m in sys_msgs if "[Chatroom Transcript]" in str(m.get("content") or ""))
-    assert "Alice: hello" in transcript
+    assert f"{speaker_label_for_user_id('1')}: hello" in transcript
     assert "Mika: ok" in transcript

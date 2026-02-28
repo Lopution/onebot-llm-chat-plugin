@@ -6,6 +6,7 @@ import time
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ...utils.media_semantics import build_media_semantic, placeholder_from_media_semantic
+from ...utils.speaker_labels import build_llm_safe_message_text
 
 
 def guard_inputs(
@@ -61,11 +62,12 @@ async def build_original_and_api_content(
     plugin_cfg: Any,
     log_obj: Any,
 ) -> Tuple[Union[str, List[Dict[str, Any]]], Union[str, List[Dict[str, Any]]]]:
+    api_message_text = build_llm_safe_message_text(message)
     if not normalized_image_urls:
-        return message, message
+        return message, api_message_text
 
     original_content: Union[str, List[Dict[str, Any]]] = [{"type": "text", "text": message}]
-    api_content_list: List[Dict[str, Any]] = [{"type": "text", "text": message}]
+    api_content_list: List[Dict[str, Any]] = [{"type": "text", "text": api_message_text}]
     for url in normalized_image_urls:
         url_str = str(url or "").strip()
         semantic = build_media_semantic(kind="image", url=url_str, source="request_image")
