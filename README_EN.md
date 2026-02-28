@@ -109,7 +109,7 @@ After the bot starts, configure your OneBot implementation/client as a reverse W
 - **OneBot v11**: `ws://<HOST>:<PORT>/onebot/v11/ws`
 - **OneBot v12**: `ws://<HOST>:<PORT>/onebot/v12/ws`
 
-`<HOST>/<PORT>` comes from your `.env` (default: `0.0.0.0:8080`).
+`<HOST>/<PORT>` comes from the env file you actually use (default: `.env`; if you launch via `./start.sh` / `.\start.ps1` and `.env.prod` exists, it will prefer `.env.prod`).
 
 > 📌 Details and implementation differences: `docs/deploy/onebot.md`  
 > 💡 Full deployment guide: [Installation & Run](#-installation--run)
@@ -166,10 +166,12 @@ pip install -r requirements.txt
 
 ### 4. Configure environment variables
 
-Copy `.env.example` to `.env`:
+Copy `.env.example` to your env file:
 
 ```bash
 cp .env.example .env
+# or production (recommended when launching via scripts)
+cp .env.example .env.prod
 ```
 
 You can also run the interactive wizard to fill the minimum config automatically:
@@ -204,6 +206,10 @@ Common options (defaults will be used if omitted):
 ⚠️ Breaking change: legacy keys (e.g. `MIKA_API_KEY` / `SERPER_API_KEY`) are removed. If present, startup will fail fast.
 
 > 📖 Full config: [`docs/guide/configuration.md`](docs/guide/configuration.md)
+
+Notes:
+- `scripts/doctor.py` and `start.sh/start.ps1` prefer `.env.prod` when it exists.
+- WebUI writes to the env file pointed to by `DOTENV_PATH`. The launch scripts set it to `.env` or `.env.prod` so WebUI and runtime stay in sync.
 
 ### Custom Prompt (V2)
 
